@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { formatLedgerBalance } from '../../lib/format';
 import { api, type Account, type AccountCategory } from '../../lib/api';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type Mode = 'add' | 'edit' | 'remove';
 
@@ -194,6 +195,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
           </div>
         </form>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

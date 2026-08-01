@@ -6,6 +6,7 @@ import { downloadExcel, downloadPdf } from '../../lib/reportExport';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, FinancialButton, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { VoucherDetailCard } from '../vouchers/VoucherPages';
 
 type LedgerResult = Awaited<ReturnType<typeof api.getLedger>>;
@@ -247,6 +248,7 @@ export function AccountReportsPage() {
           </>
         ) : null}
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
@@ -311,6 +313,7 @@ export function TrialBalancePage() {
           <p className="text-sm text-textSecondary">Loading…</p>
         )}
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
@@ -647,6 +650,7 @@ export function SalePurchaseReportsPage() {
           )}
         </Panel>
       ) : null}
+      <PageCloseBar />
     </PageShell>
   );
 }
@@ -830,6 +834,7 @@ export function StockReportPage() {
           </div>
         ) : null}
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
@@ -1044,6 +1049,7 @@ export function AccountBalancePage() {
           </>
         ) : null}
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
@@ -1192,7 +1198,7 @@ export function VouchersReportPage() {
 
         {error ? <p className="mb-4 text-sm text-danger">{error}</p> : null}
         {loaded && listTotal > vouchers.length ? (
-          <p className="mb-4 text-sm text-amber-700 dark:text-amber-400">
+          <p className="mb-4 text-sm text-amber-700">
             Showing first {vouchers.length} of {listTotal} vouchers in this period. Narrow the date
             range for complete totals.
           </p>
@@ -1288,6 +1294,7 @@ export function VouchersReportPage() {
           updating={updating}
         />
       ) : null}
+      <PageCloseBar />
     </PageShell>
   );
 }

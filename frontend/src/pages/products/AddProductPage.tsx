@@ -9,6 +9,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 /** Dedicated Add Product screen (product + optional business category + Products ledger). */
 export function AddProductPage() {
@@ -178,6 +179,7 @@ export function AddProductPage() {
           </tbody>
         </LegacyTable>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

@@ -53,3 +53,25 @@ stockRouter.get(
     res.json(await stockService.getStockByStore(storeId));
   }),
 );
+
+stockRouter.get(
+  '/balance',
+  asyncHandler(async (req, res) => {
+    const productId = Number(req.query.productId);
+    if (!Number.isFinite(productId) || productId < 1) {
+      res.status(400).json({ error: 'productId is required' });
+      return;
+    }
+    const storeIdRaw = req.query.storeId;
+    const storeId =
+      storeIdRaw != null && String(storeIdRaw).trim() !== ''
+        ? Number(storeIdRaw)
+        : undefined;
+    if (storeId != null && (!Number.isFinite(storeId) || storeId < 1)) {
+      res.status(400).json({ error: 'storeId must be a positive integer' });
+      return;
+    }
+    const balance = await stockService.getCurrentStockBalance(productId, storeId);
+    res.json({ productId, storeId: storeId ?? null, balance });
+  }),
+);

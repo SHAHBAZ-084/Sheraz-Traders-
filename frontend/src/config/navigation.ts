@@ -27,31 +27,6 @@ export type SidebarSection = {
 
 export const SIDEBAR_NAV: SidebarSection[] = [
   {
-    id: 'vouchers',
-    label: 'Vouchers',
-    icon: Receipt,
-    items: [
-      { kind: 'link', label: 'Payment Voucher', to: '/vouchers/payment' },
-      { kind: 'link', label: 'Journal Voucher', to: '/vouchers/journal' },
-      { kind: 'link', label: 'Receipt Voucher', to: '/vouchers/receipt' },
-      { kind: 'link', label: 'View Voucher', to: '/vouchers/view' },
-    ],
-  },
-  {
-    id: 'invoices',
-    label: 'Invoices',
-    icon: FileText,
-    items: [
-      { kind: 'link', label: 'Sale on Commission', to: '/invoices/sale-commission' },
-      { kind: 'link', label: 'Sale on Paunch', to: '/invoices/sale-paunch' },
-      { kind: 'link', label: 'Sale Invoice', to: '/invoices/sale-invoice' },
-      { kind: 'link', label: 'Purchase to Maal', to: '/invoices/purchase-maal' },
-      { kind: 'link', label: 'Purchase Invoice', to: '/invoices/purchase-invoice' },
-      { kind: 'link', label: 'Kachi Maal', to: '/invoices/kachi-maal' },
-      { kind: 'link', label: 'View Invoice', to: '/invoices/view-invoice' },
-    ],
-  },
-  {
     id: 'accounts',
     label: 'Accounts',
     icon: Wallet,
@@ -88,6 +63,31 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     ],
   },
   {
+    id: 'vouchers',
+    label: 'Vouchers',
+    icon: Receipt,
+    items: [
+      { kind: 'link', label: 'Payment Voucher', to: '/vouchers/payment' },
+      { kind: 'link', label: 'Journal Voucher', to: '/vouchers/journal' },
+      { kind: 'link', label: 'Receipt Voucher', to: '/vouchers/receipt' },
+      { kind: 'link', label: 'View Voucher', to: '/vouchers/view' },
+    ],
+  },
+  {
+    id: 'invoices',
+    label: 'Invoices',
+    icon: FileText,
+    items: [
+      { kind: 'link', label: 'Sale on Commission', to: '/invoices/sale-commission' },
+      { kind: 'link', label: 'Sale on Paunch', to: '/invoices/sale-paunch' },
+      { kind: 'link', label: 'Sale Invoice', to: '/invoices/sale-invoice' },
+      { kind: 'link', label: 'Purchase to Maal', to: '/invoices/purchase-maal' },
+      { kind: 'link', label: 'Purchase Invoice', to: '/invoices/purchase-invoice' },
+      { kind: 'link', label: 'Kachi Maal', to: '/invoices/kachi-maal' },
+      { kind: 'link', label: 'View Invoice', to: '/invoices/view-invoice' },
+    ],
+  },
+  {
     id: 'reports',
     label: 'Reports',
     icon: BarChart3,
@@ -96,7 +96,6 @@ export const SIDEBAR_NAV: SidebarSection[] = [
         kind: 'submenu',
         label: 'Account Reports',
         children: [
-          { label: 'Account Ledger', to: '/reports/accounts' },
           { label: 'Account Balance', to: '/reports/account-balance' },
           { label: 'Vouchers', to: '/reports/vouchers' },
         ],
@@ -111,7 +110,11 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     id: 'system',
     label: 'System',
     icon: Settings,
-    items: [{ kind: 'link', label: 'System Preference', to: '/system/preferences' }],
+    items: [
+      { kind: 'link', label: 'Database Maintenance', to: '/system/database' },
+      { kind: 'link', label: 'Stores', to: '/system/stores' },
+      { kind: 'link', label: 'System Preference', to: '/system/preferences' },
+    ],
   },
 ];
 
@@ -134,6 +137,7 @@ export const REPORT_QUICK_LINKS: NavLink[] = (
 const ROUTE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/user': 'User Information',
+  '/reports/accounts': 'Ledger',
 };
 
 function collectRouteTitles(items: NavItem[], titles: Record<string, string>) {
@@ -177,7 +181,70 @@ export type NavGroup = {
   to?: string;
 };
 
-export const TOP_NAV: NavGroup[] = SIDEBAR_NAV.map((section) => ({
-  label: section.label,
-  children: section.items,
-}));
+/** Top-bar quick links (Sale / Purchase icons) rendered inline with dropdowns. */
+export type TopNavQuickLink = {
+  kind: 'quick';
+  label: string;
+  to: string;
+  icon: 'sale' | 'purchase';
+};
+
+/** Top-bar direct link (no dropdown), e.g. Ledger. */
+export type TopNavDirectLink = {
+  kind: 'link';
+  id: string;
+  label: string;
+  to: string;
+};
+
+export type TopNavEntry =
+  | ({ kind: 'dropdown' } & Required<Pick<NavGroup, 'label' | 'children'>>)
+  | TopNavQuickLink
+  | TopNavDirectLink;
+
+const TOP_NAV_SECTION_ORDER = [
+  'accounts',
+  'products',
+  'vouchers',
+  'invoices',
+  'reports',
+  'system',
+] as const;
+
+/** Left-to-right: Accounts → Products → Vouchers → Sale → Purchase → Invoices → Ledger → Reports → System */
+export const TOP_NAV: TopNavEntry[] = (() => {
+  const byId = new Map(SIDEBAR_NAV.map((section) => [section.id, section]));
+  const entries: TopNavEntry[] = [];
+  for (const id of TOP_NAV_SECTION_ORDER) {
+    const section = byId.get(id);
+    if (!section) continue;
+    if (id === 'vouchers') {
+      entries.push({ kind: 'dropdown', label: section.label, children: section.items });
+      entries.push({
+        kind: 'quick',
+        label: 'Sale',
+        to: '/invoices/sale-invoice',
+        icon: 'sale',
+      });
+      entries.push({
+        kind: 'quick',
+        label: 'Purchase',
+        to: '/invoices/purchase-invoice',
+        icon: 'purchase',
+      });
+      continue;
+    }
+    if (id === 'invoices') {
+      entries.push({ kind: 'dropdown', label: section.label, children: section.items });
+      entries.push({
+        kind: 'link',
+        id: 'ledger',
+        label: 'Ledger',
+        to: '/reports/accounts',
+      });
+      continue;
+    }
+    entries.push({ kind: 'dropdown', label: section.label, children: section.items });
+  }
+  return entries;
+})();

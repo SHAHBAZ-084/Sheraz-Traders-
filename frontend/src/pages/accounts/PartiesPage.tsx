@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { api, type Party } from '../../lib/api';
 import { formatLedgerBalance } from '../../lib/format';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 function PartyPage({
   title,
@@ -111,6 +112,7 @@ function PartyPage({
         </table>
         {parties.length === 0 ? <p className="py-4 text-sm text-textMuted">No parties yet.</p> : null}
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

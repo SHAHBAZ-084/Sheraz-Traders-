@@ -15,7 +15,7 @@ import {
 } from '../accounting/accounting.service';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
-import { postSaleInvoiceStockOut } from '../stock/stock.service';
+import { getCurrentStockBalance, postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo } from './invoice-voucher-descriptions';
 import {
   computeSaleInvoiceTotals,
@@ -88,6 +88,29 @@ export async function createSaleInvoice(data: CreateSaleInvoiceInput) {
         rate: line.rate,
         lineTotal: line.lineTotal,
       });
+    }
+
+    // Strict per-store stock check — never use another store's balance.
+    const requestedByProduct = new Map<number, { name: string; quantity: number }>();
+    for (const line of resolvedLines) {
+      const prev = requestedByProduct.get(line.productId);
+      if (prev) {
+        prev.quantity += line.quantity;
+      } else {
+        requestedByProduct.set(line.productId, {
+          name: line.productName,
+          quantity: line.quantity,
+        });
+      }
+    }
+    for (const [productId, req] of requestedByProduct) {
+      const available = await getCurrentStockBalance(productId, data.storeId, tx);
+      if (req.quantity > available) {
+        throw new AppError(
+          400,
+          `Insufficient stock for ${req.name} at selected store: available ${available}, requested ${req.quantity}`,
+        );
+      }
     }
 
     const legs: VoucherLeg[] = [

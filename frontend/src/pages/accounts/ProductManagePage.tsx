@@ -6,6 +6,7 @@ import {
   Panel,
   SecondaryButton,
 } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 /**
  * Legacy products page — currently hosts Remove Product only.
@@ -58,6 +59,7 @@ export function ProductRemovePage() {
         {message ? <p className="text-sm text-success">{message}</p> : null}
         <SecondaryButton onClick={onRemove}>Remove Product</SecondaryButton>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

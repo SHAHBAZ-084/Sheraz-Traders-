@@ -22,6 +22,8 @@ const VOUCHER_TYPE_LABELS: Record<string, string> = {
   PURCHASE_MAAL: 'Purchase Maal',
   SALE_PAUNCH: 'Sale Paunch',
   SALE_COMMISSION: 'Sale Commission',
+  SALE_INVOICE: 'Sale Invoice',
+  PURCHASE_INVOICE: 'Purchase Invoice',
   BARDANA: 'Bardana',
 };
 
@@ -50,6 +52,8 @@ export function voucherTypeColorClass(type: string) {
   if (key === 'PURCHASE_MAAL') return 'text-cardPurchaseMaalAccent';
   if (key === 'SALE_PAUNCH') return 'text-cardSalePaunchAccent';
   if (key === 'SALE_COMMISSION') return 'text-cardSaleCommissionAccent';
+  if (key === 'SALE_INVOICE') return 'text-cardSalePaunchAccent';
+  if (key === 'PURCHASE_INVOICE') return 'text-cardPurchaseMaalAccent';
   if (key === 'BARDANA' || type.trim().toLowerCase() === 'bardana') return 'text-textFinancial';
   if (key.includes('JOURNAL')) return 'text-voucherJournal';
   return 'text-textSecondary';

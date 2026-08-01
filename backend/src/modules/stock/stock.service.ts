@@ -399,6 +399,34 @@ export async function getStockByStore(storeId: number) {
   };
 }
 
+/**
+ * Net stock balance (IN − OUT) for a product.
+ * When `storeId` is a positive number, only movements for that exact store count —
+ * stock in other stores is never included. No movements at that store → 0.
+ * When `storeId` is omitted/null, sums across all movements for the product.
+ */
+export async function getCurrentStockBalance(
+  productId: number,
+  storeId?: number | null,
+  db: Tx | typeof prisma = prisma,
+): Promise<number> {
+  const scopedStoreId = storeId != null && storeId > 0 ? storeId : undefined;
+  const movements = await db.stockMovement.findMany({
+    where: {
+      productId,
+      ...(scopedStoreId != null ? { storeId: scopedStoreId } : {}),
+    },
+    select: { direction: true, bags: true },
+  });
+
+  let balance = 0;
+  for (const m of movements) {
+    const bags = Number(m.bags);
+    balance += m.direction === StockDirection.IN ? bags : -bags;
+  }
+  return balance;
+}
+
 /** Stock OUT for Sale Invoice — quantity treated as whole BORI bags. New helper; does not alter Paunch/Maal stock posts. */
 export async function postSaleInvoiceStockOut(
   tx: Tx,

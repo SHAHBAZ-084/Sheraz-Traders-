@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, type AccountCategory } from '../../lib/api';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type Mode = 'add' | 'edit' | 'remove';
 
@@ -79,6 +80,7 @@ export function CategoryManagePage({ mode }: { mode: Mode }) {
           </div>
         </form>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

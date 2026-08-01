@@ -5,6 +5,7 @@ import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { api, type InvoiceDetail, type SystemPreferences } from '../../lib/api';
 import { buildInvoiceReference, type InvoiceTypeKey } from '../../lib/invoiceReference';
 import { FieldLabel, FinancialButton, PageShell, Panel, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { InvoiceBillView } from './InvoiceBillView';
 
@@ -131,6 +132,7 @@ export function ViewInvoicePage() {
           </div>
         </div>
       ) : null}
+      <PageCloseBar />
     </PageShell>
   );
 }

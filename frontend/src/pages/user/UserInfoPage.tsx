@@ -1,5 +1,6 @@
 import { useAuth } from '../../contexts/AuthContext';
 import { PageShell, Panel, SecondaryButton } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 export function UserInfoPage() {
   const { user, logout } = useAuth();
@@ -17,6 +18,7 @@ export function UserInfoPage() {
         </div>
         <SecondaryButton onClick={() => logout()}>Sign out</SecondaryButton>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }

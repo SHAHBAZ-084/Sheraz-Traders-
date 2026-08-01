@@ -308,6 +308,15 @@ export const api = {
       }>;
     }>(`/api/stock/by-store/${storeId}`);
   },
+  getStockBalance(params: { productId: number; storeId: number }) {
+    const query = new URLSearchParams({
+      productId: String(params.productId),
+      storeId: String(params.storeId),
+    });
+    return request<{ productId: number; storeId: number | null; balance: number }>(
+      `/api/stock/balance?${query.toString()}`,
+    );
+  },
   getProductsByStore(storeId: number) {
     return request<Array<{ id: number; name: string; code: string }>>(
       `/api/stock/products-by-store?storeId=${storeId}`,

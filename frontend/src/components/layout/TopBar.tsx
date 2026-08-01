@@ -177,40 +177,36 @@ export function TopBar() {
         <Link to="/" className="app-topnav-brand shrink-0" aria-label="Sheraz Traders — Dashboard">
           <img src="/sheraz-traders-logo.png" alt="Sheraz Traders" className="app-topnav-logo" />
         </Link>
-        <div className="app-topnav-quick flex shrink-0 items-center gap-1">
-          <Link
-            to="/invoices/sale-invoice"
-            className={`app-topnav-quick-link ${location.pathname === '/invoices/sale-invoice' ? 'is-active' : ''}`}
-            title="Sale Invoice"
-            aria-label="Sale Invoice"
-          >
-            <ArrowUpFromLine className="h-4 w-4" strokeWidth={2} aria-hidden />
-            <span>Sale</span>
-          </Link>
-          <Link
-            to="/invoices/purchase-invoice"
-            className={`app-topnav-quick-link ${location.pathname === '/invoices/purchase-invoice' ? 'is-active' : ''}`}
-            title="Purchase Invoice"
-            aria-label="Purchase Invoice"
-          >
-            <ArrowDownToLine className="h-4 w-4" strokeWidth={2} aria-hidden />
-            <span>Purchase</span>
-          </Link>
-        </div>
         <nav className="app-topnav-nav">
-          {TOP_NAV.map((group) =>
-            group.children ? (
-              <NavDropdown key={group.label} label={group.label} children={group.children} />
-            ) : (
-              <Link
-                key={group.label}
-                to={group.to!}
-                className={`app-topnav-link ${location.pathname === group.to ? 'is-active' : ''}`}
-              >
-                {group.label}
-              </Link>
-            ),
-          )}
+          {TOP_NAV.map((entry) => {
+            if (entry.kind === 'quick') {
+              const Icon = entry.icon === 'sale' ? ArrowUpFromLine : ArrowDownToLine;
+              return (
+                <Link
+                  key={entry.to}
+                  to={entry.to}
+                  className={`app-topnav-quick-link ${location.pathname === entry.to ? 'is-active' : ''}`}
+                  title={entry.label === 'Sale' ? 'Sale Invoice' : 'Purchase Invoice'}
+                  aria-label={entry.label === 'Sale' ? 'Sale Invoice' : 'Purchase Invoice'}
+                >
+                  <Icon className="h-4 w-4" strokeWidth={2} aria-hidden />
+                  <span>{entry.label}</span>
+                </Link>
+              );
+            }
+            if (entry.kind === 'link') {
+              return (
+                <Link
+                  key={entry.id}
+                  to={entry.to}
+                  className={`app-topnav-link ${linkMatchesPath(location.pathname, entry.to) ? 'is-active' : ''}`}
+                >
+                  {entry.label}
+                </Link>
+              );
+            }
+            return <NavDropdown key={entry.label} label={entry.label} children={entry.children} />;
+          })}
         </nav>
         <UserMenu />
       </div>

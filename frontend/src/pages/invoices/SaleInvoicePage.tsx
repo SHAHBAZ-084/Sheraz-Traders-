@@ -122,6 +122,7 @@ export function SaleInvoicePage() {
   const [customerAccountId, setCustomerAccountId] = useState(() => restoredState?.customerAccountId ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [addingRow, setAddingRow] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -175,7 +176,7 @@ export function SaleInvoicePage() {
     setProductId('');
   }
 
-  function addRow() {
+  async function addRow() {
     setError('');
     if (!storeId) {
       setError('Select a store before adding products');
@@ -192,20 +193,47 @@ export function SaleInvoicePage() {
       setError('Enter a valid quantity and rate');
       return;
     }
-    setGridRows((rows) => [
-      ...rows,
-      {
-        clientId: `${Date.now()}-${rows.length}`,
+
+    const store = stores.find((s) => String(s.id) === storeId);
+    const storeLabel = store?.name ?? 'selected store';
+    const alreadyQueued = gridRows
+      .filter((row) => row.productId === product.id)
+      .reduce((sum, row) => sum + row.quantity, 0);
+
+    setAddingRow(true);
+    try {
+      const { balance } = await api.getStockBalance({
         productId: product.id,
-        productName: product.name,
-        quantity: qty,
-        rate: unitRate,
-        lineTotal: Math.round(qty * unitRate * 100) / 100,
-      },
-    ]);
-    setProductId('');
-    setQuantity('1');
-    setRate('');
+        storeId: Number(storeId),
+      });
+      const available = balance - alreadyQueued;
+      if (qty > available) {
+        setError(
+          available <= 0
+            ? `No stock for ${product.name} at ${storeLabel}`
+            : `Only ${available} in stock at ${storeLabel}`,
+        );
+        return;
+      }
+      setGridRows((rows) => [
+        ...rows,
+        {
+          clientId: `${Date.now()}-${rows.length}`,
+          productId: product.id,
+          productName: product.name,
+          quantity: qty,
+          rate: unitRate,
+          lineTotal: Math.round(qty * unitRate * 100) / 100,
+        },
+      ]);
+      setProductId('');
+      setQuantity('1');
+      setRate('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to check stock');
+    } finally {
+      setAddingRow(false);
+    }
   }
 
   async function onSubmit(event: FormEvent) {
@@ -321,7 +349,9 @@ export function SaleInvoicePage() {
                 </InvoiceField>
               </InvoiceFormSection>
 
-              <InvoiceAddRowAction onClick={addRow} />
+              <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
+                {addingRow ? 'Checking stock…' : 'Add to grid'}
+              </InvoiceAddRowAction>
             </div>
 
             <div className="inv-split-preview">

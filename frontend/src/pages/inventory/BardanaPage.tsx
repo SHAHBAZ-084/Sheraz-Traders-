@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type BagType = 'BORI' | 'THELA';
 type EmptyBardanaReport = Awaited<ReturnType<typeof api.getEmptyBardana>>;
@@ -145,6 +146,7 @@ export function BardanaPage() {
           </table>
         </div>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
