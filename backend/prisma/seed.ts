@@ -23,7 +23,7 @@ async function main() {
         role: Role.ADMIN,
       },
     });
-    console.log(`Created default user "${username}". Change the password after first login.`);
+    console.log(`Created default admin "${username}". Change the password after first login.`);
   } else {
     if (existing.role !== Role.ADMIN) {
       await prisma.user.update({
@@ -32,7 +32,35 @@ async function main() {
       });
       console.log(`Updated default user "${username}" role to ADMIN.`);
     } else {
-      console.log(`Default user "${username}" already exists — skipping user seed.`);
+      console.log(`Default admin "${username}" already exists — skipping admin seed.`);
+    }
+  }
+
+  const clerkUsername = process.env.DEFAULT_USER_USERNAME ?? 'user';
+  const clerkPassword = process.env.DEFAULT_USER_PASSWORD ?? 'user123';
+
+  const existingClerk = await prisma.user.findUnique({ where: { username: clerkUsername } });
+
+  if (!existingClerk) {
+    const passwordHash = await bcrypt.hash(clerkPassword, 10);
+    await prisma.user.create({
+      data: {
+        username: clerkUsername,
+        passwordHash,
+        displayName: 'Shop Clerk',
+        role: Role.USER,
+      },
+    });
+    console.log(`Created default user "${clerkUsername}". Change the password after first login.`);
+  } else {
+    if (existingClerk.role !== Role.USER) {
+      await prisma.user.update({
+        where: { id: existingClerk.id },
+        data: { role: Role.USER },
+      });
+      console.log(`Updated default user "${clerkUsername}" role to USER.`);
+    } else {
+      console.log(`Default user "${clerkUsername}" already exists — skipping user seed.`);
     }
   }
 
