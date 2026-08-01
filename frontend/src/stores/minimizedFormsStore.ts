@@ -5,6 +5,8 @@ export type MinimizedFormKind =
   | 'purchase-maal'
   | 'sale-paunch'
   | 'sale-commission'
+  | 'sale-invoice'
+  | 'purchase-invoice'
   | 'payment'
   | 'receipt'
   | 'journal';
@@ -37,6 +39,8 @@ export const MINIMIZED_FORM_ROUTES: Record<MinimizedFormKind, string> = {
   'purchase-maal': '/invoices/purchase-maal',
   'sale-paunch': '/invoices/sale-paunch',
   'sale-commission': '/invoices/sale-commission',
+  'sale-invoice': '/invoices/sale-invoice',
+  'purchase-invoice': '/invoices/purchase-invoice',
   payment: '/vouchers/payment',
   receipt: '/vouchers/receipt',
   journal: '/vouchers/journal',
@@ -47,6 +51,8 @@ export const MINIMIZED_FORM_TITLES: Record<MinimizedFormKind, string> = {
   'purchase-maal': 'Purchase Maal',
   'sale-paunch': 'Sale on Paunch',
   'sale-commission': 'Sale on Commission',
+  'sale-invoice': 'Sale Invoice',
+  'purchase-invoice': 'Purchase Invoice',
   payment: 'Payment',
   receipt: 'Receipt',
   journal: 'Journal',

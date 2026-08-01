@@ -1,15 +1,17 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   InvoiceAddRowAction,
   InvoiceField,
   InvoiceFieldGroup,
+  InvoiceFieldRow,
   InvoiceFormFooter,
   InvoiceFormSection,
   InvoiceHeaderRow,
 } from '../../components/invoices/InvoiceFormLayout';
-import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
 import { SearchSelect } from '../../components/ui/SearchSelect';
+import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import { api, type Account, type AccountCategory, type Product } from '../../lib/api';
 import { formatLedgerAmount } from '../../lib/format';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
@@ -23,6 +25,17 @@ type GridRow = {
   quantity: number;
   rate: number;
   lineTotal: number;
+};
+
+type PurchaseInvoiceDraft = {
+  predictedRef: string;
+  invoiceDate: string;
+  billNo: string;
+  gridRows: GridRow[];
+  productId: string;
+  quantity: string;
+  rate: string;
+  supplierAccountId: string;
 };
 
 function todayInputValue() {
@@ -46,7 +59,7 @@ function LinesTable({
 }) {
   return (
     <InvoicePreviewGridShell isEmpty={rows.length === 0}>
-      <table className="w-full min-w-[640px] text-left text-sm">
+      <table className="w-full min-w-[420px] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface2">
           <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
             <th className="px-3 py-2.5">Product</th>
@@ -80,18 +93,20 @@ function LinesTable({
 
 export function PurchaseInvoicePage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [predictedRef, setPredictedRef] = useState('PI-…');
-  const [invoiceDate, setInvoiceDate] = useState(todayInputValue());
-  const [billNo, setBillNo] = useState('');
+  const { restoredState, minimize } = useMinimizableForm<PurchaseInvoiceDraft>('purchase-invoice');
+  const keepRestoredPredictedRef = useRef(Boolean(restoredState?.predictedRef));
+
+  const [predictedRef, setPredictedRef] = useState(() => restoredState?.predictedRef ?? 'PI-…');
+  const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
+  const [billNo, setBillNo] = useState(() => restoredState?.billNo ?? '');
   const [products, setProducts] = useState<Product[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
-  const [gridRows, setGridRows] = useState<GridRow[]>([]);
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [rate, setRate] = useState('');
-  const [supplierAccountId, setSupplierAccountId] = useState('');
+  const [gridRows, setGridRows] = useState<GridRow[]>(() => restoredState?.gridRows ?? []);
+  const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
+  const [quantity, setQuantity] = useState(() => restoredState?.quantity ?? '1');
+  const [rate, setRate] = useState(() => restoredState?.rate ?? '');
+  const [supplierAccountId, setSupplierAccountId] = useState(() => restoredState?.supplierAccountId ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -106,7 +121,11 @@ export function PurchaseInvoicePage() {
         setProducts(prods);
         setAccounts(accts);
         setCategories(cats);
-        setPredictedRef(ref.reference);
+        if (keepRestoredPredictedRef.current) {
+          keepRestoredPredictedRef.current = false;
+        } else {
+          setPredictedRef(ref.reference);
+        }
       })
       .catch(() => setError('Failed to load form data'));
   }, []);
@@ -156,6 +175,10 @@ export function PurchaseInvoicePage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (gridRows.length === 0) {
+      setError('Add at least one product line');
+      return;
+    }
     if (!supplierAccountId) {
       setError('Select a supplier');
       return;
@@ -182,117 +205,100 @@ export function PurchaseInvoicePage() {
 
   return (
     <PageShell centerTitle invoiceTitleBand title="Purchase Invoice">
-      <Panel>
-        <p className="mb-3 text-xs text-textMuted">
-          Step {step} of 3 — {step === 1 ? 'Add products' : step === 2 ? 'Review' : 'Select supplier & submit'}
-        </p>
+      <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
+        <form onSubmit={onSubmit}>
+          <div className="inv-split">
+            <div className="inv-split-form">
+              <InvoiceFormSection label="Header">
+                <InvoiceHeaderRow>
+                  <InvoiceField>
+                    <FieldLabel>Date</FieldLabel>
+                    <TextInput type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Invoice #</FieldLabel>
+                    <TextInput value={predictedRef} readOnly />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Bill No</FieldLabel>
+                    <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
+                  </InvoiceField>
+                </InvoiceHeaderRow>
+              </InvoiceFormSection>
 
-        {step === 1 ? (
-          <>
-            <InvoiceFormSection label="Header">
-              <InvoiceHeaderRow>
-                <InvoiceField>
-                  <FieldLabel>Date</FieldLabel>
-                  <TextInput type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Invoice #</FieldLabel>
-                  <TextInput value={predictedRef} readOnly />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Bill No</FieldLabel>
-                  <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
-                </InvoiceField>
-              </InvoiceHeaderRow>
-            </InvoiceFormSection>
+              <InvoiceFormSection label="Add existing product">
+                <InvoiceFieldGroup>
+                  <InvoiceFieldRow cols={3}>
+                    <InvoiceField wide>
+                      <FieldLabel>Product</FieldLabel>
+                      <SearchSelect
+                        options={productOptions}
+                        value={productId}
+                        onChange={setProductId}
+                        placeholder="Select existing product"
+                      />
+                    </InvoiceField>
+                    <InvoiceField>
+                      <FieldLabel>Qty</FieldLabel>
+                      <TextInput value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                    </InvoiceField>
+                    <InvoiceField>
+                      <FieldLabel>Rate</FieldLabel>
+                      <TextInput value={rate} onChange={(e) => setRate(e.target.value)} />
+                    </InvoiceField>
+                  </InvoiceFieldRow>
+                </InvoiceFieldGroup>
+              </InvoiceFormSection>
 
-            <InvoiceFormSection label="Add existing product">
-              <InvoiceFieldGroup>
+              <InvoiceFormSection label="Supplier">
                 <InvoiceField wide>
-                  <FieldLabel>Product</FieldLabel>
+                  <FieldLabel>Purchase Party (supplier)</FieldLabel>
                   <SearchSelect
-                    options={productOptions}
-                    value={productId}
-                    onChange={setProductId}
-                    placeholder="Select existing product"
+                    options={supplierOptions}
+                    value={supplierAccountId}
+                    onChange={setSupplierAccountId}
+                    placeholder="Select supplier"
                   />
                 </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Qty</FieldLabel>
-                  <TextInput value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Rate</FieldLabel>
-                  <TextInput value={rate} onChange={(e) => setRate(e.target.value)} />
-                </InvoiceField>
-              </InvoiceFieldGroup>
+              </InvoiceFormSection>
+
               <InvoiceAddRowAction onClick={addRow} />
-            </InvoiceFormSection>
-
-            <LinesTable
-              rows={gridRows}
-              onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
-            />
-
-            {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
-            <div className="mt-4 flex justify-end gap-2">
-              <SecondaryButton type="button" onClick={() => navigate(-1)}>Close</SecondaryButton>
-              <PrimaryButton
-                type="button"
-                onClick={() => {
-                  setError('');
-                  if (gridRows.length === 0) {
-                    setError('Add at least one product line');
-                    return;
-                  }
-                  setStep(2);
-                }}
-              >
-                Next
-              </PrimaryButton>
             </div>
-          </>
-        ) : null}
 
-        {step === 2 ? (
-          <>
-            <InvoiceFormSection label="Review">
-              <LinesTable rows={gridRows} />
-              <p className="mt-3 text-sm font-semibold">Invoice total: {formatLedgerAmount(invoiceTotal)}</p>
-            </InvoiceFormSection>
-            <div className="mt-4 flex justify-end gap-2">
-              <SecondaryButton type="button" onClick={() => setStep(1)}>Back</SecondaryButton>
-              <PrimaryButton type="button" onClick={() => setStep(3)}>Next</PrimaryButton>
-            </div>
-          </>
-        ) : null}
-
-        {step === 3 ? (
-          <form onSubmit={onSubmit}>
-            <InvoiceFormSection label="Supplier">
-              <InvoiceField wide>
-                <FieldLabel>Purchase Party (supplier)</FieldLabel>
-                <SearchSelect
-                  options={supplierOptions}
-                  value={supplierAccountId}
-                  onChange={setSupplierAccountId}
-                  placeholder="Select supplier"
+            <div className="inv-split-preview">
+              <InvoiceFormSection label="Preview grid">
+                <LinesTable
+                  rows={gridRows}
+                  onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
                 />
-              </InvoiceField>
-            </InvoiceFormSection>
-            <InvoiceFormFooter
-              totalLabel="Purchase total"
-              totalValue={invoiceTotal}
-              error={error}
-              saving={saving}
-              onClose={() => navigate(-1)}
-              primaryLabel={saving ? 'Saving…' : 'Save Purchase Invoice'}
-            />
-            <div className="mt-2">
-              <SecondaryButton type="button" onClick={() => setStep(2)}>Back</SecondaryButton>
+              </InvoiceFormSection>
+
+              <InvoiceFormFooter
+                totalLabel="Purchase total"
+                totalValue={invoiceTotal}
+                error={error}
+                saving={saving}
+                onClose={() => navigate(-1)}
+                onMinimize={() =>
+                  minimize(
+                    {
+                      predictedRef,
+                      invoiceDate,
+                      billNo,
+                      gridRows,
+                      productId,
+                      quantity,
+                      rate,
+                      supplierAccountId,
+                    },
+                    predictedRef || 'Purchase Invoice',
+                  )
+                }
+                primaryLabel="Save"
+              />
             </div>
-          </form>
-        ) : null}
+          </div>
+        </form>
       </Panel>
     </PageShell>
   );
