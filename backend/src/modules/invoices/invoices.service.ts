@@ -3,7 +3,6 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import { PaginatedResult } from '../../utils/pagination';
 import { cancelVoucherInTx, getActiveFinancialYearId } from '../accounting/accounting.service';
-import { reverseSalePaunchEmptyBardana } from '../inventory/bardana.service';
 import { reverseInvoiceStockMovements } from '../stock/stock.service';
 import { buildInvoiceReference, INVOICE_TYPE_PREFIX } from './invoice-reference';
 
@@ -61,12 +60,6 @@ const invoiceDetailInclude = {
   supplier: true,
   items: { include: { product: true } },
   kachiMaalLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' as const } },
-  purchaseMaalLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' as const } },
-  salePaunchLines: {
-    include: { maalKhataAccount: true },
-    orderBy: { sortOrder: 'asc' as const },
-  },
-  saleCommissionLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' as const } },
   vouchers: {
     include: {
       voucher: {
@@ -118,7 +111,7 @@ export async function getInvoiceByReference(reference: string) {
 
 /**
  * Cancel a posted (or pending) invoice: reverse linked vouchers' ledger entries,
- * reverse stock / empty-bardana movements where applicable, set CANCELLED.
+ * reverse stock movements where applicable, set CANCELLED.
  */
 export async function cancelInvoice(invoiceId: number, userId: number) {
   return prisma.$transaction(async (tx) => {
@@ -145,24 +138,12 @@ export async function cancelInvoice(invoiceId: number, userId: number) {
 
     const invoiceDate = invoice.invoiceDate ?? new Date();
 
-    // Stocked invoice types: SI/PI (store-scoped), Purchase Maal, Sale Paunch.
-    // STOCK_TRANSFER also has stock movements — reverse those too if cancelled via this path.
     if (
       invoice.type === InvoiceType.SALE_INVOICE ||
       invoice.type === InvoiceType.PURCHASE_INVOICE ||
-      invoice.type === InvoiceType.PURCHASE_MAAL ||
-      invoice.type === InvoiceType.SALE_PAUNCH ||
       invoice.type === InvoiceType.STOCK_TRANSFER
     ) {
       await reverseInvoiceStockMovements(tx, {
-        invoiceId: invoice.id,
-        invoiceReference: invoice.reference,
-        invoiceDate,
-      });
-    }
-
-    if (invoice.type === InvoiceType.SALE_PAUNCH) {
-      await reverseSalePaunchEmptyBardana(tx, {
         invoiceId: invoice.id,
         invoiceReference: invoice.reference,
         invoiceDate,
@@ -198,21 +179,20 @@ export async function createInvoiceDraft(data: {
   return prisma.$transaction(async (tx) => {
     const financialYearId = await getActiveFinancialYearId(tx);
     const reference = await nextReference(tx, data.type);
-
     return tx.invoice.create({
       data: {
         type: data.type,
         status: InvoiceStatus.DRAFT,
         reference,
-        customerId: data.customerId ?? null,
-        supplierId: data.supplierId ?? null,
+        customerId: data.customerId,
+        supplierId: data.supplierId,
+        notes: data.notes,
         total,
-        notes: data.notes?.trim() || null,
         financialYearId,
         createdById: data.createdById,
         items: {
           create: data.items.map((item) => ({
-            productId: item.productId ?? null,
+            productId: item.productId,
             label: item.label,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
@@ -220,7 +200,7 @@ export async function createInvoiceDraft(data: {
           })),
         },
       },
-      include: { items: true, customer: true, supplier: true },
+      include: invoiceDetailInclude,
     });
   });
 }

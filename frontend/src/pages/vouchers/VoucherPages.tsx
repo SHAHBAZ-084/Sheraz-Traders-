@@ -501,8 +501,7 @@ export function VoucherDetailCard({
   const isAdmin = user?.role === 'ADMIN';
   const isCancelled = voucher.status === 'CANCELLED';
   const isKachi = voucher.type === 'KACHI';
-  const isPurchaseMaal = voucher.type === 'PURCHASE_MAAL';
-  const isMultiLeg = isKachi || isPurchaseMaal;
+  const isMultiLeg = isKachi;
   const [editingAmount, setEditingAmount] = useState(false);
   const [amountDraft, setAmountDraft] = useState(String(voucher.amount ?? ''));
 

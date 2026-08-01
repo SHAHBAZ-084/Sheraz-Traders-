@@ -7,13 +7,9 @@ import {
   BarChart3,
   BookOpen,
   Eye,
-  FileText,
   Package,
   Receipt,
-  Scale,
   ScrollText,
-  ShoppingCart,
-  TrendingUp,
   Wallet,
   Wheat,
 } from 'lucide-react';
@@ -29,9 +25,6 @@ type QuickLinkVariant =
   | 'payment'
   | 'receipt'
   | 'journal'
-  | 'sale-commission'
-  | 'sale-paunch'
-  | 'purchase-maal'
   | 'kachi-maal'
   | 'view'
   | 'report';
@@ -40,18 +33,13 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
   '/vouchers/payment': { variant: 'payment', icon: ArrowUpCircle },
   '/vouchers/receipt': { variant: 'receipt', icon: ArrowDownCircle },
   '/vouchers/journal': { variant: 'journal', icon: BookOpen },
-  '/invoices/sale-commission': { variant: 'sale-commission', icon: FileText },
-  '/invoices/sale-paunch': { variant: 'sale-paunch', icon: Scale },
-  '/invoices/purchase-maal': { variant: 'purchase-maal', icon: ShoppingCart },
   '/invoices/kachi-maal': { variant: 'kachi-maal', icon: Wheat },
   '/invoices/view-invoice': { variant: 'view', icon: Eye },
   '/reports/accounts': { variant: 'report', icon: ScrollText },
   '/reports/account-balance': { variant: 'report', icon: Wallet },
   '/reports/vouchers': { variant: 'report', icon: Receipt },
   '/reports/trial-balance': { variant: 'report', icon: BarChart3 },
-  '/reports/sale-purchase': { variant: 'report', icon: TrendingUp },
   '/reports/stock': { variant: 'report', icon: Package },
-  '/inventory/bardana': { variant: 'report', icon: Package },
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {

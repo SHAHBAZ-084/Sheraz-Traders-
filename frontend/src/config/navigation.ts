@@ -78,10 +78,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     label: 'Invoices',
     icon: FileText,
     items: [
-      { kind: 'link', label: 'Sale on Commission', to: '/invoices/sale-commission' },
-      { kind: 'link', label: 'Sale on Paunch', to: '/invoices/sale-paunch' },
       { kind: 'link', label: 'Sale Invoice', to: '/invoices/sale-invoice' },
-      { kind: 'link', label: 'Purchase to Maal', to: '/invoices/purchase-maal' },
       { kind: 'link', label: 'Purchase Invoice', to: '/invoices/purchase-invoice' },
       { kind: 'link', label: 'Kachi Maal', to: '/invoices/kachi-maal' },
       { kind: 'link', label: 'View Invoice', to: '/invoices/view-invoice' },
@@ -101,9 +98,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
         ],
       },
       { kind: 'link', label: 'Detail Trial Balance', to: '/reports/trial-balance' },
-      { kind: 'link', label: 'Sale/Purchase Reports', to: '/reports/sale-purchase' },
       { kind: 'link', label: 'Stock Report', to: '/reports/stock' },
-      { kind: 'link', label: 'Empty Bardana', to: '/inventory/bardana' },
     ],
   },
   {
@@ -114,7 +109,6 @@ export const SIDEBAR_NAV: SidebarSection[] = [
       { kind: 'link', label: 'Database Maintenance', to: '/system/database' },
       { kind: 'link', label: 'Stores', to: '/system/stores' },
       { kind: 'link', label: 'Transfer Stock', to: '/inventory/stock-transfer' },
-      { kind: 'link', label: 'Pending Approvals', to: '/system/approvals' },
       { kind: 'link', label: 'System Preference', to: '/system/preferences' },
     ],
   },
@@ -155,6 +149,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/user': 'User Information',
   '/reports/accounts': 'Ledger',
+  '/system/approvals': 'Pending Approvals',
 };
 
 function collectRouteTitles(items: NavItem[], titles: Record<string, string>) {
@@ -183,9 +178,6 @@ export function getPageTitle(pathname: string): string {
 }
 
 export const INVOICE_TYPE_LABELS: Record<string, string> = {
-  SALE_COMMISSION: 'Sale on Commission',
-  SALE_PAUNCH: 'Sale on Paunch',
-  PURCHASE_MAAL: 'Purchase to Maal',
   KACHI_MAAL: 'Kachi Maal',
   SALE_INVOICE: 'Sale Invoice',
   PURCHASE_INVOICE: 'Purchase Invoice',
@@ -228,7 +220,7 @@ const TOP_NAV_SECTION_ORDER = [
   'system',
 ] as const;
 
-/** Left-to-right: Accounts → Ledger → Products → Vouchers → Sale → Purchase → Invoices → Reports → System */
+/** Left-to-right: Accounts → Ledger → Products → Vouchers → Sale → Purchase → Invoices → Reports → System → Pending Approvals */
 export const TOP_NAV: TopNavEntry[] = (() => {
   const byId = new Map(SIDEBAR_NAV.map((section) => [section.id, section]));
   const entries: TopNavEntry[] = [];
@@ -259,5 +251,11 @@ export const TOP_NAV: TopNavEntry[] = (() => {
       });
     }
   }
+  entries.push({
+    kind: 'link',
+    id: 'pending-approvals',
+    label: 'Pending Approvals',
+    to: '/system/approvals',
+  });
   return entries;
 })();

@@ -1,4 +1,4 @@
-import type { InvoiceDetail, MaalLineDetail, SalePaunchLineDetail, SystemPreferences } from './api';
+import type { InvoiceDetail, MaalLineDetail, SystemPreferences } from './api';
 
 export type BillLineRow = {
   variety: string;
@@ -47,50 +47,9 @@ export function formatBillWeight(amount: number | string) {
   });
 }
 
-export type CommissionBillRow = {
-  variety: string;
-  bori: number;
-  thela: number;
-  weight: number;
-  rate: number;
-  amount: number;
-};
 
-export function saleCommissionLineToBillRow(line: MaalLineDetail): CommissionBillRow {
-  const count = Number(line.bagCount ?? 0);
-  const isThela = line.boriOrThelaMode === 'THELA';
-  return {
-    variety: line.qism?.trim() || line.jins?.trim() || '',
-    bori: isThela ? 0 : count,
-    thela: isThela ? count : 0,
-    weight: Number(line.totalWeightKg),
-    rate: Number(line.ratePerMaund),
-    amount: Number(line.amount),
-  };
-}
 
-export function sumCommissionBillRows(rows: CommissionBillRow[]) {
-  return {
-    bori: rows.reduce((s, r) => s + r.bori, 0),
-    thela: rows.reduce((s, r) => s + r.thela, 0),
-    weight: round2(rows.reduce((s, r) => s + r.weight, 0)),
-    amount: round2(rows.reduce((s, r) => s + r.amount, 0)),
-  };
-}
 
-/** Compact bardana line as on legacy Sale Commission bills: `0 Bori@ 0, 552 Thela@ 45`. */
-export function formatCommissionBardanaLine(
-  boriQty: number,
-  boriRate: number,
-  thelaQty: number,
-  thelaRate: number,
-) {
-  const fmt = (n: number) => {
-    if (!Number.isFinite(n)) return '0';
-    return Number.isInteger(n) ? String(n) : formatBillAmount(n);
-  };
-  return `${boriQty} Bori@ ${fmt(boriRate)}, ${thelaQty} Thela@ ${fmt(thelaRate)}`;
-}
 
 export function maalLineToBillRow(line: MaalLineDetail, kaatPercent: number): BillLineRow {
   const compWeight = Number(line.totalWeightKg);
@@ -159,10 +118,9 @@ export function computeMaalBillFromTotals(
   const kantaDeduction = round2(purchaseThela * prefs.kantaRate);
   const purchaseGoods = sumLineAmounts(tableRows);
 
-  const purchaseNet =
-    invoiceType === 'PURCHASE_MAAL'
-      ? round2(lines.reduce((s, line) => s + Number(line.netCreditToParty), 0))
-      : Math.max(0, round2(purchaseGoods - kantaDeduction));
+  const purchaseNet = Math.max(0, round2(purchaseGoods - kantaDeduction));
+  void invoiceType;
+  void lines;
 
   return {
     purchaseThela,
@@ -180,7 +138,7 @@ export function computeMaalBillFromTotals(
 
 export function computeKachiDeductions(
   lines: MaalLineDetail[],
-  prefs: Pick<SystemPreferences, 'paleDariPercent' | 'brokeryPercent' | 'marketFeeRate' | 'kaatPercent'>,
+  prefs: Pick<SystemPreferences, 'paleDariPercent' | 'brokeryPercent' | 'marketFeeRate'>,
 ) {
   let goods = 0;
   let paleDari = 0;
@@ -203,101 +161,3 @@ export function computeKachiDeductions(
   };
 }
 
-/** Sale-party (Bill To) row — lower rate / lower kaat. */
-export function salePaunchLowerToBillRow(line: SalePaunchLineDetail): BillLineRow {
-  return {
-    variety: line.qism?.trim() || line.jins?.trim() || '',
-    bori: Number(line.bagCount ?? 0),
-    thela: Number(line.thelaCount ?? 0),
-    compWeight: Number(line.totalWeightKg),
-    kaat: Number(line.lowerKaatKg),
-    netWeight: Number(line.lowerNetWeightKg),
-    rate: Number(line.lowerRatePerMaund),
-    amount: Number(line.lowerAmount),
-  };
-}
-
-/** Product ledger (Bill From) row — upper rate / upper kaat. */
-export function salePaunchUpperToBillRow(line: SalePaunchLineDetail): BillLineRow {
-  return {
-    variety: line.qism?.trim() || line.jins?.trim() || '',
-    bori: Number(line.bagCount ?? 0),
-    thela: Number(line.thelaCount ?? 0),
-    compWeight: Number(line.totalWeightKg),
-    kaat: Number(line.kaatKg),
-    netWeight: Number(line.netWeightKg),
-    rate: Number(line.upperRatePerMaund),
-    amount: Number(line.upperAmount),
-  };
-}
-
-export function resolveSalePaunchBillFromLabel(
-  lines: SalePaunchLineDetail[],
-  product: string,
-): string {
-  const names = [
-    ...new Set(
-      lines
-        .map((line) => line.maalKhataAccount?.name?.trim())
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ];
-  const party = names.length > 0 ? names.join(', ') : 'Product';
-  const jins = product.trim();
-  return jins ? `${party} [${jins}]` : party;
-}
-
-export function computeSalePaunchBillFromTotals(
-  lines: SalePaunchLineDetail[],
-  prefs: Pick<SystemPreferences, 'kantaRate'>,
-) {
-  const kantaDeduction = round2(lines.reduce((s, line) => s + Number(line.kanta ?? 0), 0));
-  const purchaseNet = round2(lines.reduce((s, line) => s + Number(line.netUpperAmount), 0));
-  const purchaseThela = lines.reduce((s, line) => s + Number(line.thelaCount ?? 0), 0);
-
-  return {
-    purchaseThela,
-    kantaDeduction,
-    purchaseNet,
-    totals: [
-      { label: 'Less Kanta', value: formatBillAmount(kantaDeduction) },
-      {
-        label: `${purchaseThela} Thela @${formatBillAmount(prefs.kantaRate)}`,
-        value: formatBillAmount(0),
-      },
-    ],
-  };
-}
-
-export function computePurchaseDeductions(
-  lines: MaalLineDetail[],
-  prefs: Pick<SystemPreferences, 'marketFeeRate' | 'kantaRate' | 'kaatPercent'>,
-  marketFeeEnabled: boolean,
-  mazduriEnabled: boolean,
-) {
-  let goods = 0;
-  let dammi = 0;
-  let thela = 0;
-  let bags = 0;
-
-  for (const line of lines) {
-    goods += Number(line.amount);
-    if (line.dammiChecked) dammi += Number(line.dammiAmount ?? 0);
-    if (line.boriOrThelaMode === 'THELA') thela += Number(line.bagCount);
-    const bhartii = Number(line.bhartii);
-    if (bhartii > 0) bags += Number(line.totalWeightKg) / bhartii;
-  }
-
-  const marketFee = marketFeeEnabled ? bags * prefs.marketFeeRate : 0;
-  const kanta = thela * prefs.kantaRate;
-  const mazduri = mazduriEnabled ? 0 : 0; // amount embedded in invoice.total
-
-  return {
-    goods: round2(goods),
-    dammi: round2(dammi),
-    kanta: round2(kanta),
-    marketFee: round2(marketFee),
-    thela,
-    mazduri,
-  };
-}

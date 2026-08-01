@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type Account, type AccountCategory, type Voucher } from '../../lib/api';
-import { BILL_LETTERHEAD } from '../../config/billPrint';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
 import { downloadExcel, downloadPdf } from '../../lib/reportExport';
 import { SearchSelect } from '../../components/ui/SearchSelect';
@@ -32,13 +31,13 @@ function monthEndInputValue() {
 }
 
 function voucherFromAccount(voucher: Voucher) {
-  if (voucher.type === 'KACHI' || voucher.type === 'PURCHASE_MAAL') return 'Multi-leg';
+  if (voucher.type === 'KACHI') return 'Multi-leg';
   if (voucher.type === 'JOURNAL') return voucher.debitAccount?.name ?? '—';
   return voucher.creditAccount?.name ?? '—';
 }
 
 function voucherToAccount(voucher: Voucher) {
-  if (voucher.type === 'KACHI' || voucher.type === 'PURCHASE_MAAL') return `${voucher.ledgerEntries?.length ?? 0} legs`;
+  if (voucher.type === 'KACHI') return `${voucher.ledgerEntries?.length ?? 0} legs`;
   if (voucher.type === 'JOURNAL') return voucher.creditAccount?.name ?? '—';
   return voucher.debitAccount?.name ?? '—';
 }
@@ -318,353 +317,14 @@ export function TrialBalancePage() {
   );
 }
 
-export function SalePurchaseReportsPage() {
-  type Mode = 'SALE' | 'PURCHASE';
-  type TypeFilter = 'ALL' | 'COMMISSION' | 'PAUNCH' | 'MAAL';
-  type ReportResult = Awaited<ReturnType<typeof api.getSalePurchaseReport>>;
-
-  const [mode, setMode] = useState<Mode>('SALE');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
-  const [fromDate, setFromDate] = useState(monthStartInputValue);
-  const [toDate, setToDate] = useState(monthEndInputValue);
-  const [partyAccountId, setPartyAccountId] = useState('');
-  const [productId, setProductId] = useState('');
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [products, setProducts] = useState<Array<{ id: number; name: string; code: string }>>([]);
-  const [report, setReport] = useState<ReportResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    api.listAccounts()
-      .then((rows) => setAccounts(rows.filter((a) => a.isActive !== false)))
-      .catch(() => setAccounts([]));
-    api.listProducts()
-      .then((rows) => setProducts(rows.map((p) => ({ id: p.id, name: p.name, code: p.code }))))
-      .catch(() => setProducts([]));
-  }, []);
-
-  useEffect(() => {
-    if (mode === 'PURCHASE') {
-      setTypeFilter('MAAL');
-    } else if (typeFilter === 'MAAL') {
-      setTypeFilter('ALL');
-    }
-    setPartyAccountId('');
-    setReport(null);
-  }, [mode]);
-
-  const partyOptions = useMemo(() => {
-    const saleCats = new Set(['Sale Party']);
-    const purchaseCats = new Set(['Int. Purchase Party', 'Ext. Purchase Party']);
-    const allowed = mode === 'SALE' ? saleCats : purchaseCats;
-    return accounts
-      .filter((a) => a.category && allowed.has(a.category.name))
-      .map((a) => ({ value: String(a.id), label: `${a.code} — ${a.name}` }));
-  }, [accounts, mode]);
-
-  const typeOptions = mode === 'SALE'
-    ? [
-        { value: 'ALL', label: 'All' },
-        { value: 'COMMISSION', label: 'Commission' },
-        { value: 'PAUNCH', label: 'Paunch' },
-      ]
-    : [{ value: 'MAAL', label: 'Maal' }];
-
-  async function onView() {
-    setError('');
-    if (!fromDate || !toDate) {
-      setError('Select from and to dates');
-      return;
-    }
-    setLoading(true);
-    try {
-      setReport(
-        await api.getSalePurchaseReport({
-          mode,
-          typeFilter: mode === 'PURCHASE' ? 'MAAL' : typeFilter,
-          fromDate,
-          toDate,
-          partyAccountId: partyAccountId ? Number(partyAccountId) : null,
-          productId: productId ? Number(productId) : null,
-        }),
-      );
-    } catch (err) {
-      setReport(null);
-      setError(err instanceof Error ? err.message : 'Failed to load report');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function filterSummary(r: ReportResult) {
-    const typeLabel = r.typeFilter === 'ALL'
-      ? 'All'
-      : r.typeFilter === 'COMMISSION'
-        ? 'Commission'
-        : r.typeFilter === 'PAUNCH'
-          ? 'Paunch'
-          : 'Maal';
-    const partyLabel = partyAccountId
-      ? (partyOptions.find((p) => p.value === partyAccountId)?.label ?? partyAccountId)
-      : 'All Parties';
-    const productLabel = productId
-      ? (products.find((p) => String(p.id) === productId)?.name ?? productId)
-      : 'All Products';
-    return `From ${formatDate(r.fromDate)} To ${formatDate(r.toDate)} · Type: ${typeLabel} · Account: ${partyLabel} · Product: ${productLabel}`;
-  }
-
-  function exportFlatRows(r: ReportResult): (string | number)[][] {
-    const out: (string | number)[][] = [];
-    for (const cat of r.categories) {
-      if (cat.label) out.push([cat.label, '', '', '', '', '', '']);
-      for (const party of cat.parties) {
-        out.push([party.partyName, '', '', '', '', '', '']);
-        for (const row of party.rows) {
-          out.push([
-            row.invoiceNumber,
-            row.product,
-            row.thela,
-            row.bori,
-            Number(row.weight.toFixed(2)),
-            Number(row.totalPrice.toFixed(2)),
-            Number(row.netBill.toFixed(2)),
-          ]);
-        }
-        out.push([
-          'Total Up To Party',
-          '',
-          Number(party.subtotal.thela.toFixed(2)),
-          Number(party.subtotal.bori.toFixed(2)),
-          Number(party.subtotal.weight.toFixed(2)),
-          Number(party.subtotal.totalPrice.toFixed(2)),
-          Number(party.subtotal.netBill.toFixed(2)),
-        ]);
-      }
-      if (cat.label) {
-        out.push([
-          `Total ${cat.label}`,
-          '',
-          Number(cat.subtotal.thela.toFixed(2)),
-          Number(cat.subtotal.bori.toFixed(2)),
-          Number(cat.subtotal.weight.toFixed(2)),
-          Number(cat.subtotal.totalPrice.toFixed(2)),
-          Number(cat.subtotal.netBill.toFixed(2)),
-        ]);
-      }
-    }
-    out.push([
-      'Grand Total',
-      '',
-      Number(r.grandTotal.thela.toFixed(2)),
-      Number(r.grandTotal.bori.toFixed(2)),
-      Number(r.grandTotal.weight.toFixed(2)),
-      Number(r.grandTotal.totalPrice.toFixed(2)),
-      Number(r.grandTotal.netBill.toFixed(2)),
-    ]);
-    return out;
-  }
-
-  function onExport(format: 'pdf' | 'excel') {
-    if (!report) return;
-    const headers = ['Invoice #', 'Product', 'Thela', 'Bori', 'Weight', 'Total Price', 'NetBill'];
-    const rows = exportFlatRows(report);
-    const base = `${report.mode.toLowerCase()}-report-${report.fromDate}-to-${report.toDate}`;
-    if (format === 'excel') {
-      downloadExcel(`${base}.xlsx`, report.title, headers, rows);
-    } else {
-      downloadPdf(`${base}.pdf`, report.title, headers, rows, {
-        subtitle: filterSummary(report),
-        letterhead: {
-          companyName: BILL_LETTERHEAD.companyName,
-          subtitle: BILL_LETTERHEAD.subtitle,
-          phone: BILL_LETTERHEAD.phone,
-          mobile: BILL_LETTERHEAD.mobile,
-        },
-      });
-    }
-  }
-
-  function onPrint() {
-    window.print();
-  }
-
-  function fmtQty(n: number) {
-    return Number.isInteger(n) ? String(n) : n.toFixed(2);
-  }
-
-  return (
-    <PageShell title="Sale/Purchase Reports" subtitle="Combined invoice reporting (Kachi Maal excluded)">
-      <Panel className="print:hidden">
-        <div className="grid gap-3 lg:grid-cols-6 lg:items-end">
-          <div>
-            <FieldLabel>Sale / Purchase</FieldLabel>
-            <SegmentedControl
-              value={mode}
-              onChange={(v) => setMode(v as Mode)}
-              options={[
-                { value: 'SALE', label: 'Sale' },
-                { value: 'PURCHASE', label: 'Purchase' },
-              ]}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <FieldLabel>Type</FieldLabel>
-            <SegmentedControl
-              value={typeFilter}
-              onChange={(v) => setTypeFilter(v as TypeFilter)}
-              options={typeOptions}
-            />
-          </div>
-          <div>
-            <FieldLabel>From</FieldLabel>
-            <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          </div>
-          <div>
-            <FieldLabel>To</FieldLabel>
-            <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </div>
-          <FinancialButton type="button" onClick={onView} disabled={loading}>
-            {loading ? 'Loading…' : 'View Report'}
-          </FinancialButton>
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div>
-            <FieldLabel>Account</FieldLabel>
-            <SearchSelect
-              value={partyAccountId}
-              onChange={setPartyAccountId}
-              options={[{ value: '', label: 'All Parties' }, ...partyOptions]}
-              placeholder="All Parties"
-            />
-          </div>
-          <div>
-            <FieldLabel>Product</FieldLabel>
-            <SearchSelect
-              value={productId}
-              onChange={setProductId}
-              options={[
-                { value: '', label: 'All Products' },
-                ...products.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.name}` })),
-              ]}
-              placeholder="All Products"
-            />
-          </div>
-        </div>
-
-        {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-      </Panel>
-
-      {report ? (
-        <Panel className="mt-4 sale-purchase-report-print">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3 print:hidden">
-            <div />
-            <div className="flex flex-wrap gap-2">
-              <SecondaryButton type="button" onClick={onPrint}>Print</SecondaryButton>
-              <SecondaryButton type="button" onClick={() => onExport('pdf')}>PDF</SecondaryButton>
-              <SecondaryButton type="button" onClick={() => onExport('excel')}>Excel</SecondaryButton>
-            </div>
-          </div>
-
-          <div className="mb-6 text-center">
-            <p className="text-lg font-semibold text-textPrimary">{BILL_LETTERHEAD.companyName}</p>
-            <p className="text-sm text-textSecondary">{BILL_LETTERHEAD.subtitle}</p>
-            <p className="text-xs text-textMuted">
-              Ph: {BILL_LETTERHEAD.phone} · Mob: {BILL_LETTERHEAD.mobile}
-            </p>
-            <h2 className="mt-3 text-xl font-semibold text-financial">{report.title}</h2>
-            <p className="mt-1 text-sm text-textSecondary">{filterSummary(report)}</p>
-          </div>
-
-          {report.rowCount === 0 ? (
-            <p className="text-sm text-textSecondary">No invoices match these filters.</p>
-          ) : (
-            <div className="space-y-6">
-              {report.categories.map((cat) => (
-                <div key={`${cat.category}-${cat.label || 'main'}`}>
-                  {cat.label ? (
-                    <h3 className="mb-3 border-b border-border pb-1 text-base font-semibold text-textPrimary">
-                      {cat.label}
-                    </h3>
-                  ) : null}
-
-                  {cat.parties.map((party) => (
-                    <div key={party.partyAccountId} className="mb-5">
-                      <h4 className="mb-2 text-sm font-semibold text-financial">{party.partyName}</h4>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                          <thead>
-                            <tr className="border-b border-border text-textSecondary">
-                              <th className="py-1.5 pr-2">Invoice #</th>
-                              <th className="py-1.5 pr-2">Product</th>
-                              <th className="py-1.5 pr-2 text-right">Thela</th>
-                              <th className="py-1.5 pr-2 text-right">Bori</th>
-                              <th className="py-1.5 pr-2 text-right">Weight</th>
-                              <th className="py-1.5 pr-2 text-right">Total Price</th>
-                              <th className="py-1.5 text-right">NetBill</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {party.rows.map((row, idx) => (
-                              <tr key={`${row.invoiceId}-${idx}`} className="border-b border-border/60">
-                                <td className="py-1.5 pr-2 tabular-nums">{row.invoiceNumber}</td>
-                                <td className="py-1.5 pr-2">{row.product}</td>
-                                <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(row.thela)}</td>
-                                <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(row.bori)}</td>
-                                <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(row.weight)}</td>
-                                <td className="py-1.5 pr-2 text-right tabular-nums">{formatLedgerAmount(row.totalPrice)}</td>
-                                <td className="py-1.5 text-right tabular-nums">{formatLedgerAmount(row.netBill)}</td>
-                              </tr>
-                            ))}
-                            <tr className="border-t border-border font-semibold">
-                              <td className="py-1.5 pr-2" colSpan={2}>Total Up To Party</td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(party.subtotal.thela)}</td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(party.subtotal.bori)}</td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums">{fmtQty(party.subtotal.weight)}</td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums">{formatLedgerAmount(party.subtotal.totalPrice)}</td>
-                              <td className="py-1.5 text-right tabular-nums">{formatLedgerAmount(party.subtotal.netBill)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
-
-                  {cat.label ? (
-                    <div className="mb-2 text-sm font-semibold text-textPrimary">
-                      Total {cat.label}: Thela {fmtQty(cat.subtotal.thela)} · Bori {fmtQty(cat.subtotal.bori)} · Weight{' '}
-                      {fmtQty(cat.subtotal.weight)} ·{' '}
-                      {formatLedgerAmount(cat.subtotal.totalPrice)} / {formatLedgerAmount(cat.subtotal.netBill)}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-
-              <div className="border-t-2 border-border pt-3 text-sm font-semibold text-financial">
-                Grand Total — Thela {fmtQty(report.grandTotal.thela)} · Bori {fmtQty(report.grandTotal.bori)} · Weight{' '}
-                {fmtQty(report.grandTotal.weight)} · Total Price {formatLedgerAmount(report.grandTotal.totalPrice)} · NetBill{' '}
-                {formatLedgerAmount(report.grandTotal.netBill)}
-              </div>
-            </div>
-          )}
-        </Panel>
-      ) : null}
-      <PageCloseBar />
-    </PageShell>
-  );
-}
-
-type StockBagType = 'BORI' | 'THELA';
-type StockReportResult = Awaited<ReturnType<typeof api.getStockReport>>;
 
 export function StockReportPage() {
   const [stores, setStores] = useState<Array<{ id: number; name: string }>>([]);
   const [storeId, setStoreId] = useState('');
   const [products, setProducts] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [productId, setProductId] = useState('');
-  const [bagType, setBagType] = useState<StockBagType>('BORI');
-  const [report, setReport] = useState<StockReportResult | null>(null);
+  const [bagType, setBagType] = useState<'BORI' | 'THELA'>('BORI');
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockReport>> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -728,7 +388,7 @@ export function StockReportPage() {
   }
 
   return (
-    <PageShell title="Stock Report" subtitle="Bag stock from Purchase to Maal (IN) and Sale on Paunch (OUT)">
+    <PageShell title="Stock Report" subtitle="Bag stock by product — Sale Invoice / Purchase Invoice breakdown when filtered by store">
       <Panel>
         <div className="grid gap-3 md:grid-cols-5 md:items-end">
           <div>
@@ -756,7 +416,7 @@ export function StockReportPage() {
             <FieldLabel>Bag type</FieldLabel>
             <SegmentedControl
               value={bagType}
-              onChange={(v) => setBagType(v as StockBagType)}
+              onChange={(v) => setBagType(v as 'BORI' | 'THELA')}
               options={[
                 { value: 'BORI', label: 'Bori' },
                 { value: 'THELA', label: 'Thela' },
@@ -840,7 +500,7 @@ export function StockReportPage() {
 }
 
 type BalanceSideFilter = 'both' | 'debit' | 'credit';
-type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI' | 'PURCHASE_MAAL';
+type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI';
 
 function BalanceTable({
   rows,
@@ -1074,7 +734,6 @@ export function VouchersReportPage() {
       RECEIPT: 0,
       JOURNAL: 0,
       KACHI: 0,
-      PURCHASE_MAAL: 0,
     };
     for (const v of vouchers) {
       if (v.type in byType) {
@@ -1187,7 +846,6 @@ export function VouchersReportPage() {
                 { value: 'RECEIPT', label: 'Receipt' },
                 { value: 'JOURNAL', label: 'Journal' },
                 { value: 'KACHI', label: 'Kachi' },
-                { value: 'PURCHASE_MAAL', label: 'Purchase Maal' },
               ]}
             />
           </div>

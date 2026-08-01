@@ -4,10 +4,9 @@ import { getPageTitle } from '../../config/navigation';
 /** Invoice / voucher forms render their own centered PageShell title. */
 function hidesContentHeaderTitle(pathname: string) {
   return (
-    pathname.startsWith('/invoices/sale-commission')
-    || pathname.startsWith('/invoices/sale-paunch')
-    || pathname.startsWith('/invoices/purchase-maal')
-    || pathname.startsWith('/invoices/kachi-maal')
+    pathname.startsWith('/invoices/kachi-maal')
+    || pathname.startsWith('/invoices/sale-invoice')
+    || pathname.startsWith('/invoices/purchase-invoice')
     || pathname.startsWith('/vouchers/payment')
     || pathname.startsWith('/vouchers/journal')
     || pathname.startsWith('/vouchers/receipt')

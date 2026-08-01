@@ -8,38 +8,28 @@ type PrefForm = Omit<SystemPreferences, 'updatedAt'>;
 
 type NumericPrefKey = Exclude<keyof PrefForm, 'closingDate'>;
 
-type PrefTab = 'kachi' | 'purchase' | 'saleCommission' | 'general';
+type PrefTab = 'kachi' | 'general';
 
 type PrefField = { key: NumericPrefKey; label: string; hint?: string };
 
 const PREF_FIELDS: Record<NumericPrefKey, PrefField> = {
-  daamiPercent: { key: 'daamiPercent', label: 'Daami (%)', hint: 'Profit rate (also used for Purchase & Commission Dammi)' },
+  daamiPercent: { key: 'daamiPercent', label: 'Daami (%)', hint: 'Profit rate' },
   paleDariPercent: { key: 'paleDariPercent', label: 'Pale Dari (%)', hint: 'Labour rate' },
   brokeryPercent: { key: 'brokeryPercent', label: 'Brokery (%)', hint: 'Broker rate' },
   marketFeeRate: { key: 'marketFeeRate', label: 'Market Fee (per bag)', hint: 'Charged per bag' },
   bardanaRate: { key: 'bardanaRate', label: 'Bardana Rate', hint: 'Default bardana rate reference' },
   taxPercent: { key: 'taxPercent', label: 'Tax (%)' },
-  kaatPercent: { key: 'kaatPercent', label: 'Kaat (%)' },
-  mazduriPercent: { key: 'mazduriPercent', label: 'Mazduri (%)', hint: 'Percentage of goods value' },
-  mazduriPerBagRate: { key: 'mazduriPerBagRate', label: 'Mazduri / Labour (per bag)', hint: 'Flat Rs per bag' },
-  commissionPercent: { key: 'commissionPercent', label: 'Commission (%)', hint: 'Post-dammi base' },
-  dalaliPercent: { key: 'dalaliPercent', label: 'Dalali (%)', hint: 'Pre-dammi goods base' },
-  sutliRate: { key: 'sutliRate', label: 'Sutli (per bag)' },
   markeetFeeRate: { key: 'markeetFeeRate', label: 'Markeet Fee', hint: 'Legacy unused field' },
   kantaRate: { key: 'kantaRate', label: 'Kanta' },
 };
 
 const TAB_OPTIONS: { value: PrefTab; label: string }[] = [
   { value: 'kachi', label: 'Kachi Maal' },
-  { value: 'purchase', label: 'Purchase Maal' },
-  { value: 'saleCommission', label: 'Sale on Commission' },
   { value: 'general', label: 'General' },
 ];
 
 const TAB_FIELDS: Record<PrefTab, NumericPrefKey[]> = {
   kachi: ['daamiPercent', 'paleDariPercent', 'brokeryPercent', 'marketFeeRate'],
-  purchase: ['kaatPercent', 'mazduriPercent'],
-  saleCommission: ['marketFeeRate', 'mazduriPerBagRate', 'commissionPercent', 'dalaliPercent', 'sutliRate'],
   general: ['bardanaRate', 'taxPercent', 'markeetFeeRate', 'kantaRate'],
 };
 

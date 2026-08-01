@@ -184,7 +184,7 @@ export function TopBar() {
             if (isUserRole && entry.kind === 'dropdown' && entry.label === 'Reports') {
               return null;
             }
-            if (isUserRole && entry.kind === 'link' && entry.id === 'ledger') {
+            if (isUserRole && entry.kind === 'link' && (entry.id === 'ledger' || entry.id === 'pending-approvals')) {
               return null;
             }
             if (entry.kind === 'quick') {
@@ -213,19 +213,7 @@ export function TopBar() {
                 </Link>
               );
             }
-            return (
-              <NavDropdown
-                key={entry.label}
-                label={entry.label}
-                children={
-                  isUserRole && entry.label === 'System'
-                    ? entry.children.filter(
-                        (item) => !(item.kind === 'link' && item.to === '/system/approvals'),
-                      )
-                    : entry.children
-                }
-              />
-            );
+            return <NavDropdown key={entry.label} label={entry.label} children={entry.children} />;
           })}
         </nav>
         <UserMenu />

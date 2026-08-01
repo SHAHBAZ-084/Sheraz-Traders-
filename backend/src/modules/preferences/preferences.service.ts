@@ -7,13 +7,7 @@ const DEFAULTS = {
   marketFeeRate: 0,
   bardanaRate: 0,
   taxPercent: 0,
-  kaatPercent: 0,
-  mazduriPercent: 0,
-  commissionPercent: 0,
-  dalaliPercent: 0,
-  sutliRate: 0,
   markeetFeeRate: 0,
-  mazduriPerBagRate: 0,
   kantaRate: 0,
   closingDate: null as string | null,
 };
@@ -29,13 +23,7 @@ function mapPreferences(row: {
   marketFeeRate: unknown;
   bardanaRate: unknown;
   taxPercent: unknown;
-  kaatPercent: unknown;
-  mazduriPercent: unknown;
-  commissionPercent: unknown;
-  dalaliPercent: unknown;
-  sutliRate: unknown;
   markeetFeeRate: unknown;
-  mazduriPerBagRate: unknown;
   kantaRate: unknown;
   closingDate: string | null;
   updatedAt: Date;
@@ -47,13 +35,7 @@ function mapPreferences(row: {
     marketFeeRate: toNumber(row.marketFeeRate),
     bardanaRate: toNumber(row.bardanaRate),
     taxPercent: toNumber(row.taxPercent),
-    kaatPercent: toNumber(row.kaatPercent),
-    mazduriPercent: toNumber(row.mazduriPercent),
-    commissionPercent: toNumber(row.commissionPercent),
-    dalaliPercent: toNumber(row.dalaliPercent),
-    sutliRate: toNumber(row.sutliRate),
     markeetFeeRate: toNumber(row.markeetFeeRate),
-    mazduriPerBagRate: toNumber(row.mazduriPerBagRate),
     kantaRate: toNumber(row.kantaRate),
     closingDate: row.closingDate,
     updatedAt: row.updatedAt.toISOString(),

@@ -17,13 +17,7 @@ const updateSchema = z.object({
   marketFeeRate: rateField,
   bardanaRate: rateField,
   taxPercent: percentField,
-  kaatPercent: percentField,
-  mazduriPercent: percentField,
-  commissionPercent: percentField,
-  dalaliPercent: percentField,
-  sutliRate: rateField,
   markeetFeeRate: rateField,
-  mazduriPerBagRate: rateField,
   kantaRate: rateField,
   closingDate: z.string().nullable().optional(),
 });

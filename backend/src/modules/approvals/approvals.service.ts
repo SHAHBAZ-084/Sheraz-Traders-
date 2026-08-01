@@ -4,10 +4,7 @@ import { AppError } from '../../utils/helpers';
 import { approveVoucher } from '../accounting/accounting.service';
 import { approveKachiMaalInvoice } from '../invoices/kachi-maal.service';
 import { approvePurchaseInvoice } from '../invoices/purchase-invoice.service';
-import { approvePurchaseMaalInvoice } from '../invoices/purchase-maal.service';
-import { approveSaleCommissionInvoice } from '../invoices/sale-commission.service';
 import { approveSaleInvoice } from '../invoices/sale-invoice.service';
-import { approveSalePaunchInvoice } from '../invoices/sale-paunch.service';
 
 export type PendingApprovalItem = {
   kind: 'voucher' | 'invoice';
@@ -90,12 +87,6 @@ export async function approvePendingInvoice(invoiceId: number) {
       return approvePurchaseInvoice(invoiceId);
     case InvoiceType.KACHI_MAAL:
       return approveKachiMaalInvoice(invoiceId);
-    case InvoiceType.SALE_PAUNCH:
-      return approveSalePaunchInvoice(invoiceId);
-    case InvoiceType.SALE_COMMISSION:
-      return approveSaleCommissionInvoice(invoiceId);
-    case InvoiceType.PURCHASE_MAAL:
-      return approvePurchaseMaalInvoice(invoiceId);
     default:
       throw new AppError(400, `Cannot approve invoice type ${invoice.type}`);
   }

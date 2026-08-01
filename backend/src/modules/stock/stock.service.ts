@@ -1,5 +1,4 @@
 import {
-  BoriThelaMode,
   InvoiceStatus,
   InvoiceType,
   Prisma,
@@ -8,157 +7,12 @@ import {
 } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
-import {
-  STOCK_TRACKING_STARTED_AT,
-  bagTypeFromMode,
-  computeStockInFromRow,
-  computeStockOutBags,
-  type StockBagKind,
-} from './stock.calculations';
+import { STOCK_TRACKING_STARTED_AT } from './stock.calculations';
 
 type Tx = Prisma.TransactionClient;
 
-function toStockBagType(kind: StockBagKind): StockBagType {
-  return kind === 'THELA' ? StockBagType.THELA : StockBagType.BORI;
-}
-
-async function getCarriedRemainderKg(
-  tx: Tx,
-  productId: number,
-  bagType: StockBagType,
-  storeId: number | null = null,
-): Promise<number> {
-  const row = await tx.stockRemainder.findFirst({
-    where: { productId, bagType, storeId },
-  });
-  return row ? Number(row.remainderKg) : 0;
-}
-
-async function setCarriedRemainderKg(
-  tx: Tx,
-  productId: number,
-  bagType: StockBagType,
-  remainderKg: number,
-  storeId: number | null = null,
-) {
-  const existing = await tx.stockRemainder.findFirst({
-    where: { productId, bagType, storeId },
-  });
-  if (existing) {
-    await tx.stockRemainder.update({
-      where: { id: existing.id },
-      data: { remainderKg },
-    });
-    return;
-  }
-  await tx.stockRemainder.create({
-    data: { productId, bagType, storeId, remainderKg },
-  });
-}
-
-export type PurchaseMaalStockLine = {
-  boriOrThelaMode: BoriThelaMode;
-  bagCount: number;
-  bhartii: number;
-  dharanCount: number;
-  looseKg: number;
-};
-
-/** Post Stock IN movements for a Purchase to Maal invoice (same DB transaction). */
-export async function postPurchaseMaalStockIn(
-  tx: Tx,
-  data: {
-    productId: number;
-    invoiceId: number;
-    invoiceReference: string;
-    invoiceDate: Date;
-    lines: PurchaseMaalStockLine[];
-  },
-) {
-  const remainders = new Map<StockBagType, number>();
-
-  for (const line of data.lines) {
-    const bagType = toStockBagType(bagTypeFromMode(line.boriOrThelaMode));
-    if (!remainders.has(bagType)) {
-      remainders.set(bagType, await getCarriedRemainderKg(tx, data.productId, bagType));
-    }
-
-    const carried = remainders.get(bagType) ?? 0;
-    const result = computeStockInFromRow({
-      wholeBags: Number(line.bagCount),
-      dharanCount: Number(line.dharanCount),
-      looseKg: Number(line.looseKg),
-      bhartii: Number(line.bhartii),
-      carriedRemainderKg: carried,
-    });
-
-    remainders.set(bagType, result.newRemainderKg);
-
-    if (!(result.bagsIn > 0)) continue;
-
-    await tx.stockMovement.create({
-      data: {
-        productId: data.productId,
-        bagType,
-        direction: StockDirection.IN,
-        bags: result.bagsIn,
-        date: data.invoiceDate,
-        invoiceId: data.invoiceId,
-        invoiceType: InvoiceType.PURCHASE_MAAL,
-        invoiceReference: data.invoiceReference,
-        description: data.invoiceReference,
-      },
-    });
-  }
-
-  for (const [bagType, remainderKg] of remainders) {
-    await setCarriedRemainderKg(tx, data.productId, bagType, remainderKg);
-  }
-}
-
-export type SalePaunchStockLine = {
-  maalKhataAccountId: number;
-  boriOrThelaMode: BoriThelaMode;
-  bagCount: number;
-  thelaCount: number;
-};
-
-/** Post Stock OUT movements for a Sale on Paunch invoice (same DB transaction). */
-export async function postSalePaunchStockOut(
-  tx: Tx,
-  data: {
-    invoiceId: number;
-    invoiceReference: string;
-    invoiceDate: Date;
-    lines: SalePaunchStockLine[];
-  },
-) {
-  for (const line of data.lines) {
-    const product = await tx.product.findFirst({
-      where: { accountId: line.maalKhataAccountId, isActive: true },
-    });
-    if (!product) {
-      throw new AppError(400, 'Sale Paunch line product ledger is not linked to an active product');
-    }
-
-    const kind = bagTypeFromMode(line.boriOrThelaMode);
-    const bagsOut = computeStockOutBags(line.bagCount, line.thelaCount, kind);
-    if (!(bagsOut > 0)) continue;
-
-    await tx.stockMovement.create({
-      data: {
-        productId: product.id,
-        bagType: toStockBagType(kind),
-        direction: StockDirection.OUT,
-        bags: bagsOut,
-        date: data.invoiceDate,
-        invoiceId: data.invoiceId,
-        invoiceType: InvoiceType.SALE_PAUNCH,
-        invoiceReference: data.invoiceReference,
-        description: data.invoiceReference,
-      },
-    });
-  }
+function toStockBagType(bagType: 'BORI' | 'THELA'): StockBagType {
+  return bagType === 'THELA' ? StockBagType.THELA : StockBagType.BORI;
 }
 
 export async function getStockReport(params: {

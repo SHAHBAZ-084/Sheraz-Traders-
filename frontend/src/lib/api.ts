@@ -83,13 +83,7 @@ export type SystemPreferences = {
   marketFeeRate: number;
   bardanaRate: number;
   taxPercent: number;
-  kaatPercent: number;
-  mazduriPercent: number;
-  commissionPercent: number;
-  dalaliPercent: number;
-  sutliRate: number;
   markeetFeeRate: number;
-  mazduriPerBagRate: number;
   kantaRate: number;
   closingDate: string | null;
   updatedAt: string;
@@ -131,35 +125,6 @@ export type MaalLineDetail = {
 
 export type KachiMaalLineDetail = MaalLineDetail;
 
-export type PurchaseMaalLineDetail = MaalLineDetail;
-
-export type SalePaunchLineDetail = {
-  id: number;
-  jins?: string | null;
-  qism?: string | null;
-  boriOrThelaMode: 'BORI' | 'THELA';
-  bagCount: number | string;
-  thelaCount?: number | string | null;
-  totalWeightKg: number | string;
-  kaatKg: number | string;
-  netWeightKg: number | string;
-  lowerKaatKg: number | string;
-  lowerNetWeightKg: number | string;
-  upperRatePerMaund: number | string;
-  upperAmount: number | string;
-  kanta: number | string;
-  netUpperAmount: number | string;
-  lowerRatePerMaund: number | string;
-  lowerAmount: number | string;
-  rowRevenue?: number | string;
-  bardanaQty?: number | string | null;
-  bardanaRate?: number | string | null;
-  bardanaAmount?: number | string | null;
-  dammiChecked?: boolean;
-  dammiAmount?: number | string | null;
-  maalKhataAccount?: VoucherAccount | null;
-};
-
 export type InvoiceDetail = Invoice & {
   invoiceDate?: string | null;
   billNo?: string | null;
@@ -169,21 +134,13 @@ export type InvoiceDetail = Invoice & {
   tafseel?: string | null;
   notes?: string | null;
   miscAmount?: number | string | null;
-  munshianaAmount?: number | string | null;
-  taxAmount?: number | string | null;
-  biltyKirayaAmount?: number | string | null;
   lowerBardanaMode?: 'BORI' | 'THELA' | null;
   lowerBardanaQty?: number | string | null;
   lowerBardanaRate?: number | string | null;
   lowerBardanaAmount?: number | string | null;
-  marketFeeEnabled?: boolean;
-  mazduriEnabled?: boolean;
   debitAccount?: VoucherAccount | null;
   items?: InvoiceItemDetail[];
   kachiMaalLines?: KachiMaalLineDetail[];
-  purchaseMaalLines?: PurchaseMaalLineDetail[];
-  salePaunchLines?: SalePaunchLineDetail[];
-  saleCommissionLines?: MaalLineDetail[];
   vouchers?: { voucher: Voucher }[];
   createdBy?: VoucherUser | null;
 };
@@ -436,47 +393,8 @@ export const api = {
     });
   },
 
-  getNextPurchaseMaalReference() {
-    return request<{ reference: string }>('/api/invoices/purchase-maal/next-reference');
-  },
 
-  createPurchaseMaalInvoice(data: {
-    invoiceDate: string;
-    productId: number;
-    billNo?: string;
-    gariNo?: string;
-    jins?: string;
-    qism?: string;
-    tafseel?: string;
-    marketFeeEnabled?: boolean;
-    mazduriEnabled?: boolean;
-    lowerBardanaMode?: 'BORI' | 'THELA' | null;
-    lowerBardanaQty?: number | null;
-    lowerBardanaRate?: number | null;
-    lines: {
-      partyAccountId: number;
-      jins?: string;
-      qism?: string;
-      boriOrThelaMode: 'BORI' | 'THELA';
-      bagCount: number;
-      bhartii: number;
-      dharanCount: number;
-      looseKg: number;
-      ratePerMaund: number;
-      bardanaQty?: number | null;
-      bardanaRate?: number | null;
-      dammiChecked?: boolean;
-    }[];
-  }) {
-    return request<KachiMaalInvoiceResult>('/api/invoices/purchase-maal', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
 
-  getNextSalePaunchReference() {
-    return request<{ reference: string }>('/api/invoices/sale-paunch/next-reference');
-  },
 
   getNextSaleInvoiceReference() {
     return request<{ reference: string }>('/api/invoices/sale-invoice/next-reference');
@@ -508,81 +426,8 @@ export const api = {
     return request('/api/invoices/purchase-invoice', { method: 'POST', body: JSON.stringify(data) });
   },
 
-  createSalePaunchInvoice(data: {
-    invoiceDate: string;
-    salePartyAccountId: number;
-    billNo?: string;
-    gariNo?: string;
-    jins?: string;
-    qism?: string;
-    tafseel?: string;
-    taxAmount?: number;
-    biltyKirayaAmount?: number;
-    miscAmount?: number;
-    lowerBardanaMode?: 'BORI' | 'THELA' | null;
-    lowerBardanaQty?: number | null;
-    lowerBardanaRate?: number | null;
-    lines: {
-      maalKhataAccountId: number;
-      jins?: string;
-      qism?: string;
-      boriOrThelaMode: 'BORI' | 'THELA';
-      bagCount: number;
-      thelaCount?: number;
-      compWeightKg: number;
-      kaatKg?: number;
-      lowerKaatKg?: number;
-      upperRatePerMaund: number;
-      lowerRatePerMaund: number;
-      kanta?: number;
-      bardanaQty?: number | null;
-      bardanaRate?: number | null;
-      dammiChecked?: boolean;
-    }[];
-  }) {
-    return request<KachiMaalInvoiceResult>('/api/invoices/sale-paunch', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
 
-  getNextSaleCommissionReference() {
-    return request<{ reference: string }>('/api/invoices/sale-commission/next-reference');
-  },
 
-  createSaleCommissionInvoice(data: {
-    invoiceDate: string;
-    salePartyAccountId: number;
-    billNo?: string;
-    gariNo?: string;
-    jins?: string;
-    qism?: string;
-    tafseel?: string;
-    munshianaAmount?: number;
-    miscAmount?: number;
-    lowerBardanaMode?: 'BORI' | 'THELA' | null;
-    lowerBardanaQty?: number | null;
-    lowerBardanaRate?: number | null;
-    lines: {
-      partyAccountId: number;
-      jins?: string;
-      qism?: string;
-      boriOrThelaMode: 'BORI' | 'THELA';
-      bagCount: number;
-      bhartii: number;
-      dharanCount: number;
-      looseKg: number;
-      ratePerMaund: number;
-      bardanaQty?: number | null;
-      bardanaRate?: number | null;
-      dammiChecked?: boolean;
-    }[];
-  }) {
-    return request<KachiMaalInvoiceResult>('/api/invoices/sale-commission', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
 
   getSystemPreferences() {
     return request<SystemPreferences>('/api/preferences');
@@ -765,36 +610,6 @@ export const api = {
     }>(`/api/accounting/reports/account-balance?${query.toString()}`);
   },
 
-  getEmptyBardana() {
-    return request<{
-      balances: Array<{ bagType: 'BORI' | 'THELA'; balance: number }>;
-      movements: Array<{
-        id: number;
-        date: string;
-        bagType: 'BORI' | 'THELA';
-        direction: 'IN' | 'OUT';
-        qty: number;
-        source: string;
-        description: string | null;
-        invoiceId: number | null;
-      }>;
-    }>('/api/inventory/bardana');
-  },
-  addEmptyBardana(data: { bagType: 'BORI' | 'THELA'; quantity: number }) {
-    return request<{
-      balances: Array<{ bagType: 'BORI' | 'THELA'; balance: number }>;
-      movements: Array<{
-        id: number;
-        date: string;
-        bagType: 'BORI' | 'THELA';
-        direction: 'IN' | 'OUT';
-        qty: number;
-        source: string;
-        description: string | null;
-        invoiceId: number | null;
-      }>;
-    }>('/api/inventory/bardana/add', { method: 'POST', body: JSON.stringify(data) });
-  },
 
   getStockReport(params: { productId: number; bagType: 'BORI' | 'THELA'; storeId?: number | null }) {
     const query = new URLSearchParams({
@@ -831,73 +646,4 @@ export const api = {
     }>(`/api/stock/report?${query.toString()}`);
   },
 
-  getSalePurchaseReport(params: {
-    mode: 'SALE' | 'PURCHASE';
-    typeFilter: 'ALL' | 'COMMISSION' | 'PAUNCH' | 'MAAL';
-    fromDate: string;
-    toDate: string;
-    partyAccountId?: number | null;
-    productId?: number | null;
-  }) {
-    const query = new URLSearchParams({
-      mode: params.mode,
-      typeFilter: params.typeFilter,
-      fromDate: params.fromDate,
-      toDate: params.toDate,
-    });
-    if (params.partyAccountId) query.set('partyAccountId', String(params.partyAccountId));
-    if (params.productId) query.set('productId', String(params.productId));
-    return request<{
-      mode: 'SALE' | 'PURCHASE';
-      typeFilter: 'ALL' | 'COMMISSION' | 'PAUNCH' | 'MAAL';
-      fromDate: string;
-      toDate: string;
-      title: string;
-      rowCount: number;
-      categories: Array<{
-        category: 'COMMISSION' | 'PAUNCH' | 'MAAL';
-        label: string;
-        parties: Array<{
-          partyAccountId: number;
-          partyName: string;
-          rows: Array<{
-            invoiceId: number;
-            invoiceReference: string;
-            invoiceNumber: string;
-            date: string;
-            category: 'COMMISSION' | 'PAUNCH' | 'MAAL';
-            partyAccountId: number;
-            partyName: string;
-            product: string;
-            thela: number;
-            bori: number;
-            weight: number;
-            totalPrice: number;
-            netBill: number;
-          }>;
-          subtotal: {
-            thela: number;
-            bori: number;
-            weight: number;
-            totalPrice: number;
-            netBill: number;
-          };
-        }>;
-        subtotal: {
-          thela: number;
-          bori: number;
-          weight: number;
-          totalPrice: number;
-          netBill: number;
-        };
-      }>;
-      grandTotal: {
-        thela: number;
-        bori: number;
-        weight: number;
-        totalPrice: number;
-        netBill: number;
-      };
-    }>(`/api/reports/sale-purchase?${query.toString()}`);
-  },
 };

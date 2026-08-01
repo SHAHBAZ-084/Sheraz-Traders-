@@ -255,7 +255,7 @@ async function validateVoucherCreate(
     throw new AppError(400, 'Amount must be greater than zero');
   }
 
-  if (data.type === 'KACHI' || data.type === 'PURCHASE_MAAL' || data.type === 'SALE_PAUNCH' || data.type === 'SALE_COMMISSION') {
+  if (data.type === 'KACHI') {
     throw new AppError(400, 'Invoice vouchers are created via invoice posting');
   }
 
@@ -276,7 +276,7 @@ async function validateVoucherCreate(
   return { debitAccount, creditAccount, financialYearId };
 }
 
-async function recomputeLedgerRunningBalancesInTx(
+export async function recomputeLedgerRunningBalancesInTx(
   tx: Prisma.TransactionClient,
   ledgerId: number,
   financialYearId: number,
@@ -746,10 +746,9 @@ function voucherTypeLabel(
     type === 'PAYMENT' ? 'Payment'
       : type === 'RECEIPT' ? 'Receipt'
         : type === 'KACHI' ? 'Kachi'
-          : type === 'PURCHASE_MAAL' ? 'Purchase Maal'
-          : type === 'SALE_PAUNCH' ? 'Sale Paunch'
-          : type === 'SALE_COMMISSION' ? 'Sale Commission'
-          : 'Journal';
+          : type === 'SALE_INVOICE' ? 'Sale Invoice'
+            : type === 'PURCHASE_INVOICE' ? 'Purchase Invoice'
+              : 'Journal';
   return isReversal ? `${base} (Reversal)` : base;
 }
 
@@ -840,7 +839,7 @@ async function nextVoucherNumber(
 async function nextMultiLegVoucherNumber(
   tx: Prisma.TransactionClient,
   financialYearId: number,
-  type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>,
+  type: Extract<VoucherType, 'KACHI' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>,
 ): Promise<number> {
   return nextVoucherNumber(tx, financialYearId, type);
 }
@@ -1051,12 +1050,6 @@ export type KachiMaalSystemAccounts = {
   misc: { id: number; name: string };
 };
 
-export type SaleCommissionSystemAccounts = KachiMaalSystemAccounts & {
-  dalali: { id: number; name: string };
-  sutli: { id: number; name: string };
-  munshiana: { id: number; name: string };
-};
-
 /** One-time auto-creation of Kachi Maal fee/bardana categories and accounts. */
 export async function ensureKachiMaalAccounts(
   tx: Prisma.TransactionClient,
@@ -1084,78 +1077,6 @@ export async function ensureKachiMaalAccounts(
     broker: { id: broker.id, name: broker.name },
     marketFee: { id: marketFee.id, name: marketFee.name },
     misc: { id: misc.id, name: misc.name },
-  };
-}
-
-/** Sale on Commission fee accounts (extends Kachi Maal base set). */
-export async function ensureSaleCommissionAccounts(
-  tx: Prisma.TransactionClient,
-): Promise<SaleCommissionSystemAccounts> {
-  const base = await ensureKachiMaalAccounts(tx);
-  const saleFee = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.SALE_FEE);
-  const dalali = await ensureDefaultAccountInTx(tx, saleFee.id, 'Dalali', AccountType.EXPENSE, 'SF-DAL');
-  const sutli = await ensureDefaultAccountInTx(tx, saleFee.id, 'Sutli', AccountType.EXPENSE, 'SF-SUT');
-  const munshiana = await ensureDefaultAccountInTx(
-    tx,
-    saleFee.id,
-    'Munshiana',
-    AccountType.EXPENSE,
-    'SF-MUN',
-  );
-
-  return {
-    ...base,
-    dalali: { id: dalali.id, name: dalali.name },
-    sutli: { id: sutli.id, name: sutli.name },
-    munshiana: { id: munshiana.id, name: munshiana.name },
-  };
-}
-
-export const SALE_PAUNCH_CATEGORY_NAMES = {
-  RENTAL_EXPENSE: 'Rental Expense',
-  REVENUE_EARN: 'Revenue Earn',
-} as const;
-
-export type SalePaunchSystemAccounts = KachiMaalSystemAccounts & {
-  taxDeduction: { id: number; name: string };
-  biltyKiraya: { id: number; name: string };
-  paunchRevenue: { id: number; name: string };
-};
-
-export async function ensureSalePaunchAccounts(
-  tx: Prisma.TransactionClient,
-): Promise<SalePaunchSystemAccounts> {
-  const base = await ensureKachiMaalAccounts(tx);
-  const rentalExpense = await ensureCategoryInTx(tx, SALE_PAUNCH_CATEGORY_NAMES.RENTAL_EXPENSE);
-  const revenueEarn = await ensureCategoryInTx(tx, SALE_PAUNCH_CATEGORY_NAMES.REVENUE_EARN);
-
-  const taxDeduction = await ensureDefaultAccountInTx(
-    tx,
-    rentalExpense.id,
-    'Tax Deduction',
-    AccountType.EXPENSE,
-    'RE-TAX',
-  );
-  const biltyKiraya = await ensureDefaultAccountInTx(
-    tx,
-    rentalExpense.id,
-    'Bilty Kiraya',
-    AccountType.EXPENSE,
-    'RE-BILTY',
-  );
-  const paunchRevenue = await ensureDefaultAccountInTx(
-    tx,
-    revenueEarn.id,
-    'Paunch Revenue',
-    AccountType.REVENUE,
-    'RE-PREV',
-  );
-
-  return {
-    ...base,
-    taxDeduction: { id: taxDeduction.id, name: taxDeduction.name },
-    biltyKiraya: { id: biltyKiraya.id, name: biltyKiraya.name },
-    paunchRevenue: { id: paunchRevenue.id, name: paunchRevenue.name },
   };
 }
 
@@ -1722,7 +1643,7 @@ async function postMultiLegVoucherEntries(
 export async function createMultiLegVoucherInTx(
   tx: Prisma.TransactionClient,
   data: {
-    type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>;
+    type: Extract<VoucherType, 'KACHI' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>;
     legs: VoucherLeg[];
     amount: number;
     date: Date | string;
@@ -1782,20 +1703,6 @@ export async function createMultiLegVoucherInTx(
   await assertTrialBalanceInDev(tx);
 
   return voucher;
-}
-
-export async function createSalePaunchVoucherInTx(
-  tx: Prisma.TransactionClient,
-  data: {
-    legs: VoucherLeg[];
-    amount: number;
-    date: Date | string;
-    description: string;
-    reference: string;
-    createdById: number;
-  },
-) {
-  return createMultiLegVoucherInTx(tx, { ...data, type: VoucherType.SALE_PAUNCH });
 }
 
 export async function createKachiVoucherInTx(
@@ -1868,12 +1775,6 @@ function voucherDashboardAccountLabel(voucher: {
 }) {
   if (voucher.type === 'KACHI') {
     return voucher.description?.trim() || 'Kachi Maal';
-  }
-  if (voucher.type === 'PURCHASE_MAAL') {
-    return voucher.description?.trim() || 'Purchase Maal';
-  }
-  if (voucher.type === 'SALE_PAUNCH') {
-    return voucher.description?.trim() || 'Sale Paunch';
   }
   if (voucher.type === 'RECEIPT') return voucher.creditAccount?.name ?? '—';
   if (voucher.type === 'PAYMENT') return voucher.debitAccount?.name ?? '—';
@@ -2059,7 +1960,7 @@ export async function updateVoucherAmount(
     if (voucher.status === VoucherStatus.PENDING_APPROVAL) {
       throw new AppError(400, 'Cannot update amount on a pending voucher');
     }
-    if (voucher.type === 'KACHI' || voucher.type === 'PURCHASE_MAAL' || voucher.type === 'SALE_PAUNCH' || voucher.type === 'SALE_COMMISSION') {
+    if (voucher.type === 'KACHI' || voucher.type === 'SALE_INVOICE' || voucher.type === 'PURCHASE_INVOICE') {
       throw new AppError(400, 'Invoice voucher amounts cannot be edited');
     }
     await assertActiveFinancialYear(tx, voucher.financialYearId);

@@ -8,13 +8,12 @@ import { CategoryManagePage } from './pages/accounts/CategoryManagePage';
 import { PurchasePartiesPage, SalePartiesPage } from './pages/accounts/PartiesPage';
 import { ProductRemovePage } from './pages/accounts/ProductManagePage';
 import { AddProductPage } from './pages/products/AddProductPage';
-import { BardanaPage } from './pages/inventory/BardanaPage';
 import { StockTransferPage } from './pages/inventory/StockTransferPage';
 import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
 import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
 import { LoginPage } from './pages/LoginPage';
 import { PosHomePage } from './pages/PosHomePage';
-import { AccountReportsPage, AccountBalancePage, SalePurchaseReportsPage, StockReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { AccountReportsPage, AccountBalancePage, StockReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
 import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
 import { DatabaseMaintenancePage } from './pages/system/DatabaseMaintenancePage';
 import { StoresPage } from './pages/system/StoresPage';
@@ -46,15 +45,11 @@ export default function App() {
                 <Route path="/accounts/sale-parties" element={<SalePartiesPage />} />
                 <Route path="/accounts/purchase-parties" element={<PurchasePartiesPage />} />
 
-                <Route path="/invoices/sale-commission" element={<InvoiceFormPage slug="sale-commission" />} />
-                <Route path="/invoices/sale-paunch" element={<InvoiceFormPage slug="sale-paunch" />} />
-                <Route path="/invoices/purchase-maal" element={<InvoiceFormPage slug="purchase-maal" />} />
                 <Route path="/invoices/kachi-maal" element={<InvoiceFormPage slug="kachi-maal" />} />
                 <Route path="/invoices/sale-invoice" element={<InvoiceFormPage slug="sale-invoice" />} />
                 <Route path="/invoices/purchase-invoice" element={<InvoiceFormPage slug="purchase-invoice" />} />
                 <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
 
-                <Route path="/inventory/bardana" element={<BardanaPage />} />
                 <Route path="/inventory/stock-transfer" element={<StockTransferPage />} />
 
                 <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />
@@ -66,7 +61,6 @@ export default function App() {
                 <Route path="/reports/account-balance" element={<AccountBalancePage />} />
                 <Route path="/reports/vouchers" element={<VouchersReportPage />} />
                 <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
-                <Route path="/reports/sale-purchase" element={<SalePurchaseReportsPage />} />
                 <Route path="/reports/stock" element={<StockReportPage />} />
 
                 <Route path="/system/database" element={<DatabaseMaintenancePage />} />
