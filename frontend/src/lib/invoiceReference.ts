@@ -4,6 +4,8 @@ export const INVOICE_TYPE_PREFIX = {
   SALE_PAUNCH: 'SP',
   PURCHASE_MAAL: 'PM',
   KACHI_MAAL: 'KM',
+  SALE_INVOICE: 'SI',
+  PURCHASE_INVOICE: 'PI',
 } as const;
 
 export type InvoiceTypeKey = keyof typeof INVOICE_TYPE_PREFIX;

@@ -2,8 +2,10 @@ import { useNavigate } from 'react-router-dom';
 import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { PageShell, Panel, SecondaryButton } from '../../components/ui/PageShell';
 import { KachiMaalInvoicePage } from './KachiMaalInvoicePage';
+import { PurchaseInvoicePage } from './PurchaseInvoicePage';
 import { PurchaseMaalInvoicePage } from './PurchaseMaalInvoicePage';
 import { SaleCommissionInvoicePage } from './SaleCommissionInvoicePage';
+import { SaleInvoicePage } from './SaleInvoicePage';
 import { SalePaunchInvoicePage } from './SalePaunchInvoicePage';
 
 const ROUTE_TO_TYPE: Record<string, string> = {
@@ -11,6 +13,8 @@ const ROUTE_TO_TYPE: Record<string, string> = {
   'sale-paunch': 'SALE_PAUNCH',
   'purchase-maal': 'PURCHASE_MAAL',
   'kachi-maal': 'KACHI_MAAL',
+  'sale-invoice': 'SALE_INVOICE',
+  'purchase-invoice': 'PURCHASE_INVOICE',
 };
 
 export function InvoiceFormPage({ slug }: { slug: string }) {
@@ -27,6 +31,12 @@ export function InvoiceFormPage({ slug }: { slug: string }) {
   }
   if (slug === 'sale-commission') {
     return <SaleCommissionInvoicePage />;
+  }
+  if (slug === 'sale-invoice') {
+    return <SaleInvoicePage />;
+  }
+  if (slug === 'purchase-invoice') {
+    return <PurchaseInvoicePage />;
   }
 
   const typeKey = ROUTE_TO_TYPE[slug];

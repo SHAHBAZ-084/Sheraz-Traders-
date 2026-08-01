@@ -15,6 +15,8 @@ enum VoucherType {
   PURCHASE_MAAL
   SALE_PAUNCH
   SALE_COMMISSION
+  SALE_INVOICE
+  PURCHASE_INVOICE
 }
 
 enum BoriThelaMode {
@@ -50,6 +52,8 @@ enum InvoiceType {
   SALE_PAUNCH
   PURCHASE_MAAL
   KACHI_MAAL
+  SALE_INVOICE
+  PURCHASE_INVOICE
 }
 
 enum InvoiceStatus {
@@ -245,20 +249,32 @@ model TrialBalanceApproval {
 }
 
 model Product {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
-  unit      String?
-  accountId Int      @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  name       String
+  code       String   @unique
+  unit       String?
+  accountId  Int      @unique
+  categoryId Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  account         Account          @relation(fields: [accountId], references: [id])
+  account         Account           @relation(fields: [accountId], references: [id])
+  category        ProductCategory?  @relation(fields: [categoryId], references: [id])
   invoiceItems    InvoiceItem[]
   invoices        Invoice[]
   stockMovements  StockMovement[]
   stockRemainders StockRemainder[]
+
+  @@index([categoryId])
+}
+
+model ProductCategory {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  products  Product[]
 }
 
 model Invoice {

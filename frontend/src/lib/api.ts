@@ -29,12 +29,20 @@ export type Account = {
   ledger?: Ledger | null;
 };
 
+export type ProductCategory = {
+  id: number;
+  name: string;
+  isActive: boolean;
+};
+
 export type Product = {
   id: number;
   name: string;
   code: string;
   unit: string | null;
   accountId: number;
+  categoryId?: number | null;
+  category?: ProductCategory | null;
   account?: { id: number; name: string; code: string; ledger?: { balance: number | string } | null };
 };
 
@@ -248,7 +256,16 @@ export const api = {
   listProducts() {
     return request<Product[]>('/api/products');
   },
-  createProduct(data: { name: string; unit?: string; code?: string }) {
+  listProductCategories() {
+    return request<ProductCategory[]>('/api/products/product-categories');
+  },
+  createProductCategory(data: { name: string }) {
+    return request<ProductCategory>('/api/products/product-categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  createProduct(data: { name: string; unit?: string; code?: string; categoryId?: number | null }) {
     return request<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) });
   },
   removeProduct(id: number) {
@@ -365,6 +382,34 @@ export const api = {
 
   getNextSalePaunchReference() {
     return request<{ reference: string }>('/api/invoices/sale-paunch/next-reference');
+  },
+
+  getNextSaleInvoiceReference() {
+    return request<{ reference: string }>('/api/invoices/sale-invoice/next-reference');
+  },
+
+  createSaleInvoice(data: {
+    invoiceDate: string;
+    customerAccountId: number;
+    billNo?: string;
+    notes?: string;
+    lines: Array<{ productId: number; quantity: number; rate: number }>;
+  }) {
+    return request('/api/invoices/sale-invoice', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  getNextPurchaseInvoiceReference() {
+    return request<{ reference: string }>('/api/invoices/purchase-invoice/next-reference');
+  },
+
+  createPurchaseInvoice(data: {
+    invoiceDate: string;
+    supplierAccountId: number;
+    billNo?: string;
+    notes?: string;
+    lines: Array<{ productId: number; quantity: number; rate: number }>;
+  }) {
+    return request('/api/invoices/purchase-invoice', { method: 'POST', body: JSON.stringify(data) });
   },
 
   createSalePaunchInvoice(data: {

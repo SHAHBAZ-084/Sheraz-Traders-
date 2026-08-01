@@ -6,8 +6,10 @@ import { asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination } from '../../utils/pagination';
 import * as invoicesService from './invoices.service';
 import { registerKachiMaalRoutes } from './kachi-maal.routes';
+import { registerPurchaseInvoiceRoutes } from './purchase-invoice.routes';
 import { registerPurchaseMaalRoutes } from './purchase-maal.routes';
 import { registerSaleCommissionRoutes } from './sale-commission.routes';
+import { registerSaleInvoiceRoutes } from './sale-invoice.routes';
 import { registerSalePaunchRoutes } from './sale-paunch.routes';
 
 export const invoicesRouter = Router();
@@ -17,6 +19,8 @@ registerKachiMaalRoutes(invoicesRouter);
 registerPurchaseMaalRoutes(invoicesRouter);
 registerSalePaunchRoutes(invoicesRouter);
 registerSaleCommissionRoutes(invoicesRouter);
+registerSaleInvoiceRoutes(invoicesRouter);
+registerPurchaseInvoiceRoutes(invoicesRouter);
 
 const itemSchema = z.object({
   productId: z.number().int().optional(),

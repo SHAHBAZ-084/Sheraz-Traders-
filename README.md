@@ -40,7 +40,7 @@ Default login (change after first use):
 - Express API runs on `http://127.0.0.1:3847`
 - In development, Vite serves the UI on port `5173` and proxies `/api` to the backend
 - In production, Express serves the built frontend and Electron loads `http://127.0.0.1:3847`
-- SQLite database file: `backend/prisma/data/grain-pos.db`
+- SQLite database file: `backend/prisma/data/sheraztrader.db`
 
 ## Accounting (copied from CROWNEV reference)
 

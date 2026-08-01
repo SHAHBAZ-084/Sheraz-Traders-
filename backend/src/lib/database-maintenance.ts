@@ -48,7 +48,7 @@ export function databaseFileExists(): boolean {
 
 function formatBackupName(date: Date): string {
   const stamp = date.toISOString().replace(/[:.]/g, '-');
-  return `grain-pos-${stamp}.db`;
+  return `sheraztrader-${stamp}.db`;
 }
 
 export async function createDatabaseBackup(retentionDays = DEFAULT_BACKUP_RETENTION_DAYS): Promise<string | null> {
@@ -77,7 +77,7 @@ async function pruneOldBackups(backupDir: string, retentionDays: number): Promis
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   const entries = await fs.promises.readdir(backupDir);
   for (const name of entries) {
-    if (!name.startsWith('grain-pos-') || !name.endsWith('.db')) continue;
+    if (!name.startsWith('sheraztrader-') || !name.endsWith('.db')) continue;
     const full = path.join(backupDir, name);
     const stat = await fs.promises.stat(full);
     if (stat.mtimeMs < cutoff) {

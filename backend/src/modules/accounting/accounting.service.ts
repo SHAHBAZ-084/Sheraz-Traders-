@@ -840,7 +840,7 @@ async function nextVoucherNumber(
 async function nextMultiLegVoucherNumber(
   tx: Prisma.TransactionClient,
   financialYearId: number,
-  type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION'>,
+  type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>,
 ): Promise<number> {
   return nextVoucherNumber(tx, financialYearId, type);
 }
@@ -1668,7 +1668,7 @@ async function postMultiLegVoucherEntries(
 export async function createMultiLegVoucherInTx(
   tx: Prisma.TransactionClient,
   data: {
-    type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION'>;
+    type: Extract<VoucherType, 'KACHI' | 'PURCHASE_MAAL' | 'SALE_PAUNCH' | 'SALE_COMMISSION' | 'SALE_INVOICE' | 'PURCHASE_INVOICE'>;
     legs: VoucherLeg[];
     amount: number;
     date: Date | string;

@@ -246,3 +246,70 @@ export async function getProductStockBalances() {
     })
     .filter((p) => p.bori !== 0 || p.thela !== 0);
 }
+
+/** Stock OUT for Sale Invoice — quantity treated as whole BORI bags. New helper; does not alter Paunch/Maal stock posts. */
+export async function postSaleInvoiceStockOut(
+  tx: Tx,
+  data: {
+    invoiceId: number;
+    invoiceReference: string;
+    invoiceDate: Date;
+    lines: Array<{ productId: number; quantity: number }>;
+  },
+) {
+  for (const line of data.lines) {
+    const bagsOut = Number(line.quantity);
+    if (!(bagsOut > 0)) continue;
+
+    const product = await tx.product.findFirst({ where: { id: line.productId, isActive: true } });
+    if (!product) throw new AppError(400, `Product #${line.productId} not found`);
+
+    await tx.stockMovement.create({
+      data: {
+        productId: product.id,
+        bagType: StockBagType.BORI,
+        direction: StockDirection.OUT,
+        bags: bagsOut,
+        date: data.invoiceDate,
+        invoiceId: data.invoiceId,
+        invoiceType: InvoiceType.SALE_INVOICE,
+        invoiceReference: data.invoiceReference,
+        description: data.invoiceReference,
+      },
+    });
+  }
+}
+
+/** Stock IN for Purchase Invoice — quantity treated as whole BORI bags. New helper; does not alter Purchase Maal stock posts. */
+export async function postPurchaseInvoiceStockIn(
+  tx: Tx,
+  data: {
+    invoiceId: number;
+    invoiceReference: string;
+    invoiceDate: Date;
+    lines: Array<{ productId: number; quantity: number }>;
+  },
+) {
+  for (const line of data.lines) {
+    const bagsIn = Number(line.quantity);
+    if (!(bagsIn > 0)) continue;
+
+    const product = await tx.product.findFirst({ where: { id: line.productId, isActive: true } });
+    if (!product) throw new AppError(400, `Product #${line.productId} not found`);
+
+    await tx.stockMovement.create({
+      data: {
+        productId: product.id,
+        bagType: StockBagType.BORI,
+        direction: StockDirection.IN,
+        bags: bagsIn,
+        date: data.invoiceDate,
+        invoiceId: data.invoiceId,
+        invoiceType: InvoiceType.PURCHASE_INVOICE,
+        invoiceReference: data.invoiceReference,
+        description: data.invoiceReference,
+      },
+    });
+  }
+}
+

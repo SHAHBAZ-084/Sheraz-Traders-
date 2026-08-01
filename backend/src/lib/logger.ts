@@ -10,7 +10,7 @@ function todayLogFile(): string {
     fs.mkdirSync(dir, { recursive: true });
   }
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(dir, `grain-pos-${date}.log`);
+  return path.join(dir, `sheraztrader-${date}.log`);
 }
 
 function write(level: LogLevel, message: string, meta?: unknown): void {

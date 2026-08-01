@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { TOP_NAV, NavItem } from '../../config/navigation';
+import { useAuth } from '../../contexts/AuthContext';
 import { voucherTypeColorClass } from '../../lib/format';
 
 function linkMatchesPath(pathname: string, to: string) {
@@ -110,16 +112,92 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
   );
 }
 
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const label = user?.displayName || user?.username || 'User';
+  const active = location.pathname === '/user';
+
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  async function handleLogout() {
+    setOpen(false);
+    await logout();
+    navigate('/login', { replace: true });
+  }
+
+  if (!user) return null;
+
+  return (
+    <div ref={ref} className="app-topnav-user relative ml-auto shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`app-topnav-link ${open ? 'is-open' : ''} ${active ? 'is-active' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div className="app-dropdown right-0 left-auto top-full mt-1" role="menu">
+          <Link to="/user" className="app-dropdown-item" role="menuitem" onClick={() => setOpen(false)}>
+            User Information
+          </Link>
+          <button type="button" className="app-dropdown-item w-full text-left" role="menuitem" onClick={handleLogout}>
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function TopBar() {
   const location = useLocation();
 
   return (
     <header className="app-topnav sticky top-0 isolate shadow-md">
-      <div className="flex min-h-12 items-center gap-1 px-4">
-        <Link to="/" className="app-topnav-brand mr-2 shrink-0 pr-2 text-sm">
-          Sheraz Traders
+      <div className="app-topnav-inner">
+        <Link to="/" className="app-topnav-brand shrink-0" aria-label="Sheraz Traders — Dashboard">
+          <img src="/sheraz-traders-logo.png" alt="Sheraz Traders" className="app-topnav-logo" />
         </Link>
-        <nav className="flex flex-1 flex-wrap items-center gap-1">
+        <div className="app-topnav-quick flex shrink-0 items-center gap-1">
+          <Link
+            to="/invoices/sale-invoice"
+            className={`app-topnav-quick-link ${location.pathname === '/invoices/sale-invoice' ? 'is-active' : ''}`}
+            title="Sale Invoice"
+            aria-label="Sale Invoice"
+          >
+            <ArrowUpFromLine className="h-4 w-4" strokeWidth={2} aria-hidden />
+            <span>Sale</span>
+          </Link>
+          <Link
+            to="/invoices/purchase-invoice"
+            className={`app-topnav-quick-link ${location.pathname === '/invoices/purchase-invoice' ? 'is-active' : ''}`}
+            title="Purchase Invoice"
+            aria-label="Purchase Invoice"
+          >
+            <ArrowDownToLine className="h-4 w-4" strokeWidth={2} aria-hidden />
+            <span>Purchase</span>
+          </Link>
+        </div>
+        <nav className="app-topnav-nav">
           {TOP_NAV.map((group) =>
             group.children ? (
               <NavDropdown key={group.label} label={group.label} children={group.children} />
@@ -134,6 +212,7 @@ export function TopBar() {
             ),
           )}
         </nav>
+        <UserMenu />
       </div>
     </header>
   );

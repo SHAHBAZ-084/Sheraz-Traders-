@@ -44,7 +44,9 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     items: [
       { kind: 'link', label: 'Sale on Commission', to: '/invoices/sale-commission' },
       { kind: 'link', label: 'Sale on Paunch', to: '/invoices/sale-paunch' },
+      { kind: 'link', label: 'Sale Invoice', to: '/invoices/sale-invoice' },
       { kind: 'link', label: 'Purchase to Maal', to: '/invoices/purchase-maal' },
+      { kind: 'link', label: 'Purchase Invoice', to: '/invoices/purchase-invoice' },
       { kind: 'link', label: 'Kachi Maal', to: '/invoices/kachi-maal' },
       { kind: 'link', label: 'View Invoice', to: '/invoices/view-invoice' },
     ],
@@ -81,8 +83,8 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     label: 'Products',
     icon: Package,
     items: [
-      { kind: 'link', label: 'Add Product', to: '/accounts/products/add' },
-      { kind: 'link', label: 'Remove Product', to: '/accounts/products/remove' },
+      { kind: 'link', label: 'Add Product', to: '/products/add' },
+      { kind: 'link', label: 'Remove Product', to: '/products/remove' },
     ],
   },
   {
@@ -164,6 +166,8 @@ export const INVOICE_TYPE_LABELS: Record<string, string> = {
   SALE_PAUNCH: 'Sale on Paunch',
   PURCHASE_MAAL: 'Purchase to Maal',
   KACHI_MAAL: 'Kachi Maal',
+  SALE_INVOICE: 'Sale Invoice',
+  PURCHASE_INVOICE: 'Purchase Invoice',
 };
 
 /** @deprecated Use SIDEBAR_NAV — kept for any legacy imports */

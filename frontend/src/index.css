@@ -14,6 +14,10 @@
 
   html {
 
+    max-width: 100%;
+
+    overflow-x: hidden;
+
     background-color: var(--surface-3, #f7f6f1);
 
     color: var(--text-primary, #1b4332);
@@ -26,7 +30,11 @@
 
     margin: 0;
 
-    min-height: 100vh;
+    max-width: 100%;
+
+    min-height: 100%;
+
+    overflow-x: hidden;
 
     background-color: var(--surface-3, #f7f6f1);
 
@@ -44,7 +52,9 @@
 
   #root {
 
-    min-height: 100vh;
+    max-width: 100%;
+
+    min-height: 100%;
 
   }
 
@@ -90,7 +100,17 @@
 
     flex-direction: column;
 
-    min-height: 100vh;
+    box-sizing: border-box;
+
+    width: 100%;
+
+    max-width: 100%;
+
+    height: 100vh;
+
+    height: 100dvh;
+
+    overflow: hidden;
 
     background: var(--surface-3);
 
@@ -104,9 +124,13 @@
 
     min-width: 0;
 
+    min-height: 0;
+
     flex: 1;
 
     flex-direction: column;
+
+    overflow: hidden;
 
   }
 
@@ -115,6 +139,10 @@
   .app-main-scroll {
 
     flex: 1;
+
+    min-width: 0;
+
+    min-height: 0;
 
     overflow: auto;
 
@@ -132,7 +160,15 @@
 
     z-index: 100;
 
+    box-sizing: border-box;
+
+    width: 100%;
+
+    max-width: 100%;
+
     flex-shrink: 0;
+
+    overflow: visible;
 
     background-color: var(--nav-bg, #1b4332);
 
@@ -144,11 +180,125 @@
 
 
 
+  .app-topnav-inner {
+
+    display: flex;
+
+    box-sizing: border-box;
+
+    width: 100%;
+
+    max-width: 100%;
+
+    min-height: 3rem;
+
+    align-items: center;
+
+    gap: 0.25rem;
+
+    padding: 0 1rem;
+
+  }
+
+
+
+  .app-topnav-nav {
+
+    display: flex;
+
+    min-width: 0;
+
+    flex: 1;
+
+    flex-wrap: wrap;
+
+    align-items: center;
+
+    gap: 0.25rem;
+
+  }
+
+
+
+  .app-topnav-quick-link {
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 0.35rem;
+
+    border-radius: var(--radius-sm, 2px);
+
+    padding: 0.4rem 0.65rem;
+
+    font-size: 0.8125rem;
+
+    font-weight: 600;
+
+    color: var(--nav-text, #d8e5dc);
+
+    text-decoration: none;
+
+    transition: background-color 0.15s, color 0.15s;
+
+  }
+
+
+
+  .app-topnav-quick-link:hover,
+
+  .app-topnav-quick-link.is-active {
+
+    background-color: var(--nav-hover-bg, rgba(255, 255, 255, 0.08));
+
+    color: var(--nav-text-hover, #ffffff);
+
+  }
+
+
+
+  .app-topnav-user .app-dropdown-item {
+
+    cursor: pointer;
+
+    background: transparent;
+
+    border: 0;
+
+  }
+
+
+
   .app-topnav-brand {
+
+    display: flex;
+
+    align-items: center;
 
     color: var(--nav-text-hover, #ffffff);
 
     font-weight: 600;
+
+    text-decoration: none;
+
+  }
+
+
+
+  .app-topnav-logo {
+
+    display: block;
+
+    height: 2.5rem;
+
+    width: auto;
+
+    max-width: 7.5rem;
+
+    object-fit: contain;
+
+    border-radius: var(--radius-sm, 2px);
 
   }
 
@@ -896,13 +1046,13 @@
 
   .btn-primary {
 
-    border: 1px solid var(--fill-financial);
+    border: 1px solid var(--fill-accent, #1b4332);
 
     border-radius: var(--radius-sm, 2px);
 
-    background-color: var(--fill-financial);
+    background-color: var(--fill-accent, #1b4332);
 
-    color: var(--on-financial);
+    color: var(--on-accent, #ffffff);
 
     padding: 0.4375rem 0.875rem;
 

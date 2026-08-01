@@ -7,7 +7,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { AccountManagePage } from './pages/accounts/AccountManagePage';
 import { CategoryManagePage } from './pages/accounts/CategoryManagePage';
 import { PurchasePartiesPage, SalePartiesPage } from './pages/accounts/PartiesPage';
-import { ProductAddPage, ProductRemovePage } from './pages/accounts/ProductManagePage';
+import { ProductRemovePage } from './pages/accounts/ProductManagePage';
+import { AddProductPage } from './pages/products/AddProductPage';
 import { BardanaPage } from './pages/inventory/BardanaPage';
 import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
 import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
@@ -36,8 +37,10 @@ export default function App() {
               <Route path="/accounts/manage/add" element={<AccountManagePage mode="add" />} />
               <Route path="/accounts/manage/edit" element={<AccountManagePage mode="edit" />} />
               <Route path="/accounts/manage/remove" element={<AccountManagePage mode="remove" />} />
-              <Route path="/accounts/products/add" element={<ProductAddPage />} />
-              <Route path="/accounts/products/remove" element={<ProductRemovePage />} />
+              <Route path="/products/add" element={<AddProductPage />} />
+              <Route path="/products/remove" element={<ProductRemovePage />} />
+              <Route path="/accounts/products/add" element={<Navigate to="/products/add" replace />} />
+              <Route path="/accounts/products/remove" element={<Navigate to="/products/remove" replace />} />
               <Route path="/accounts/sale-parties" element={<SalePartiesPage />} />
               <Route path="/accounts/purchase-parties" element={<PurchasePartiesPage />} />
 
@@ -45,6 +48,8 @@ export default function App() {
               <Route path="/invoices/sale-paunch" element={<InvoiceFormPage slug="sale-paunch" />} />
               <Route path="/invoices/purchase-maal" element={<InvoiceFormPage slug="purchase-maal" />} />
               <Route path="/invoices/kachi-maal" element={<InvoiceFormPage slug="kachi-maal" />} />
+              <Route path="/invoices/sale-invoice" element={<InvoiceFormPage slug="sale-invoice" />} />
+              <Route path="/invoices/purchase-invoice" element={<InvoiceFormPage slug="purchase-invoice" />} />
               <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
 
               <Route path="/inventory/bardana" element={<BardanaPage />} />

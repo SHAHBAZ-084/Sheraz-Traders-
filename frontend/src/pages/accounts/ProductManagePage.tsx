@@ -1,48 +1,17 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, type Product } from '../../lib/api';
-import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import {
+  FieldLabel,
+  PageShell,
+  Panel,
+  SecondaryButton,
+} from '../../components/ui/PageShell';
 
-export function ProductAddPage() {
-  const [name, setName] = useState('');
-  const [unit, setUnit] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-    try {
-      const product = await api.createProduct({ name, unit: unit || undefined });
-      setMessage(`Product "${product.name}" created with Maal Khata ledger ${product.account?.name ?? ''}.`.trim());
-      setName('');
-      setUnit('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
-    }
-  }
-
-  return (
-    <PageShell title="Add Product" subtitle="Creates the product and its Maal Khata inventory ledger automatically">
-      <Panel className="max-w-lg">
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <div>
-            <FieldLabel>Product name</FieldLabel>
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div>
-            <FieldLabel>Unit (optional)</FieldLabel>
-            <TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. maund, kg" />
-          </div>
-          {error ? <p className="text-sm text-danger">{error}</p> : null}
-          {message ? <p className="text-sm text-success">{message}</p> : null}
-          <PrimaryButton type="submit">Add Product</PrimaryButton>
-        </form>
-      </Panel>
-    </PageShell>
-  );
-}
-
+/**
+ * Legacy products page — currently hosts Remove Product only.
+ * Add Product moved to `/products/add` (AddProductPage).
+ * Confirm later whether this file should become a full Manage Products screen or be deleted.
+ */
 export function ProductRemovePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<number | ''>('');
@@ -79,7 +48,9 @@ export function ProductRemovePage() {
           >
             <option value="">Select product</option>
             {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}{p.category ? ` (${p.category.name})` : ''}
+              </option>
             ))}
           </select>
         </div>

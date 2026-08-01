@@ -15,4 +15,6 @@ export const BILL_TITLES: Record<string, string> = {
   SALE_PAUNCH: 'Sale Bill',
   PURCHASE_MAAL: 'Purchase Bill',
   KACHI_MAAL: 'Kachi Maal Bill',
+  SALE_INVOICE: 'Sale Invoice',
+  PURCHASE_INVOICE: 'Purchase Invoice',
 };
