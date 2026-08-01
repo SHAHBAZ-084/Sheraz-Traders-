@@ -1,0 +1,75 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { AppShell } from './components/layout/AppShell';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { AccountManagePage } from './pages/accounts/AccountManagePage';
+import { CategoryManagePage } from './pages/accounts/CategoryManagePage';
+import { PurchasePartiesPage, SalePartiesPage } from './pages/accounts/PartiesPage';
+import { ProductAddPage, ProductRemovePage } from './pages/accounts/ProductManagePage';
+import { BardanaPage } from './pages/inventory/BardanaPage';
+import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
+import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
+import { LoginPage } from './pages/LoginPage';
+import { PosHomePage } from './pages/PosHomePage';
+import { AccountReportsPage, AccountBalancePage, SalePurchaseReportsPage, StockReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
+import { UserInfoPage } from './pages/user/UserInfoPage';
+import { VoucherFormPage, VoucherListPage } from './pages/vouchers/VoucherPages';
+
+export default function App() {
+  return (
+    <ErrorBoundary title="Grain Market POS encountered an error">
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+          <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/" element={<PosHomePage />} />
+
+              <Route path="/accounts/categories/add" element={<CategoryManagePage mode="add" />} />
+              <Route path="/accounts/categories/edit" element={<CategoryManagePage mode="edit" />} />
+              <Route path="/accounts/categories/remove" element={<CategoryManagePage mode="remove" />} />
+              <Route path="/accounts/manage/add" element={<AccountManagePage mode="add" />} />
+              <Route path="/accounts/manage/edit" element={<AccountManagePage mode="edit" />} />
+              <Route path="/accounts/manage/remove" element={<AccountManagePage mode="remove" />} />
+              <Route path="/accounts/products/add" element={<ProductAddPage />} />
+              <Route path="/accounts/products/remove" element={<ProductRemovePage />} />
+              <Route path="/accounts/sale-parties" element={<SalePartiesPage />} />
+              <Route path="/accounts/purchase-parties" element={<PurchasePartiesPage />} />
+
+              <Route path="/invoices/sale-commission" element={<InvoiceFormPage slug="sale-commission" />} />
+              <Route path="/invoices/sale-paunch" element={<InvoiceFormPage slug="sale-paunch" />} />
+              <Route path="/invoices/purchase-maal" element={<InvoiceFormPage slug="purchase-maal" />} />
+              <Route path="/invoices/kachi-maal" element={<InvoiceFormPage slug="kachi-maal" />} />
+              <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
+
+              <Route path="/inventory/bardana" element={<BardanaPage />} />
+
+              <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />
+              <Route path="/vouchers/journal" element={<VoucherFormPage kind="journal" />} />
+              <Route path="/vouchers/receipt" element={<VoucherFormPage kind="receipt" />} />
+              <Route path="/vouchers/view" element={<VoucherListPage />} />
+
+              <Route path="/reports/accounts" element={<AccountReportsPage />} />
+              <Route path="/reports/account-balance" element={<AccountBalancePage />} />
+              <Route path="/reports/vouchers" element={<VouchersReportPage />} />
+              <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
+              <Route path="/reports/sale-purchase" element={<SalePurchaseReportsPage />} />
+              <Route path="/reports/stock" element={<StockReportPage />} />
+
+              <Route path="/system/preferences" element={<SystemPreferencesPage />} />
+              <Route path="/user" element={<UserInfoPage />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
+    </ErrorBoundary>
+  );
+}

@@ -1,0 +1,42 @@
+import path from 'path';
+import dotenv from 'dotenv';
+import { createApp } from './app';
+import { env } from './config/env';
+import { prisma } from './lib/prisma';
+import { initializeDatabase, shutdownDatabase } from './lib/startup';
+import { logger } from './lib/logger';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+let startupStatus: Awaited<ReturnType<typeof initializeDatabase>> | null = null;
+
+async function main() {
+  startupStatus = await initializeDatabase(prisma);
+  if (!startupStatus.ok) {
+    logger.error('Startup aborted — database not ready', startupStatus);
+    process.exit(1);
+  }
+
+  const app = createApp(() => startupStatus);
+
+  const server = app.listen(env.port, '127.0.0.1', () => {
+    logger.info(`Grain Market POS API listening on http://127.0.0.1:${env.port}`);
+  });
+
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, shutting down…`);
+    server.close();
+    await shutdownDatabase(prisma);
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  logger.error('Fatal startup error', { err: String(err) });
+  process.exit(1);
+});
+
+export default createApp;

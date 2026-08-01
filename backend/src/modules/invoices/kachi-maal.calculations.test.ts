@@ -1,0 +1,109 @@
+import { describe, expect, it } from 'vitest';
+import {
+  computeKachiMaalInvoiceTotals,
+  computeKachiMaalRow,
+  DHARAN_KG,
+  MAUND_KG,
+} from './kachi-maal.calculations';
+
+const prefs = {
+  daamiPercent: 2,
+  paleDariPercent: 1,
+  brokeryPercent: 0.5,
+  marketFeeRate: 2,
+};
+
+describe('Kachi Maal calculations', () => {
+  it('computes row weight, amount, and optional bardana', () => {
+    // 10 bori × 40 kg + 2 dharan × 5 kg + 10 loose = 420 kg
+    // rate 4000/maund → 100/kg → amount 42000
+    const row = computeKachiMaalRow(
+      {
+        bagCount: 10,
+        bhartii: 40,
+        dharanCount: 2,
+        looseKg: 10,
+        ratePerMaund: 4000,
+        bardanaQty: 5,
+        bardanaRate: 100,
+      },
+      prefs,
+    );
+
+    expect(row.totalWeightKg).toBe(10 * 40 + 2 * DHARAN_KG + 10);
+    expect(row.totalWeightKg).toBe(420);
+    expect(row.amount).toBe(420 * (4000 / MAUND_KG));
+    expect(row.amount).toBe(42000);
+    expect(row.bardanaAmount).toBe(500);
+    expect(row.netCreditToParty).toBe(41_870);
+    expect(row.totalMazduriPreview).toBe(42000 * 0.015);
+  });
+
+  it('blank bardana has zero effect', () => {
+    const row = computeKachiMaalRow(
+      {
+        bagCount: 5,
+        bhartii: 50,
+        dharanCount: 0,
+        looseKg: 0,
+        ratePerMaund: 8000,
+        bardanaQty: null,
+        bardanaRate: null,
+      },
+      prefs,
+    );
+    expect(row.bardanaAmount).toBeNull();
+    const paleDari = row.amount * 0.01;
+    const brokery = row.amount * 0.005;
+    expect(row.netCreditToParty).toBe(Math.round((row.amount - paleDari - brokery) * 100) / 100);
+  });
+
+  it('invoice totals and debit/credit balance for multi-row example', () => {
+    const rows = [
+      computeKachiMaalRow(
+        { bagCount: 10, bhartii: 40, dharanCount: 0, looseKg: 0, ratePerMaund: 4000 },
+        prefs,
+      ),
+      computeKachiMaalRow(
+        {
+          bagCount: 5,
+          bhartii: 50,
+          dharanCount: 1,
+          looseKg: 0,
+          ratePerMaund: 5000,
+          bardanaQty: 2,
+          bardanaRate: 50,
+        },
+        prefs,
+      ),
+    ].map((r, i) => ({
+      ...r,
+      bhartii: i === 0 ? 40 : 50,
+      bardanaAmount: r.bardanaAmount,
+    }));
+
+    const totals = computeKachiMaalInvoiceTotals(rows, prefs, 100, null, null);
+
+    const goods = rows.reduce((s, r) => s + r.amount, 0);
+    expect(totals.totalGoodsAmount).toBe(goods);
+    expect(totals.totalPaleDari).toBe(Math.round(goods * 0.01 * 100) / 100);
+    expect(totals.totalBrokery).toBe(Math.round(goods * 0.005 * 100) / 100);
+    expect(totals.profitAmount).toBe(Math.round(goods * 0.02 * 100) / 100);
+
+    const debits =
+      totals.totalDebitAmount
+      + totals.totalBardanaFromRows
+      + totals.totalPaleDari
+      + totals.totalBrokery;
+    const credits =
+      totals.totalGoodsAmount
+      + totals.totalPaleDari
+      + totals.totalBrokery
+      + totals.marketFeeAmount
+      + 100
+      + totals.profitAmount
+      + totals.totalBardanaFromRows;
+
+    expect(debits).toBe(credits);
+  });
+});

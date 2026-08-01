@@ -1,0 +1,72 @@
+{
+  "name": "grain-market-pos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline desktop POS for grain market — Electron + React + Express + SQLite",
+  "main": "dist-electron/main.js",
+  "author": "Sheraz Traders",
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\" \"npm run electron:dev\"",
+    "dev:web": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "electron:dev": "npm run build:electron && wait-on http://127.0.0.1:5173 http://127.0.0.1:3847/api/health && cross-env NODE_ENV=development electron .",
+    "electron:build": "npm run build -w backend && npm run build -w frontend && npm run build:electron",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "dist": "npm run electron:build && electron-builder",
+    "dist:win": "npm run electron:build && electron-builder --win",
+    "start": "cross-env NODE_ENV=production electron .",
+    "postinstall": "npm run db:generate -w backend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "build": {
+    "appId": "com.sherazTraders.grainmarket",
+    "productName": "Grain Market POS",
+    "icon": "build/icon.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "backend/dist/**/*",
+      "backend/prisma/**/*",
+      "backend/package.json",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/node_modules/.prisma",
+        "to": "backend/node_modules/.prisma"
+      },
+      {
+        "from": "backend/node_modules/@prisma/client",
+        "to": "backend/node_modules/@prisma/client"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "SHAHBAZ-084",
+      "repo": "Sheraz-Traders-"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.2",
+    "typescript": "^5.7.3",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}
