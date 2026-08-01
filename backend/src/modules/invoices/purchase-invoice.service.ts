@@ -14,6 +14,7 @@ import {
   type VoucherLeg,
 } from '../accounting/accounting.service';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
+import { assertActiveStore } from '../stores/stores.service';
 import { postPurchaseInvoiceStockIn } from '../stock/stock.service';
 import { voucherReferenceFromBillNo } from './invoice-voucher-descriptions';
 import {
@@ -37,6 +38,7 @@ export type CreatePurchaseInvoiceInput = {
   invoiceDate: string;
   billNo?: string;
   notes?: string;
+  storeId: number;
   supplierAccountId: number;
   createdById: number;
   lines: PurchaseInvoiceLineInput[];
@@ -68,6 +70,7 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceInput) {
 
   return prisma.$transaction(async (tx) => {
     await getActiveFinancialYearId(tx);
+    await assertActiveStore(data.storeId);
     await assertPurchasePartyAccount(tx, data.supplierAccountId);
 
     const resolvedLines: Array<{
@@ -163,6 +166,7 @@ export async function createPurchaseInvoice(data: CreatePurchaseInvoiceInput) {
       invoiceId: invoice.id,
       invoiceReference: reference,
       invoiceDate,
+      storeId: data.storeId,
       lines: resolvedLines.map((line) => ({
         productId: line.productId,
         quantity: line.quantity,

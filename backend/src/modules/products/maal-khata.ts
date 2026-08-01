@@ -3,13 +3,11 @@ import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 
 /** Dedicated inventory category — one ledger per product. */
-export const MAAL_KHATA_CATEGORY_NAME = 'Maal Khata';
+export const MAAL_KHATA_CATEGORY_NAME = 'Products';
 
-/** Legacy category name before Maal Khata rename (migration only). */
-export const LEGACY_PRODUCTS_CATEGORY_NAME = 'Products';
-
+/** Account name equals the product name (no prefix). */
 export function maalKhataAccountName(productName: string) {
-  return `Maal Khata ${productName.trim()}`;
+  return productName.trim();
 }
 
 export function isMaalKhataCategoryName(name: string) {
@@ -21,16 +19,6 @@ export async function ensureMaalKhataCategoryInTx(tx: Prisma.TransactionClient) 
     where: { isActive: true, name: MAAL_KHATA_CATEGORY_NAME },
   });
   if (existing) return existing;
-
-  const legacy = await tx.accountCategory.findFirst({
-    where: { isActive: true, name: LEGACY_PRODUCTS_CATEGORY_NAME },
-  });
-  if (legacy) {
-    return tx.accountCategory.update({
-      where: { id: legacy.id },
-      data: { name: MAAL_KHATA_CATEGORY_NAME },
-    });
-  }
 
   return tx.accountCategory.create({ data: { name: MAAL_KHATA_CATEGORY_NAME } });
 }
@@ -65,7 +53,7 @@ export async function resolveMaalKhataAccountForProduct(
   if (!isMaalKhataCategoryName(product.account.category.name)) {
     throw new AppError(
       400,
-      `Product "${product.name}" is not linked to a Maal Khata ledger — recreate or migrate the product`,
+      `Product "${product.name}" is not linked to a Products ledger — recreate or migrate the product`,
     );
   }
 
@@ -88,9 +76,9 @@ export async function assertMaalKhataAccount(tx: Prisma.TransactionClient, accou
     where: { id: accountId, isActive: true },
     include: { category: true, ledger: true },
   });
-  if (!account) throw new AppError(400, 'Invalid Maal Khata account');
+  if (!account) throw new AppError(400, 'Invalid product ledger account');
   if (!isMaalKhataCategoryName(account.category.name)) {
-    throw new AppError(400, 'Row account must be a Maal Khata ledger');
+    throw new AppError(400, 'Row account must be a Products ledger');
   }
   if (!account.ledger) {
     await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });

@@ -13,6 +13,7 @@ const createSchema = z.object({
   invoiceDate: z.string().min(1),
   billNo: z.string().optional(),
   notes: z.string().optional(),
+  storeId: z.number().int().positive(),
   supplierAccountId: z.number().int().positive(),
   lines: z.array(lineSchema).min(1),
 });

@@ -82,7 +82,7 @@ describe('Purchase Maal posting', () => {
     wheatMaalKhataId = wheat.accountId;
   });
 
-  it('posts dammi to the purchase party (not Commission) and Maal Khata absorbs the buyer dammi debit', async () => {
+  it('posts dammi to the purchase party (not Commission) and Products ledger absorbs the buyer dammi debit', async () => {
     const invoice = await createPurchaseMaalInvoice({
       invoiceDate,
       billNo: 'PM-BILL-1',

@@ -12,7 +12,14 @@ import {
 import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
-import { api, type Account, type AccountCategory, type Product } from '../../lib/api';
+import {
+  api,
+  type Account,
+  type AccountCategory,
+  type Product,
+  type ProductCategory,
+  type Store,
+} from '../../lib/api';
 import { formatLedgerAmount } from '../../lib/format';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
@@ -31,6 +38,8 @@ type PurchaseInvoiceDraft = {
   predictedRef: string;
   invoiceDate: string;
   billNo: string;
+  storeId: string;
+  productCategoryId: string;
   gridRows: GridRow[];
   productId: string;
   quantity: string;
@@ -99,7 +108,11 @@ export function PurchaseInvoicePage() {
   const [predictedRef, setPredictedRef] = useState(() => restoredState?.predictedRef ?? 'PI-…');
   const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
   const [billNo, setBillNo] = useState(() => restoredState?.billNo ?? '');
+  const [storeId, setStoreId] = useState(() => restoredState?.storeId ?? '');
+  const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [productCategoryId, setProductCategoryId] = useState(() => restoredState?.productCategoryId ?? '');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [gridRows, setGridRows] = useState<GridRow[]>(() => restoredState?.gridRows ?? []);
@@ -113,12 +126,16 @@ export function PurchaseInvoicePage() {
   useEffect(() => {
     Promise.all([
       api.listProducts(),
+      api.listProductCategories(),
+      api.listActiveStores(),
       api.listAccounts(),
       api.listCategories(),
       api.getNextPurchaseInvoiceReference(),
     ])
-      .then(([prods, accts, cats, ref]) => {
+      .then(([prods, productCats, activeStores, accts, cats, ref]) => {
         setProducts(prods);
+        setProductCategories(productCats);
+        setStores(activeStores);
         setAccounts(accts);
         setCategories(cats);
         if (keepRestoredPredictedRef.current) {
@@ -130,9 +147,19 @@ export function PurchaseInvoicePage() {
       .catch(() => setError('Failed to load form data'));
   }, []);
 
-  const productOptions = useMemo(
-    () => products.map((p) => ({ value: String(p.id), label: p.name })),
-    [products],
+  const productCategoryOptions = useMemo(
+    () => productCategories.map((c) => ({ value: String(c.id), label: c.name })),
+    [productCategories],
+  );
+  const productOptions = useMemo(() => {
+    const filtered = productCategoryId
+      ? products.filter((p) => String(p.categoryId ?? '') === productCategoryId)
+      : products;
+    return filtered.map((p) => ({ value: String(p.id), label: p.name }));
+  }, [products, productCategoryId]);
+  const storeOptions = useMemo(
+    () => stores.map((s) => ({ value: String(s.id), label: s.name })),
+    [stores],
   );
   const supplierOptions = useMemo(
     () => flatAccountOptions(categories, accounts, PURCHASE_PARTY_CATEGORIES),
@@ -143,8 +170,17 @@ export function PurchaseInvoicePage() {
     [gridRows],
   );
 
+  function onProductCategoryChange(value: string) {
+    setProductCategoryId(value);
+    setProductId('');
+  }
+
   function addRow() {
     setError('');
+    if (!storeId) {
+      setError('Select a store before adding products');
+      return;
+    }
     const product = products.find((p) => String(p.id) === productId);
     const qty = Number(quantity);
     const unitRate = Number(rate);
@@ -175,6 +211,10 @@ export function PurchaseInvoicePage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (!storeId) {
+      setError('Select a store');
+      return;
+    }
     if (gridRows.length === 0) {
       setError('Add at least one product line');
       return;
@@ -188,6 +228,7 @@ export function PurchaseInvoicePage() {
       await api.createPurchaseInvoice({
         invoiceDate,
         billNo: billNo || undefined,
+        storeId: Number(storeId),
         supplierAccountId: Number(supplierAccountId),
         lines: gridRows.map((row) => ({
           productId: row.productId,
@@ -223,19 +264,37 @@ export function PurchaseInvoicePage() {
                     <FieldLabel>Bill No</FieldLabel>
                     <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
                   </InvoiceField>
+                  <InvoiceField wide>
+                    <FieldLabel>Store</FieldLabel>
+                    <SearchSelect
+                      options={storeOptions}
+                      value={storeId}
+                      onChange={setStoreId}
+                      placeholder="Select store"
+                    />
+                  </InvoiceField>
                 </InvoiceHeaderRow>
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Add existing product">
                 <InvoiceFieldGroup>
-                  <InvoiceFieldRow cols={3}>
+                  <InvoiceFieldRow cols={4}>
+                    <InvoiceField wide>
+                      <FieldLabel>Category</FieldLabel>
+                      <SearchSelect
+                        options={productCategoryOptions}
+                        value={productCategoryId}
+                        onChange={onProductCategoryChange}
+                        placeholder="Filter by category"
+                      />
+                    </InvoiceField>
                     <InvoiceField wide>
                       <FieldLabel>Product</FieldLabel>
                       <SearchSelect
                         options={productOptions}
                         value={productId}
                         onChange={setProductId}
-                        placeholder="Select existing product"
+                        placeholder={productCategoryId ? 'Select product' : 'Select category first (or pick any)'}
                       />
                     </InvoiceField>
                     <InvoiceField>
@@ -285,6 +344,8 @@ export function PurchaseInvoicePage() {
                       predictedRef,
                       invoiceDate,
                       billNo,
+                      storeId,
+                      productCategoryId,
                       gridRows,
                       productId,
                       quantity,

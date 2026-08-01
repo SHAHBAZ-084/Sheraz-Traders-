@@ -481,6 +481,182 @@ function BillSignature() {
   );
 }
 
+/** Print-safe header for Sale Invoice / Purchase Invoice bills. */
+function InvoiceBillHeader({
+  title,
+  invoice,
+  partyLabel,
+  partyName,
+  partyCode,
+}: {
+  title: string;
+  invoice: InvoiceDetail;
+  partyLabel: string;
+  partyName: string;
+  partyCode?: string;
+}) {
+  const h = BILL_LETTERHEAD;
+  return (
+    <header className="text-black">
+      <div className="flex items-center gap-4 border-b-2 border-[var(--fill-primary,#1B4332)] pb-3">
+        <img
+          src="/sheraz-traders-logo.png"
+          alt=""
+          className="h-14 w-14 shrink-0 object-contain"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[22px] font-bold leading-tight tracking-wide text-[var(--fill-primary,#1B4332)]">
+            {h.companyName}
+          </h1>
+          <p className="mt-0.5 text-[12px] text-black/80">{h.subtitle}</p>
+          <p className="mt-0.5 text-[10px] text-black/70">
+            Phone: {h.phone}&nbsp;&nbsp;Mobile: {h.mobile}&nbsp;&nbsp;Email: {h.email}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 text-center">
+        <h2 className="inline-block text-[18px] font-bold tracking-[0.08em] text-black">
+          {title}
+        </h2>
+        <div className="mx-auto mt-1 h-[3px] w-40 bg-[var(--fill-financial,#C08A2E)]" />
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 border border-black px-3 py-2 text-[12px]">
+        <div>
+          <span className="font-semibold">Invoice #</span>
+          <div className="mt-0.5 tabular-nums">{invoice.reference}</div>
+        </div>
+        <div className="text-center">
+          <span className="font-semibold">Date</span>
+          <div className="mt-0.5">{formatBillDate(invoiceBillDate(invoice))}</div>
+        </div>
+        <div className="text-right">
+          <span className="font-semibold">Bill No</span>
+          <div className="mt-0.5">{invoice.billNo?.trim() || '—'}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 border border-black px-3 py-2 text-[12px]">
+        <span className="font-semibold text-[var(--fill-primary,#1B4332)]">{partyLabel}</span>
+        <div className="mt-1 font-medium">
+          {partyCode ? `[${partyCode}] ` : ''}
+          {partyName || '—'}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function SimpleInvoiceLineTable({
+  rows,
+}: {
+  rows: Array<{ product: string; quantity: number; rate: number; lineTotal: number }>;
+}) {
+  const empty = rows.length === 0;
+  const display = empty
+    ? [{ product: '\u00A0', quantity: 0, rate: 0, lineTotal: 0 }]
+    : rows;
+
+  return (
+    <table className="mt-4 w-full border-collapse text-[12px]">
+      <thead>
+        <tr className="border-b border-black">
+          <th className="py-1.5 pr-2 text-left font-semibold">Product</th>
+          <th className="px-1 py-1.5 text-right font-semibold">Qty</th>
+          <th className="px-1 py-1.5 text-right font-semibold">Rate</th>
+          <th className="py-1.5 pl-1 text-right font-semibold">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {display.map((row, i) => (
+          <tr key={i} className="border-b border-black/20">
+            <td className="py-1.5 pr-2">{row.product}</td>
+            <td className="px-1 py-1.5 text-right tabular-nums">{empty ? '\u00A0' : row.quantity}</td>
+            <td className="px-1 py-1.5 text-right tabular-nums">
+              {empty ? '\u00A0' : formatBillAmount(row.rate)}
+            </td>
+            <td className="py-1.5 pl-1 text-right tabular-nums">
+              {empty ? '\u00A0' : formatBillAmount(row.lineTotal)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function salePurchaseInvoiceRows(invoice: InvoiceDetail) {
+  return (invoice.items ?? []).map((item) => ({
+    product: item.product?.name?.trim() || item.label?.trim() || '—',
+    quantity: Number(item.quantity),
+    rate: Number(item.unitPrice),
+    lineTotal: Number(item.total),
+  }));
+}
+
+function SaleInvoiceBillBody({
+  invoice,
+  title,
+}: {
+  invoice: InvoiceDetail;
+  prefs: SystemPreferences;
+  title: string;
+}) {
+  const rows = salePurchaseInvoiceRows(invoice);
+  const party = invoice.debitAccount;
+  const goodsTotal = rows.reduce((sum, row) => sum + row.lineTotal, 0);
+
+  return (
+    <>
+      <InvoiceBillHeader
+        title={title}
+        invoice={invoice}
+        partyLabel="Customer"
+        partyName={party?.name ?? '—'}
+        partyCode={party?.code}
+      />
+      <SimpleInvoiceLineTable rows={rows} />
+      <TotalsStack
+        lines={[{ label: 'Total Amount:', value: formatBillAmount(goodsTotal), bold: true }]}
+        netAmount={formatBillAmount(invoice.total)}
+      />
+      <BillSignature />
+    </>
+  );
+}
+
+function PurchaseInvoiceBillBody({
+  invoice,
+  title,
+}: {
+  invoice: InvoiceDetail;
+  prefs: SystemPreferences;
+  title: string;
+}) {
+  const rows = salePurchaseInvoiceRows(invoice);
+  const party = invoice.debitAccount;
+  const goodsTotal = rows.reduce((sum, row) => sum + row.lineTotal, 0);
+
+  return (
+    <>
+      <InvoiceBillHeader
+        title={title}
+        invoice={invoice}
+        partyLabel="Supplier"
+        partyName={party?.name ?? '—'}
+        partyCode={party?.code}
+      />
+      <SimpleInvoiceLineTable rows={rows} />
+      <TotalsStack
+        lines={[{ label: 'Total Amount:', value: formatBillAmount(goodsTotal), bold: true }]}
+        netAmount={formatBillAmount(invoice.total)}
+      />
+      <BillSignature />
+    </>
+  );
+}
+
 function SaleCommissionBillBody({
   invoice,
   prefs,
@@ -624,6 +800,12 @@ export function InvoiceBillView({
       ) : null}
       {invoice.type === 'SALE_COMMISSION' ? (
         <SaleCommissionBillBody invoice={invoice} prefs={p} />
+      ) : null}
+      {invoice.type === 'SALE_INVOICE' ? (
+        <SaleInvoiceBillBody invoice={invoice} prefs={p} title={title} />
+      ) : null}
+      {invoice.type === 'PURCHASE_INVOICE' ? (
+        <PurchaseInvoiceBillBody invoice={invoice} prefs={p} title={title} />
       ) : null}
     </div>
   );

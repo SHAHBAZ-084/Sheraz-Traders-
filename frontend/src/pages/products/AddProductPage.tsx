@@ -10,7 +10,7 @@ import {
   TextInput,
 } from '../../components/ui/PageShell';
 
-/** Dedicated Add Product screen (product + optional business category + Maal Khata ledger). */
+/** Dedicated Add Product screen (product + optional business category + Products ledger). */
 export function AddProductPage() {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
@@ -73,7 +73,7 @@ export function AddProductPage() {
         categoryId: categoryId === '' ? undefined : categoryId,
       });
       setMessage(
-        `Product "${product.name}" created with Maal Khata ledger ${product.account?.name ?? ''}`.trim()
+        `Product "${product.name}" created with ledger ${product.account?.name ?? ''}`.trim()
           + (product.category ? ` (category: ${product.category.name}).` : '.'),
       );
       setName('');
@@ -86,7 +86,7 @@ export function AddProductPage() {
   }
 
   return (
-    <PageShell title="Add Product" subtitle="Creates the product and its Maal Khata inventory ledger automatically">
+    <PageShell title="Add Product" subtitle="Creates the product and its inventory ledger automatically">
       <Panel className="max-w-lg">
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
@@ -157,7 +157,7 @@ export function AddProductPage() {
               <th>Name</th>
               <th>Category</th>
               <th>Unit</th>
-              <th>Maal Khata</th>
+              <th>Ledger</th>
             </tr>
           </thead>
           <tbody>

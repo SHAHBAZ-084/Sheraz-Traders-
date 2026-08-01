@@ -275,7 +275,7 @@ export function SalePaunchInvoicePage() {
   function addRow() {
     setError('');
     if (!maalKhataAccountId) {
-      setError('Select a Maal Khata account before adding a row');
+      setError('Select a product ledger before adding a row');
       return;
     }
     const weight = parseNum(compWeightKg);
@@ -465,13 +465,13 @@ export function SalePaunchInvoicePage() {
                   <InvoiceFieldRow cols={6}>
                     <InvoiceField wide>
                       <FlatAccountSelect
-                        label="Maal Khata"
+                        label="Product"
                         categoryNames={MAAL_KHATA_CATEGORIES}
                         categories={categories}
                         accounts={accounts}
                         value={maalKhataAccountId}
                         onChange={setMaalKhataAccountId}
-                        placeholder="Search Maal Khata…"
+                        placeholder="Search product…"
                       />
                     </InvoiceField>
                     <InvoiceField>
@@ -537,7 +537,7 @@ export function SalePaunchInvoicePage() {
                 <table className="w-full min-w-[900px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-surface2">
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
-                      <th className="px-3 py-2.5">Maal Khata</th>
+                      <th className="px-3 py-2.5">Product</th>
                       <th className="px-3 py-2.5 text-right">Bori</th>
                       <th className="px-3 py-2.5 text-right">Thela</th>
                       <th className="px-3 py-2.5 text-right">Comp wt</th>

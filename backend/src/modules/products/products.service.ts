@@ -89,7 +89,7 @@ export async function createProduct(data: {
     const nameTaken = await tx.account.findFirst({
       where: { isActive: true, name: accountName, categoryId: category.id },
     });
-    if (nameTaken) throw new AppError(400, `Maal Khata ledger "${accountName}" already exists`);
+    if (nameTaken) throw new AppError(400, `Product ledger "${accountName}" already exists`);
 
     const account = await tx.account.create({
       data: {

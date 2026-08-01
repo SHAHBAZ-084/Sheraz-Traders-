@@ -324,7 +324,7 @@ export function PurchaseMaalInvoicePage() {
       return;
     }
     if (maalKhataMissing) {
-      setError('This product has no Maal Khata ledger — re-add the product or migrate it before posting');
+      setError('This product has no Products ledger — re-add the product or migrate it before posting');
       return;
     }
     if (invoiceTotals.lowerBardanaAmount != null && invoiceTotals.lowerBardanaAmount > 0 && !lowerBoriThela) {
@@ -526,7 +526,7 @@ export function PurchaseMaalInvoicePage() {
               </InvoicePreviewGridShell>
             </InvoiceFormSection>
 
-            <InvoiceFormSection label="Settlement (Maal Khata debit)">
+            <InvoiceFormSection label="Settlement (Product debit)">
               <InvoiceFieldStack>
                 <InvoiceFieldGroup>
                   <InvoiceFieldRow cols={5}>
@@ -536,7 +536,7 @@ export function PurchaseMaalInvoicePage() {
                         <div className="app-input-static text-textMuted">Select Jins first</div>
                       ) : maalKhataMissing ? (
                         <div className="app-input-static border-danger text-danger">
-                          No Maal Khata ledger linked to this product
+                          No Products ledger linked to this product
                         </div>
                       ) : (
                         <div className="app-input-static font-medium text-textPrimary">
@@ -595,7 +595,7 @@ export function PurchaseMaalInvoicePage() {
                 </InvoiceFieldGroup>
               </InvoiceFieldStack>
               <InvoiceFormFooter
-                totalLabel="Maal Khata total debit"
+                totalLabel="Product total debit"
                 totalValue={invoiceTotals.totalDebitAmount}
                 error={error}
                 message={message}

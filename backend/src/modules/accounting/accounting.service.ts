@@ -562,7 +562,7 @@ export async function createAccount(data: {
   if (isMaalKhataCategoryName(category.name)) {
     throw new AppError(
       400,
-      'Maal Khata ledgers are created automatically when you add a product',
+      'Product ledgers are created automatically when you add a product',
     );
   }
 

@@ -178,7 +178,13 @@ describe('Stock + Empty Bardana E2E scenario', () => {
     expect(stock.rows[0]!.bags).toBe(10);
     expect(stock.rows[0]!.runningBalance).toBe(10);
     expect(stock.carriedRemainderKg).toBe(25);
-    expect(stock.totals).toEqual({ totalIn: 10, totalOut: 0, netBalance: 10 });
+    expect(stock.totals).toEqual({
+      totalIn: 10,
+      totalOut: 0,
+      netBalance: 10,
+      saleInvoiceQty: 0,
+      purchaseInvoiceQty: 0,
+    });
 
     let empty = await getEmptyBardanaReport();
     printEmptyBardana('After Step 1 — Empty Bardana (PM must not change)', empty);
@@ -215,7 +221,13 @@ describe('Stock + Empty Bardana E2E scenario', () => {
     expect(stock.rows[1]!.bags).toBe(6);
     expect(stock.rows[1]!.runningBalance).toBe(16);
     expect(stock.carriedRemainderKg).toBe(0);
-    expect(stock.totals).toEqual({ totalIn: 16, totalOut: 0, netBalance: 16 });
+    expect(stock.totals).toEqual({
+      totalIn: 16,
+      totalOut: 0,
+      netBalance: 16,
+      saleInvoiceQty: 0,
+      purchaseInvoiceQty: 0,
+    });
 
     empty = await getEmptyBardanaReport();
     printEmptyBardana('After Step 2 — Empty Bardana (still unchanged)', empty);
@@ -252,7 +264,13 @@ describe('Stock + Empty Bardana E2E scenario', () => {
     expect(stock.rows[2]!.bags).toBe(8);
     expect(stock.rows[2]!.runningBalance).toBe(24);
     expect(stock.carriedRemainderKg).toBe(0);
-    expect(stock.totals).toEqual({ totalIn: 24, totalOut: 0, netBalance: 24 });
+    expect(stock.totals).toEqual({
+      totalIn: 24,
+      totalOut: 0,
+      netBalance: 24,
+      saleInvoiceQty: 0,
+      purchaseInvoiceQty: 0,
+    });
 
     empty = await getEmptyBardanaReport();
     printEmptyBardana('After Step 3 — Empty Bardana (still unchanged)', empty);
@@ -287,7 +305,13 @@ describe('Stock + Empty Bardana E2E scenario', () => {
       { status: 'IN', bags: 8, running: 24 },
       { status: 'OUT', bags: 12, running: 12 },
     ]);
-    expect(stock.totals).toEqual({ totalIn: 24, totalOut: 12, netBalance: 12 });
+    expect(stock.totals).toEqual({
+      totalIn: 24,
+      totalOut: 12,
+      netBalance: 12,
+      saleInvoiceQty: 0,
+      purchaseInvoiceQty: 0,
+    });
     expect(stock.carriedRemainderKg).toBe(0);
 
     empty = await getEmptyBardanaReport();

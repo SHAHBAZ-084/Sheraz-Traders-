@@ -217,7 +217,7 @@ export function salePaunchLowerToBillRow(line: SalePaunchLineDetail): BillLineRo
   };
 }
 
-/** Maal Khata (Bill From) row — upper rate / upper kaat. */
+/** Product ledger (Bill From) row — upper rate / upper kaat. */
 export function salePaunchUpperToBillRow(line: SalePaunchLineDetail): BillLineRow {
   return {
     variety: line.qism?.trim() || line.jins?.trim() || '',
@@ -242,7 +242,7 @@ export function resolveSalePaunchBillFromLabel(
         .filter((name): name is string => Boolean(name)),
     ),
   ];
-  const party = names.length > 0 ? names.join(', ') : 'Maal Khata';
+  const party = names.length > 0 ? names.join(', ') : 'Product';
   const jins = product.trim();
   return jins ? `${party} [${jins}]` : party;
 }

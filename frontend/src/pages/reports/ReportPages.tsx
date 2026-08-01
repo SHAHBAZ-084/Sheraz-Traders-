@@ -655,6 +655,8 @@ type StockBagType = 'BORI' | 'THELA';
 type StockReportResult = Awaited<ReturnType<typeof api.getStockReport>>;
 
 export function StockReportPage() {
+  const [stores, setStores] = useState<Array<{ id: number; name: string }>>([]);
+  const [storeId, setStoreId] = useState('');
   const [products, setProducts] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [productId, setProductId] = useState('');
   const [bagType, setBagType] = useState<StockBagType>('BORI');
@@ -663,10 +665,38 @@ export function StockReportPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.listProducts()
-      .then((rows) => setProducts(rows.map((p) => ({ id: p.id, name: p.name, code: p.code }))))
-      .catch(() => setProducts([]));
+    api.listActiveStores()
+      .then((rows) => setStores(rows.map((s) => ({ id: s.id, name: s.name }))))
+      .catch(() => setStores([]));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReport(null);
+    const loadProducts = async () => {
+      try {
+        if (storeId) {
+          const rows = await api.getProductsByStore(Number(storeId));
+          if (!cancelled) setProducts(rows.map((p) => ({ id: p.id, name: p.name, code: p.code })));
+        } else {
+          const rows = await api.listProducts();
+          if (!cancelled) setProducts(rows.map((p) => ({ id: p.id, name: p.name, code: p.code })));
+        }
+      } catch {
+        if (!cancelled) setProducts([]);
+      }
+    };
+    void loadProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId]);
+
+  function onStoreChange(value: string) {
+    setStoreId(value);
+    setProductId('');
+    setReport(null);
+  }
 
   async function onLoad() {
     setError('');
@@ -678,7 +708,14 @@ export function StockReportPage() {
     }
     setLoading(true);
     try {
-      setReport(await api.getStockReport({ productId: id, bagType }));
+      const selectedStoreId = Number(storeId);
+      setReport(
+        await api.getStockReport({
+          productId: id,
+          bagType,
+          storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+        }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load stock report');
     } finally {
@@ -689,14 +726,26 @@ export function StockReportPage() {
   return (
     <PageShell title="Stock Report" subtitle="Bag stock from Purchase to Maal (IN) and Sale on Paunch (OUT)">
       <Panel>
-        <div className="grid gap-3 md:grid-cols-4 md:items-end">
+        <div className="grid gap-3 md:grid-cols-5 md:items-end">
+          <div>
+            <FieldLabel>Store</FieldLabel>
+            <SearchSelect
+              value={storeId}
+              onChange={onStoreChange}
+              options={[
+                { value: '', label: 'All stores' },
+                ...stores.map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+              placeholder="All stores"
+            />
+          </div>
           <div className="md:col-span-2">
             <FieldLabel>Product</FieldLabel>
             <SearchSelect
               value={productId}
               onChange={setProductId}
               options={products.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.name}` }))}
-              placeholder="Search product…"
+              placeholder={storeId ? 'Products with store stock…' : 'Search product…'}
             />
           </div>
           <div>
@@ -726,6 +775,9 @@ export function StockReportPage() {
                 : null}
               {' '}Carried loose remainder: {report.carriedRemainderKg} kg
               ({report.bagType === 'BORI' ? 'Bori' : 'Thela'}).
+              {report.storeId
+                ? ` Filtered to store: ${stores.find((s) => s.id === report.storeId)?.name ?? `#${report.storeId}`}.`
+                : null}
             </p>
 
             <div className="overflow-x-auto">
@@ -764,6 +816,8 @@ export function StockReportPage() {
                   <tr className="border-t-2 border-border font-semibold">
                     <td className="py-2 pr-3" colSpan={3}>
                       Total In {report.totals.totalIn} · Total Out {report.totals.totalOut}
+                      {' · '}Sold (Sale Invoice) {report.totals.saleInvoiceQty}
+                      {' · '}Purchased (Purchase Invoice) {report.totals.purchaseInvoiceQty}
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums" />
                     <td className="py-2 text-right tabular-nums">

@@ -539,23 +539,38 @@ enum StockDirection {
   OUT
 }
 
+/** Physical stores used by Sale Invoice / Purchase Invoice stock only. */
+model Store {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  stockMovements  StockMovement[]
+  stockRemainders StockRemainder[]
+}
+
 model StockRemainder {
   id           Int          @id @default(autoincrement())
   productId    Int
   bagType      StockBagType
+  storeId      Int?
   remainderKg  Decimal      @default(0)
   updatedAt    DateTime     @updatedAt
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store?  @relation(fields: [storeId], references: [id])
 
-  @@unique([productId, bagType])
+  @@unique([productId, bagType, storeId])
   @@index([productId])
+  @@index([storeId])
 }
 
 model StockMovement {
   id               Int            @id @default(autoincrement())
   productId        Int
   bagType          StockBagType
+  storeId          Int?
   direction        StockDirection
   bags             Decimal
   date             DateTime
@@ -566,8 +581,10 @@ model StockMovement {
   createdAt        DateTime       @default(now())
 
   product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store?   @relation(fields: [storeId], references: [id])
   invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@index([productId, bagType, date, id])
   @@index([invoiceId])
+  @@index([storeId])
 }

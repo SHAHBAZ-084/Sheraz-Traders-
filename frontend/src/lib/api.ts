@@ -35,6 +35,13 @@ export type ProductCategory = {
   isActive: boolean;
 };
 
+export type Store = {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt?: string;
+};
+
 export type Product = {
   id: number;
   name: string;
@@ -272,6 +279,41 @@ export const api = {
     return request<{ ok: boolean }>(`/api/products/${id}`, { method: 'DELETE' });
   },
 
+  listStores() {
+    return request<Store[]>('/api/stores');
+  },
+  listActiveStores() {
+    return request<Store[]>('/api/stores/active');
+  },
+  createStore(data: { name: string }) {
+    return request<Store>('/api/stores', { method: 'POST', body: JSON.stringify(data) });
+  },
+  setStoreActive(id: number, isActive: boolean) {
+    return request<Store>(`/api/stores/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    });
+  },
+  getStockByStore(storeId: number) {
+    return request<{
+      store: { id: number; name: string };
+      products: Array<{
+        productId: number;
+        name: string;
+        code: string;
+        bori: number;
+        thela: number;
+        saleInvoiceQty: number;
+        purchaseInvoiceQty: number;
+      }>;
+    }>(`/api/stock/by-store/${storeId}`);
+  },
+  getProductsByStore(storeId: number) {
+    return request<Array<{ id: number; name: string; code: string }>>(
+      `/api/stock/products-by-store?storeId=${storeId}`,
+    );
+  },
+
   listSaleParties() {
     return request<Party[]>('/api/parties/sale-parties');
   },
@@ -390,6 +432,7 @@ export const api = {
 
   createSaleInvoice(data: {
     invoiceDate: string;
+    storeId: number;
     customerAccountId: number;
     billNo?: string;
     notes?: string;
@@ -404,6 +447,7 @@ export const api = {
 
   createPurchaseInvoice(data: {
     invoiceDate: string;
+    storeId: number;
     supplierAccountId: number;
     billNo?: string;
     notes?: string;
@@ -537,6 +581,8 @@ export const api = {
         code: string;
         bori: number;
         thela: number;
+        saleInvoiceQty: number;
+        purchaseInvoiceQty: number;
       }>;
       vouchersToday: number;
       recentVouchers: {
@@ -695,14 +741,18 @@ export const api = {
     }>('/api/inventory/bardana/add', { method: 'POST', body: JSON.stringify(data) });
   },
 
-  getStockReport(params: { productId: number; bagType: 'BORI' | 'THELA' }) {
+  getStockReport(params: { productId: number; bagType: 'BORI' | 'THELA'; storeId?: number | null }) {
     const query = new URLSearchParams({
       productId: String(params.productId),
       bagType: params.bagType,
     });
+    if (params.storeId != null && params.storeId > 0) {
+      query.set('storeId', String(params.storeId));
+    }
     return request<{
       product: { id: number; name: string; code: string };
       bagType: 'BORI' | 'THELA';
+      storeId: number | null;
       trackingStartedAt: string;
       historicalBackfill: false;
       carriedRemainderKg: number;
@@ -716,7 +766,13 @@ export const api = {
         bags: number;
         runningBalance: number;
       }>;
-      totals: { totalIn: number; totalOut: number; netBalance: number };
+      totals: {
+        totalIn: number;
+        totalOut: number;
+        netBalance: number;
+        saleInvoiceQty: number;
+        purchaseInvoiceQty: number;
+      };
     }>(`/api/stock/report?${query.toString()}`);
   },
 

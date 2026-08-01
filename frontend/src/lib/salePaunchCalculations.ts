@@ -6,7 +6,7 @@ export {
   roundMoney,
 } from './kachiMaalCalculations';
 
-export const MAAL_KHATA_CATEGORIES = ['Maal Khata'] as const;
+export const MAAL_KHATA_CATEGORIES = ['Products'] as const;
 export const SALE_PARTY_CATEGORIES = ['Sale Party'] as const;
 
 export type SalePaunchPreferenceRates = {

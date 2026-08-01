@@ -118,7 +118,7 @@ export type SalePaunchInvoiceTotals = {
   totalDammiAmount: number;
   totalRowBardanaAmount: number;
   lowerBardanaAmount: number | null;
-  /** Maal Khata credits (post-kanta) + commission credits — upper-side net. */
+  /** Product ledger credits (post-kanta) + commission credits — upper-side net. */
   upperNetTotal: number;
   /** Net owed by sale party after tax, bilty, and bardana; misc increases party debit. */
   lowerNetTotal: number;
