@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AccountType, VoucherType } from '@prisma/client';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination } from '../../utils/pagination';
 import * as accountingService from './accounting.service';
@@ -65,6 +65,7 @@ accountingRouter.post(
 
 accountingRouter.get(
   '/dashboard-summary',
+  requireReportsAccess,
   asyncHandler(async (_req, res) => {
     const summary = await accountingService.getDashboardSummary();
     res.json(summary);
@@ -86,6 +87,7 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/vouchers',
+  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
@@ -105,6 +107,7 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/reports/account-balance',
+  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const date = req.query.date as string | undefined;
     if (!date?.trim()) {
@@ -150,6 +153,7 @@ accountingRouter.post(
     const voucher = await accountingService.createVoucher({
       ...req.body,
       createdById: req.session.userId!,
+      postImmediately: req.user?.role === 'ADMIN',
     });
     res.status(201).json(voucher);
   }),
@@ -170,6 +174,7 @@ accountingRouter.patch(
 
 accountingRouter.delete(
   '/vouchers/:voucherId',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const voucher = await accountingService.cancelVoucher(
       parseInt(param(req.params.voucherId), 10),
@@ -181,6 +186,7 @@ accountingRouter.delete(
 
 accountingRouter.get(
   '/trial-balance',
+  requireReportsAccess,
   asyncHandler(async (_req, res) => {
     const trialBalance = await accountingService.getTrialBalance();
     res.json(trialBalance);
@@ -189,6 +195,7 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/ledger/:accountId',
+  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const accountId = parseInt(param(req.params.accountId), 10);
     const fromDate = req.query.fromDate as string | undefined;

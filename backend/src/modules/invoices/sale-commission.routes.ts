@@ -66,7 +66,7 @@ export function registerSaleCommissionRoutes(router: Router) {
       const invoice = await saleCommissionService.createSaleCommissionInvoice({
         ...req.body,
         createdById: req.session.userId!,
-      });
+      }, { postImmediately: req.user?.role === 'ADMIN' });
       res.status(201).json(invoice);
     }),
   );

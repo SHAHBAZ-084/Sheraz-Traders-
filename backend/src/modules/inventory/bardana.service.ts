@@ -163,3 +163,42 @@ export async function postSalePaunchEmptyBardanaOut(
     });
   }
 }
+
+/** Reverse empty-bardana OUT rows posted by a Sale Paunch invoice (restore bags). */
+export async function reverseSalePaunchEmptyBardana(
+  tx: Tx,
+  data: { invoiceId: number; invoiceReference: string; invoiceDate: Date },
+) {
+  const originals = await tx.emptyBardanaMovement.findMany({
+    where: {
+      invoiceId: data.invoiceId,
+      source: 'SALE_PAUNCH',
+      description: { not: { startsWith: 'Reversal —' } },
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  const alreadyReversed = await tx.emptyBardanaMovement.findFirst({
+    where: {
+      invoiceId: data.invoiceId,
+      description: { startsWith: 'Reversal —' },
+    },
+  });
+  if (alreadyReversed) return;
+
+  for (const m of originals) {
+    const opposite =
+      m.direction === EmptyBardanaDirection.OUT
+        ? EmptyBardanaDirection.IN
+        : EmptyBardanaDirection.OUT;
+    await adjustBalance(tx, {
+      bagType: m.bagType,
+      qty: Number(m.qty),
+      direction: opposite,
+      date: data.invoiceDate,
+      source: 'SALE_PAUNCH',
+      description: `Reversal — ${data.invoiceReference}`,
+      invoiceId: data.invoiceId,
+    });
+  }
+}

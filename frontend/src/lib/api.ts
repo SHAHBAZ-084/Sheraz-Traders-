@@ -9,6 +9,7 @@ export type User = {
   id: number;
   username: string;
   displayName: string;
+  role: 'ADMIN' | 'USER';
 };
 
 export type AccountCategory = {
@@ -246,6 +247,36 @@ export const api = {
   me() {
     return request<{ user: User }>('/api/auth/me');
   },
+  listUsers() {
+    return request<User[]>('/api/auth/users');
+  },
+  createUser(data: { username: string; password: string; displayName?: string }) {
+    return request<{ user: User }>('/api/auth/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  listPendingApprovals() {
+    return request<
+      Array<{
+        kind: 'voucher' | 'invoice';
+        id: number;
+        type: string;
+        reference: string | null;
+        date: string | null;
+        amount: number;
+        description: string | null;
+        createdBy: { id: number; displayName: string; username: string } | null;
+      }>
+    >('/api/approvals/pending');
+  },
+  approvePendingVoucher(id: number) {
+    return request(`/api/approvals/vouchers/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  approvePendingInvoice(id: number) {
+    return request(`/api/approvals/invoices/${id}/approve`, { method: 'POST', body: '{}' });
+  },
 
   listCategories() {
     return request<AccountCategory[]>('/api/accounting/categories');
@@ -316,6 +347,18 @@ export const api = {
     return request<{ productId: number; storeId: number | null; balance: number }>(
       `/api/stock/balance?${query.toString()}`,
     );
+  },
+  createStockTransfer(data: {
+    transferDate: string;
+    fromStoreId: number;
+    toStoreId: number;
+    productId: number;
+    quantity: number;
+  }) {
+    return request<{ id: number; reference: string; type: string }>('/api/stock/transfer', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
   getProductsByStore(storeId: number) {
     return request<Array<{ id: number; name: string; code: string }>>(
@@ -630,6 +673,9 @@ export const api = {
   },
   cancelVoucher(voucherId: number) {
     return request<Voucher>(`/api/accounting/vouchers/${voucherId}`, { method: 'DELETE' });
+  },
+  cancelInvoice(invoiceId: number) {
+    return request<InvoiceDetail>(`/api/invoices/${invoiceId}`, { method: 'DELETE' });
   },
 
   listAccounts() {

@@ -289,7 +289,37 @@ function buildLedgerLegs(
   return { legs, totalDebits, totalCredits, miscAmount };
 }
 
-export async function createKachiMaalInvoice(data: CreateKachiMaalInput) {
+async function postKachiMaalAccounting(
+  tx: Prisma.TransactionClient,
+  args: {
+    invoiceId: number;
+    reference: string;
+    invoiceDate: Date | string;
+    billNo?: string | null;
+    createdById: number;
+    legs: VoucherLeg[];
+    totalDebits: number;
+  },
+) {
+  const voucher = await createKachiVoucherInTx(tx, {
+    legs: args.legs,
+    amount: args.totalDebits,
+    date: args.invoiceDate,
+    description: `Kachi Maal Invoice ${args.reference}`,
+    reference: voucherReferenceFromBillNo(args.billNo ?? undefined),
+    createdById: args.createdById,
+  });
+
+  await tx.invoiceVoucher.create({
+    data: { invoiceId: args.invoiceId, voucherId: voucher.id },
+  });
+}
+
+export async function createKachiMaalInvoice(
+  data: CreateKachiMaalInput,
+  opts?: { postImmediately?: boolean },
+) {
+  const postImmediately = opts?.postImmediately !== false;
   if (data.lines.length === 0) {
     throw new AppError(400, 'At least one line is required');
   }
@@ -338,7 +368,7 @@ export async function createKachiMaalInvoice(data: CreateKachiMaalInput) {
     const invoice = await tx.invoice.create({
       data: {
         type: InvoiceType.KACHI_MAAL,
-        status: InvoiceStatus.POSTED,
+        status: postImmediately ? InvoiceStatus.POSTED : InvoiceStatus.PENDING_APPROVAL,
         reference,
         invoiceDate,
         billNo: data.billNo?.trim() || null,
@@ -379,17 +409,109 @@ export async function createKachiMaalInvoice(data: CreateKachiMaalInput) {
       },
     });
 
-    const voucher = await createKachiVoucherInTx(tx, {
-      legs,
-      amount: totalDebits,
-      date: data.invoiceDate,
-      description: `Kachi Maal Invoice ${reference}`,
-      reference: voucherReferenceFromBillNo(data.billNo),
-      createdById: data.createdById,
+    if (postImmediately) {
+      await postKachiMaalAccounting(tx, {
+        invoiceId: invoice.id,
+        reference,
+        invoiceDate: data.invoiceDate,
+        billNo: data.billNo,
+        createdById: data.createdById,
+        legs,
+        totalDebits,
+      });
+    }
+
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: {
+        kachiMaalLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' } },
+        vouchers: { include: { voucher: { include: { ledgerEntries: true } } } },
+        debitAccount: true,
+        createdBy: { select: { id: true, displayName: true, username: true } },
+      },
+    });
+  });
+}
+
+export async function approveKachiMaalInvoice(invoiceId: number) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        type: InvoiceType.KACHI_MAAL,
+        status: InvoiceStatus.PENDING_APPROVAL,
+      },
+      include: { kachiMaalLines: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!invoice) throw new AppError(404, 'Pending kachi maal invoice not found');
+    if (invoice.debitAccountId == null) {
+      throw new AppError(400, 'Kachi maal invoice missing debit account');
+    }
+
+    const prefs = await getSystemPreferences();
+    const systemAccounts = await ensureKachiMaalAccounts(tx);
+    await assertDebitAccount(tx, invoice.debitAccountId);
+
+    const computedLines: ComputedLine[] = invoice.kachiMaalLines.map((line) => {
+      const input = {
+        partyAccountId: line.partyAccountId,
+        jins: line.jins ?? undefined,
+        qism: line.qism ?? undefined,
+        boriOrThelaMode: line.boriOrThelaMode,
+        bagCount: line.bagCount,
+        bhartii: Number(line.bhartii),
+        dharanCount: line.dharanCount,
+        looseKg: Number(line.looseKg),
+        ratePerMaund: Number(line.ratePerMaund),
+        bardanaQty: line.bardanaQty != null ? Number(line.bardanaQty) : null,
+        bardanaRate: line.bardanaRate != null ? Number(line.bardanaRate) : null,
+      };
+      const computed = computeKachiMaalRow(input, prefs);
+      return { ...input, ...computed };
     });
 
-    await tx.invoiceVoucher.create({
-      data: { invoiceId: invoice.id, voucherId: voucher.id },
+    for (const line of computedLines) {
+      await assertPurchasePartyAccount(tx, line.partyAccountId);
+    }
+
+    const totals = computeKachiMaalInvoiceTotals(
+      computedLines,
+      prefs,
+      invoice.miscAmount != null ? Number(invoice.miscAmount) : 0,
+      invoice.lowerBardanaQty != null ? Number(invoice.lowerBardanaQty) : null,
+      invoice.lowerBardanaRate != null ? Number(invoice.lowerBardanaRate) : null,
+    );
+
+    const voucherHeader: InvoiceVoucherHeader = {
+      tafseel: invoice.tafseel,
+      gariNo: invoice.gariNo,
+    };
+    const { legs, totalDebits, totalCredits } = buildLedgerLegs(
+      invoice.debitAccountId,
+      computedLines,
+      totals,
+      systemAccounts,
+      invoice.lowerBardanaMode,
+      voucherHeader,
+      invoice.reference,
+    );
+    if (Math.abs(totalDebits - totalCredits) > 0.01) {
+      throw new AppError(500, 'Invoice debits and credits do not balance — approve aborted');
+    }
+
+    await postKachiMaalAccounting(tx, {
+      invoiceId: invoice.id,
+      reference: invoice.reference,
+      invoiceDate: invoice.invoiceDate,
+      billNo: invoice.billNo,
+      createdById: invoice.createdById,
+      legs,
+      totalDebits,
+    });
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.POSTED },
     });
 
     return tx.invoice.findUniqueOrThrow({

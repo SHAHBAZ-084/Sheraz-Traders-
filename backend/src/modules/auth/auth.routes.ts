@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { requireAuth } from '../../middleware/auth';
+import { z } from 'zod';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
+import { asyncHandler, validateBody } from '../../utils/helpers';
 import * as authService from './auth.service';
 
 export const authRouter = Router();
@@ -50,3 +52,29 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
     next(error);
   }
 });
+
+authRouter.get(
+  '/users',
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json(await authService.listUsers());
+  }),
+);
+
+authRouter.post(
+  '/users',
+  requireAuth,
+  requireAdmin,
+  validateBody(
+    z.object({
+      username: z.string().min(1),
+      password: z.string().min(4),
+      displayName: z.string().optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const user = await authService.createUser(req.body);
+    res.status(201).json({ user });
+  }),
+);

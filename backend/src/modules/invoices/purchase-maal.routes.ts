@@ -66,7 +66,7 @@ export function registerPurchaseMaalRoutes(router: Router) {
       const invoice = await purchaseMaalService.createPurchaseMaalInvoice({
         ...req.body,
         createdById: req.session.userId!,
-      });
+      }, { postImmediately: req.user?.role === 'ADMIN' });
       res.status(201).json(invoice);
     }),
   );

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { FinancialYearStatus, PrismaClient } from '@prisma/client';
+import { FinancialYearStatus, PrismaClient, Role } from '@prisma/client';
 import {
   bootstrapChartOfAccounts,
   fiscalYearLabelForDate,
@@ -20,11 +20,20 @@ async function main() {
         username,
         passwordHash,
         displayName: 'Shop Owner',
+        role: Role.ADMIN,
       },
     });
     console.log(`Created default user "${username}". Change the password after first login.`);
   } else {
-    console.log(`Default user "${username}" already exists — skipping user seed.`);
+    if (existing.role !== Role.ADMIN) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { role: Role.ADMIN },
+      });
+      console.log(`Updated default user "${username}" role to ADMIN.`);
+    } else {
+      console.log(`Default user "${username}" already exists — skipping user seed.`);
+    }
   }
 
   const activeYear = await prisma.financialYear.findFirst({

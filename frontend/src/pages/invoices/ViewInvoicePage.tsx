@@ -4,9 +4,18 @@ import { jsPDF } from 'jspdf';
 import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { api, type InvoiceDetail, type SystemPreferences } from '../../lib/api';
 import { buildInvoiceReference, type InvoiceTypeKey } from '../../lib/invoiceReference';
-import { FieldLabel, FinancialButton, PageShell, Panel, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import {
+  DangerButton,
+  FieldLabel,
+  FinancialButton,
+  PageShell,
+  Panel,
+  SecondaryButton,
+  TextInput,
+} from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { SearchSelect } from '../../components/ui/SearchSelect';
+import { useAuth } from '../../contexts/AuthContext';
 import { InvoiceBillView } from './InvoiceBillView';
 
 const INVOICE_TYPE_OPTIONS = (Object.keys(INVOICE_TYPE_LABELS) as InvoiceTypeKey[]).map((key) => ({
@@ -15,11 +24,14 @@ const INVOICE_TYPE_OPTIONS = (Object.keys(INVOICE_TYPE_LABELS) as InvoiceTypeKey
 }));
 
 export function ViewInvoicePage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const printRef = useRef<HTMLDivElement>(null);
   const [invoiceType, setInvoiceType] = useState<InvoiceTypeKey>('KACHI_MAAL');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [prefs, setPrefs] = useState<SystemPreferences | null>(null);
   const [notFoundRef, setNotFoundRef] = useState<string | null>(null);
@@ -81,6 +93,23 @@ export function ViewInvoicePage() {
     }
   }
 
+  async function onDelete() {
+    if (!invoice || invoice.status === 'CANCELLED') return;
+    if (!window.confirm('This will reverse the ledger entries — are you sure?')) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const updated = await api.cancelInvoice(invoice.id);
+      setInvoice(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const isCancelled = invoice?.status === 'CANCELLED';
+
   return (
     <PageShell title="View Invoice" subtitle="Look up a posted bill by type and number">
       <Panel className="mb-6">
@@ -120,10 +149,24 @@ export function ViewInvoicePage() {
 
       {invoice ? (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <SecondaryButton type="button" disabled={downloading} onClick={onDownloadPdf}>
-              {downloading ? 'Generating PDF…' : 'Download PDF'}
-            </SecondaryButton>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span
+              className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                isCancelled ? 'bg-bgAccent text-textAccent' : 'bg-bgAccent text-success'
+              }`}
+            >
+              {isCancelled ? 'Cancelled' : invoice.status === 'PENDING_APPROVAL' ? 'Pending approval' : 'Posted'}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryButton type="button" disabled={downloading} onClick={onDownloadPdf}>
+                {downloading ? 'Generating PDF…' : 'Download PDF'}
+              </SecondaryButton>
+              {isAdmin && !isCancelled ? (
+                <DangerButton type="button" disabled={deleting} onClick={() => void onDelete()}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </DangerButton>
+              ) : null}
+            </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-border bg-surface2 p-4">
             <div ref={printRef} className="mx-auto w-[800px] max-w-full shadow-sm">

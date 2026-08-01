@@ -1,8 +1,10 @@
-import { InvoiceStatus, InvoiceType, Prisma } from '@prisma/client';
+import { InvoiceStatus, InvoiceType, Prisma, VoucherStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import { PaginatedResult } from '../../utils/pagination';
-import { getActiveFinancialYearId } from '../accounting/accounting.service';
+import { cancelVoucherInTx, getActiveFinancialYearId } from '../accounting/accounting.service';
+import { reverseSalePaunchEmptyBardana } from '../inventory/bardana.service';
+import { reverseInvoiceStockMovements } from '../stock/stock.service';
 import { buildInvoiceReference, INVOICE_TYPE_PREFIX } from './invoice-reference';
 
 export { INVOICE_TYPE_PREFIX, buildInvoiceReference };
@@ -112,6 +114,71 @@ export async function getInvoiceByReference(reference: string) {
     throw new AppError(404, `No invoice found for ${trimmed}.`);
   }
   return invoice;
+}
+
+/**
+ * Cancel a posted (or pending) invoice: reverse linked vouchers' ledger entries,
+ * reverse stock / empty-bardana movements where applicable, set CANCELLED.
+ */
+export async function cancelInvoice(invoiceId: number, userId: number) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findFirst({
+      where: { id: invoiceId },
+      include: {
+        vouchers: { select: { voucherId: true } },
+      },
+    });
+    if (!invoice) throw new AppError(404, 'Invoice not found');
+    if (invoice.status === InvoiceStatus.CANCELLED) {
+      throw new AppError(400, 'Invoice is already cancelled');
+    }
+    if (invoice.status === InvoiceStatus.DRAFT) {
+      throw new AppError(400, 'Draft invoices cannot be cancelled this way — delete is not supported for drafts');
+    }
+
+    for (const link of invoice.vouchers) {
+      const voucher = await tx.voucher.findFirst({ where: { id: link.voucherId } });
+      if (!voucher) continue;
+      if (voucher.status === VoucherStatus.CANCELLED) continue;
+      await cancelVoucherInTx(tx, voucher.id, userId);
+    }
+
+    const invoiceDate = invoice.invoiceDate ?? new Date();
+
+    // Stocked invoice types: SI/PI (store-scoped), Purchase Maal, Sale Paunch.
+    // STOCK_TRANSFER also has stock movements — reverse those too if cancelled via this path.
+    if (
+      invoice.type === InvoiceType.SALE_INVOICE ||
+      invoice.type === InvoiceType.PURCHASE_INVOICE ||
+      invoice.type === InvoiceType.PURCHASE_MAAL ||
+      invoice.type === InvoiceType.SALE_PAUNCH ||
+      invoice.type === InvoiceType.STOCK_TRANSFER
+    ) {
+      await reverseInvoiceStockMovements(tx, {
+        invoiceId: invoice.id,
+        invoiceReference: invoice.reference,
+        invoiceDate,
+      });
+    }
+
+    if (invoice.type === InvoiceType.SALE_PAUNCH) {
+      await reverseSalePaunchEmptyBardana(tx, {
+        invoiceId: invoice.id,
+        invoiceReference: invoice.reference,
+        invoiceDate,
+      });
+    }
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.CANCELLED },
+    });
+
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: invoiceDetailInclude,
+    });
+  });
 }
 
 /** Draft invoice shell — posting with balanced vouchers comes next per invoice type. */

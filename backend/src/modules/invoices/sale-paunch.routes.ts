@@ -72,7 +72,7 @@ export function registerSalePaunchRoutes(router: Router) {
       const invoice = await salePaunchService.createSalePaunchInvoice({
         ...req.body,
         createdById: req.session.userId!,
-      });
+      }, { postImmediately: req.user?.role === 'ADMIN' });
       res.status(201).json(invoice);
     }),
   );

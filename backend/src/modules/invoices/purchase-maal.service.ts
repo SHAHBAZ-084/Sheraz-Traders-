@@ -281,7 +281,54 @@ function buildLedgerLegs(
   return { legs, totalDebits, totalCredits };
 }
 
-export async function createPurchaseMaalInvoice(data: CreatePurchaseMaalInput) {
+async function postPurchaseMaalAccounting(
+  tx: Prisma.TransactionClient,
+  args: {
+    invoiceId: number;
+    reference: string;
+    invoiceDate: Date | string;
+    billNo?: string | null;
+    createdById: number;
+    productId: number;
+    legs: VoucherLeg[];
+    totalDebits: number;
+    stockLines: Array<{
+      boriOrThelaMode: BoriThelaMode;
+      bagCount: number;
+      bhartii: number;
+      dharanCount: number;
+      looseKg: number;
+    }>;
+  },
+) {
+  const voucher = await createMultiLegVoucherInTx(tx, {
+    type: VoucherType.PURCHASE_MAAL,
+    legs: args.legs,
+    amount: args.totalDebits,
+    date: args.invoiceDate,
+    description: `Purchase Maal Invoice ${args.reference}`,
+    reference: voucherReferenceFromBillNo(args.billNo ?? undefined),
+    createdById: args.createdById,
+  });
+
+  await tx.invoiceVoucher.create({
+    data: { invoiceId: args.invoiceId, voucherId: voucher.id },
+  });
+
+  await postPurchaseMaalStockIn(tx, {
+    productId: args.productId,
+    invoiceId: args.invoiceId,
+    invoiceReference: args.reference,
+    invoiceDate: typeof args.invoiceDate === 'string' ? new Date(args.invoiceDate) : args.invoiceDate,
+    lines: args.stockLines,
+  });
+}
+
+export async function createPurchaseMaalInvoice(
+  data: CreatePurchaseMaalInput,
+  opts?: { postImmediately?: boolean },
+) {
+  const postImmediately = opts?.postImmediately !== false;
   if (data.lines.length === 0) {
     throw new AppError(400, 'At least one line is required');
   }
@@ -332,7 +379,7 @@ export async function createPurchaseMaalInvoice(data: CreatePurchaseMaalInput) {
     const invoice = await tx.invoice.create({
       data: {
         type: InvoiceType.PURCHASE_MAAL,
-        status: InvoiceStatus.POSTED,
+        status: postImmediately ? InvoiceStatus.POSTED : InvoiceStatus.PENDING_APPROVAL,
         reference,
         invoiceDate,
         billNo: data.billNo?.trim() || null,
@@ -378,32 +425,130 @@ export async function createPurchaseMaalInvoice(data: CreatePurchaseMaalInput) {
       },
     });
 
-    const voucher = await createMultiLegVoucherInTx(tx, {
-      type: VoucherType.PURCHASE_MAAL,
-      legs,
-      amount: totalDebits,
-      date: data.invoiceDate,
-      description: `Purchase Maal Invoice ${reference}`,
-      reference: voucherReferenceFromBillNo(data.billNo),
-      createdById: data.createdById,
+    if (postImmediately) {
+      await postPurchaseMaalAccounting(tx, {
+        invoiceId: invoice.id,
+        reference,
+        invoiceDate: data.invoiceDate,
+        billNo: data.billNo,
+        createdById: data.createdById,
+        productId: product.id,
+        legs,
+        totalDebits,
+        stockLines: computedLines.map((line) => ({
+          boriOrThelaMode: line.boriOrThelaMode,
+          bagCount: line.bagCount,
+          bhartii: line.bhartii,
+          dharanCount: line.dharanCount,
+          looseKg: line.looseKg,
+        })),
+      });
+    }
+
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: {
+        purchaseMaalLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' } },
+        product: { include: { account: true } },
+        vouchers: { include: { voucher: { include: { ledgerEntries: true } } } },
+        debitAccount: true,
+        createdBy: { select: { id: true, displayName: true, username: true } },
+      },
+    });
+  });
+}
+
+export async function approvePurchaseMaalInvoice(invoiceId: number) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        type: InvoiceType.PURCHASE_MAAL,
+        status: InvoiceStatus.PENDING_APPROVAL,
+      },
+      include: { purchaseMaalLines: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!invoice) throw new AppError(404, 'Pending purchase maal invoice not found');
+    if (invoice.productId == null) throw new AppError(400, 'Purchase maal invoice missing product');
+    if (invoice.debitAccountId == null) {
+      throw new AppError(400, 'Purchase maal invoice missing maal khata account');
+    }
+
+    const prefs = await getSystemPreferences();
+    const systemAccounts = await ensureKachiMaalAccounts(tx);
+    const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, invoice.productId);
+
+    const computedLines: ComputedLine[] = invoice.purchaseMaalLines.map((line) => {
+      const input = {
+        partyAccountId: line.partyAccountId,
+        jins: line.jins ?? undefined,
+        qism: line.qism ?? undefined,
+        boriOrThelaMode: line.boriOrThelaMode,
+        bagCount: line.bagCount,
+        bhartii: Number(line.bhartii),
+        dharanCount: line.dharanCount,
+        looseKg: Number(line.looseKg),
+        ratePerMaund: Number(line.ratePerMaund),
+        bardanaQty: line.bardanaQty != null ? Number(line.bardanaQty) : null,
+        bardanaRate: line.bardanaRate != null ? Number(line.bardanaRate) : null,
+        dammiChecked: line.dammiChecked,
+      };
+      const computed = computePurchaseMaalRow(input, prefs);
+      return { ...input, ...computed, dammiChecked: line.dammiChecked };
     });
 
-    await tx.invoiceVoucher.create({
-      data: { invoiceId: invoice.id, voucherId: voucher.id },
+    for (const line of computedLines) {
+      await assertPurchasePartyAccount(tx, line.partyAccountId);
+    }
+
+    const marketFeeEnabled = invoice.marketFeeEnabled;
+    const mazduriEnabled = invoice.mazduriEnabled;
+    const totals = computePurchaseMaalInvoiceTotals(computedLines, prefs, {
+      marketFeeEnabled,
+      mazduriEnabled,
+      lowerBardanaQty: invoice.lowerBardanaQty != null ? Number(invoice.lowerBardanaQty) : null,
+      lowerBardanaRate: invoice.lowerBardanaRate != null ? Number(invoice.lowerBardanaRate) : null,
     });
 
-    await postPurchaseMaalStockIn(tx, {
-      productId: product.id,
+    const voucherHeader: InvoiceVoucherHeader = {
+      tafseel: invoice.tafseel,
+      gariNo: invoice.gariNo,
+    };
+    const { legs, totalDebits, totalCredits } = buildLedgerLegs(
+      maalKhataAccountId,
+      computedLines,
+      totals,
+      systemAccounts,
+      invoice.lowerBardanaMode,
+      mazduriEnabled,
+      voucherHeader,
+      invoice.reference,
+    );
+    if (Math.abs(totalDebits - totalCredits) > 0.01) {
+      throw new AppError(500, 'Invoice debits and credits do not balance — approve aborted');
+    }
+
+    await postPurchaseMaalAccounting(tx, {
       invoiceId: invoice.id,
-      invoiceReference: reference,
-      invoiceDate,
-      lines: computedLines.map((line) => ({
+      reference: invoice.reference,
+      invoiceDate: invoice.invoiceDate,
+      billNo: invoice.billNo,
+      createdById: invoice.createdById,
+      productId: product.id,
+      legs,
+      totalDebits,
+      stockLines: computedLines.map((line) => ({
         boriOrThelaMode: line.boriOrThelaMode,
         bagCount: line.bagCount,
         bhartii: line.bhartii,
         dharanCount: line.dharanCount,
         looseKg: line.looseKg,
       })),
+    });
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.POSTED },
     });
 
     return tx.invoice.findUniqueOrThrow({

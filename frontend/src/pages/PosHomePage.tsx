@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { INVOICE_QUICK_LINKS, REPORT_QUICK_LINKS, VOUCHER_QUICK_LINKS } from '../config/navigation';
 import { LegacyTable, PageShell, Tile } from '../components/ui/PageShell';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { formatLedgerAmount, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../lib/format';
 
@@ -88,20 +89,28 @@ function QuickLink({
 }
 
 export function PosHomePage() {
+  const { user } = useAuth();
+  const isUserRole = user?.role === 'USER';
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
+    if (isUserRole) {
+      setSummary(null);
+      setLoadError('');
+      return;
+    }
     api
       .getDashboardSummary()
       .then(setSummary)
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard'));
-  }, []);
+  }, [isUserRole]);
 
   return (
     <PageShell subtitle="Today at a glance">
       {loadError ? <p className="text-sm text-danger">{loadError}</p> : null}
 
+      {!isUserRole ? (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatBox
           label="Cash Balance"
@@ -160,6 +169,7 @@ export function PosHomePage() {
           value={summary ? String(summary.vouchersToday) : '—'}
         />
       </div>
+      ) : null}
 
       <div>
         <h2 className="legacy-section-title">New Voucher</h2>
@@ -188,6 +198,7 @@ export function PosHomePage() {
         </div>
       </div>
 
+      {!isUserRole ? (
       <div>
         <h2 className="legacy-section-title">Reports</h2>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -196,8 +207,9 @@ export function PosHomePage() {
           ))}
         </div>
       </div>
+      ) : null}
 
-      <PanelSection summary={summary} />
+      {!isUserRole ? <PanelSection summary={summary} /> : null}
     </PageShell>
   );
 }

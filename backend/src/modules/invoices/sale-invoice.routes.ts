@@ -42,10 +42,13 @@ export function registerSaleInvoiceRoutes(router: Router) {
     '/sale-invoice',
     validateBody(createSchema),
     asyncHandler(async (req, res) => {
-      const invoice = await saleInvoiceService.createSaleInvoice({
-        ...req.body,
-        createdById: req.session.userId!,
-      });
+      const invoice = await saleInvoiceService.createSaleInvoice(
+        {
+          ...req.body,
+          createdById: req.session.userId!,
+        },
+        { postImmediately: req.user?.role === 'ADMIN' },
+      );
       res.status(201).json(invoice);
     }),
   );

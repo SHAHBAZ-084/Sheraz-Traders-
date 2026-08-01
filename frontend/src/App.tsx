@@ -9,6 +9,7 @@ import { PurchasePartiesPage, SalePartiesPage } from './pages/accounts/PartiesPa
 import { ProductRemovePage } from './pages/accounts/ProductManagePage';
 import { AddProductPage } from './pages/products/AddProductPage';
 import { BardanaPage } from './pages/inventory/BardanaPage';
+import { StockTransferPage } from './pages/inventory/StockTransferPage';
 import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
 import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
 import { LoginPage } from './pages/LoginPage';
@@ -17,6 +18,7 @@ import { AccountReportsPage, AccountBalancePage, SalePurchaseReportsPage, StockR
 import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
 import { DatabaseMaintenancePage } from './pages/system/DatabaseMaintenancePage';
 import { StoresPage } from './pages/system/StoresPage';
+import { PendingApprovalsPage } from './pages/system/PendingApprovalsPage';
 import { UserInfoPage } from './pages/user/UserInfoPage';
 import { VoucherFormPage, VoucherListPage } from './pages/vouchers/VoucherPages';
 
@@ -53,6 +55,7 @@ export default function App() {
                 <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
 
                 <Route path="/inventory/bardana" element={<BardanaPage />} />
+                <Route path="/inventory/stock-transfer" element={<StockTransferPage />} />
 
                 <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />
                 <Route path="/vouchers/journal" element={<VoucherFormPage kind="journal" />} />
@@ -68,6 +71,7 @@ export default function App() {
 
                 <Route path="/system/database" element={<DatabaseMaintenancePage />} />
                 <Route path="/system/stores" element={<StoresPage />} />
+                <Route path="/system/approvals" element={<PendingApprovalsPage />} />
                 <Route path="/system/preferences" element={<SystemPreferencesPage />} />
                 <Route path="/user" element={<UserInfoPage />} />
               </Route>

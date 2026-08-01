@@ -326,7 +326,11 @@ function buildLedgerLegs(
   return { legs, totalDebits, totalCredits };
 }
 
-export async function createSalePaunchInvoice(data: CreateSalePaunchInput) {
+export async function createSalePaunchInvoice(
+  data: CreateSalePaunchInput,
+  opts?: { postImmediately?: boolean },
+) {
+  const postImmediately = opts?.postImmediately !== false;
   if (data.lines.length === 0) {
     throw new AppError(400, 'At least one line is required');
   }
@@ -381,7 +385,7 @@ export async function createSalePaunchInvoice(data: CreateSalePaunchInput) {
     const invoice = await tx.invoice.create({
       data: {
         type: InvoiceType.SALE_PAUNCH,
-        status: InvoiceStatus.POSTED,
+        status: postImmediately ? InvoiceStatus.POSTED : InvoiceStatus.PENDING_APPROVAL,
         reference,
         invoiceDate,
         billNo: data.billNo?.trim() || null,
@@ -435,22 +439,143 @@ export async function createSalePaunchInvoice(data: CreateSalePaunchInput) {
       },
     });
 
+    if (postImmediately) {
+      const voucher = await createSalePaunchVoucherInTx(tx, {
+        legs,
+        amount: totalDebits,
+        date: data.invoiceDate,
+        description: `Sale Paunch Invoice ${reference}`,
+        reference: voucherReferenceFromBillNo(data.billNo),
+        createdById: data.createdById,
+      });
+
+      await tx.invoiceVoucher.create({
+        data: { invoiceId: invoice.id, voucherId: voucher.id },
+      });
+
+      await postSalePaunchStockOut(tx, {
+        invoiceId: invoice.id,
+        invoiceReference: reference,
+        invoiceDate,
+        lines: computedLines.map((line) => ({
+          maalKhataAccountId: line.maalKhataAccountId,
+          boriOrThelaMode: line.boriOrThelaMode,
+          bagCount: line.bagCount,
+          thelaCount: line.thelaCount ?? 0,
+        })),
+      });
+
+      await postSalePaunchEmptyBardanaOut(tx, {
+        invoiceId: invoice.id,
+        invoiceReference: reference,
+        invoiceDate,
+        lines: computedLines.map((line) => ({
+          boriOrThelaMode: line.boriOrThelaMode,
+          bagCount: line.bagCount,
+          thelaCount: line.thelaCount ?? 0,
+        })),
+      });
+    }
+
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: {
+        salePaunchLines: { include: { maalKhataAccount: true }, orderBy: { sortOrder: 'asc' } },
+        vouchers: { include: { voucher: { include: { ledgerEntries: true } } } },
+        debitAccount: true,
+        createdBy: { select: { id: true, displayName: true, username: true } },
+      },
+    });
+  });
+}
+
+export async function approveSalePaunchInvoice(invoiceId: number) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        type: InvoiceType.SALE_PAUNCH,
+        status: InvoiceStatus.PENDING_APPROVAL,
+      },
+      include: { salePaunchLines: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!invoice) throw new AppError(404, 'Pending sale paunch invoice not found');
+    if (invoice.debitAccountId == null) {
+      throw new AppError(400, 'Sale paunch invoice missing sale party account');
+    }
+
+    const prefs = await getSystemPreferences();
+    const systemAccounts = await ensureSalePaunchAccounts(tx);
+    await assertSalePartyAccount(tx, invoice.debitAccountId);
+
+    const lineInputs: SalePaunchLineInput[] = invoice.salePaunchLines.map((line) => ({
+      maalKhataAccountId: line.maalKhataAccountId,
+      jins: line.jins ?? undefined,
+      qism: line.qism ?? undefined,
+      boriOrThelaMode: line.boriOrThelaMode,
+      bagCount: Number(line.bagCount),
+      thelaCount: Number(line.thelaCount),
+      compWeightKg: Number(line.totalWeightKg),
+      kaatKg: Number(line.kaatKg),
+      lowerKaatKg: Number(line.lowerKaatKg),
+      upperRatePerMaund: Number(line.upperRatePerMaund),
+      lowerRatePerMaund: Number(line.lowerRatePerMaund),
+      kanta: Number(line.kanta),
+      bardanaQty: line.bardanaQty != null ? Number(line.bardanaQty) : null,
+      bardanaRate: line.bardanaRate != null ? Number(line.bardanaRate) : null,
+      dammiChecked: line.dammiChecked,
+    }));
+    for (const line of lineInputs) {
+      await assertMaalKhataAccount(tx, line.maalKhataAccountId);
+    }
+
+    const computedLines = buildComputedLines(lineInputs, prefs);
+    const taxAmount = roundMoney(Number(invoice.taxAmount));
+    const biltyKirayaAmount = roundMoney(Number(invoice.biltyKirayaAmount));
+    const miscAmount = roundMoney(Number(invoice.miscAmount));
+    const totals = computeSalePaunchInvoiceTotals(computedLines, {
+      taxAmount,
+      biltyKirayaAmount,
+      miscAmount,
+      lowerBardanaQty: invoice.lowerBardanaQty != null ? Number(invoice.lowerBardanaQty) : null,
+      lowerBardanaRate: invoice.lowerBardanaRate != null ? Number(invoice.lowerBardanaRate) : null,
+    });
+
+    const voucherHeader: InvoiceVoucherHeader = {
+      tafseel: invoice.tafseel ?? undefined,
+      gariNo: invoice.gariNo ?? undefined,
+    };
+    const { legs, totalDebits, totalCredits } = buildLedgerLegs(
+      invoice.debitAccountId,
+      computedLines,
+      totals,
+      systemAccounts,
+      invoice.lowerBardanaMode,
+      voucherHeader,
+      taxAmount,
+      biltyKirayaAmount,
+      miscAmount,
+      invoice.reference,
+    );
+    if (Math.abs(totalDebits - totalCredits) > 0.01) {
+      throw new AppError(500, 'Invoice debits and credits do not balance — approve aborted');
+    }
+
+    const invoiceDate = invoice.invoiceDate ?? new Date();
     const voucher = await createSalePaunchVoucherInTx(tx, {
       legs,
       amount: totalDebits,
-      date: data.invoiceDate,
-      description: `Sale Paunch Invoice ${reference}`,
-      reference: voucherReferenceFromBillNo(data.billNo),
-      createdById: data.createdById,
+      date: invoiceDate,
+      description: `Sale Paunch Invoice ${invoice.reference}`,
+      reference: voucherReferenceFromBillNo(invoice.billNo ?? undefined),
+      createdById: invoice.createdById,
     });
-
     await tx.invoiceVoucher.create({
       data: { invoiceId: invoice.id, voucherId: voucher.id },
     });
-
     await postSalePaunchStockOut(tx, {
       invoiceId: invoice.id,
-      invoiceReference: reference,
+      invoiceReference: invoice.reference,
       invoiceDate,
       lines: computedLines.map((line) => ({
         maalKhataAccountId: line.maalKhataAccountId,
@@ -459,16 +584,19 @@ export async function createSalePaunchInvoice(data: CreateSalePaunchInput) {
         thelaCount: line.thelaCount ?? 0,
       })),
     });
-
     await postSalePaunchEmptyBardanaOut(tx, {
       invoiceId: invoice.id,
-      invoiceReference: reference,
+      invoiceReference: invoice.reference,
       invoiceDate,
       lines: computedLines.map((line) => ({
         boriOrThelaMode: line.boriOrThelaMode,
         bagCount: line.bagCount,
         thelaCount: line.thelaCount ?? 0,
       })),
+    });
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.POSTED },
     });
 
     return tx.invoice.findUniqueOrThrow({

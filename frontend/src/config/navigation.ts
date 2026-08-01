@@ -113,15 +113,32 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     items: [
       { kind: 'link', label: 'Database Maintenance', to: '/system/database' },
       { kind: 'link', label: 'Stores', to: '/system/stores' },
+      { kind: 'link', label: 'Transfer Stock', to: '/inventory/stock-transfer' },
+      { kind: 'link', label: 'Pending Approvals', to: '/system/approvals' },
       { kind: 'link', label: 'System Preference', to: '/system/preferences' },
     ],
   },
 ];
 
-/** Flat links for dashboard invoice shortcuts. */
-export const INVOICE_QUICK_LINKS: NavLink[] = (
-  SIDEBAR_NAV.find((section) => section.id === 'invoices')?.items ?? []
-).flatMap((item) => (item.kind === 'link' ? [item] : []));
+/** Flat links for dashboard invoice shortcuts (subset of Invoices nav, ordered). */
+const DASHBOARD_INVOICE_ROUTES = [
+  '/invoices/kachi-maal',
+  '/invoices/sale-invoice',
+  '/invoices/purchase-invoice',
+  '/invoices/view-invoice',
+] as const;
+
+export const INVOICE_QUICK_LINKS: NavLink[] = (() => {
+  const byTo = new Map(
+    (SIDEBAR_NAV.find((section) => section.id === 'invoices')?.items ?? [])
+      .flatMap((item) => (item.kind === 'link' ? [item] : []))
+      .map((item) => [item.to, item]),
+  );
+  return DASHBOARD_INVOICE_ROUTES.flatMap((to) => {
+    const item = byTo.get(to);
+    return item ? [item] : [];
+  });
+})();
 
 export const VOUCHER_QUICK_LINKS: NavLink[] = (
   SIDEBAR_NAV.find((section) => section.id === 'vouchers')?.items ?? []
@@ -211,15 +228,23 @@ const TOP_NAV_SECTION_ORDER = [
   'system',
 ] as const;
 
-/** Left-to-right: Accounts → Products → Vouchers → Sale → Purchase → Invoices → Ledger → Reports → System */
+/** Left-to-right: Accounts → Ledger → Products → Vouchers → Sale → Purchase → Invoices → Reports → System */
 export const TOP_NAV: TopNavEntry[] = (() => {
   const byId = new Map(SIDEBAR_NAV.map((section) => [section.id, section]));
   const entries: TopNavEntry[] = [];
   for (const id of TOP_NAV_SECTION_ORDER) {
     const section = byId.get(id);
     if (!section) continue;
+    entries.push({ kind: 'dropdown', label: section.label, children: section.items });
+    if (id === 'accounts') {
+      entries.push({
+        kind: 'link',
+        id: 'ledger',
+        label: 'Ledger',
+        to: '/reports/accounts',
+      });
+    }
     if (id === 'vouchers') {
-      entries.push({ kind: 'dropdown', label: section.label, children: section.items });
       entries.push({
         kind: 'quick',
         label: 'Sale',
@@ -232,19 +257,7 @@ export const TOP_NAV: TopNavEntry[] = (() => {
         to: '/invoices/purchase-invoice',
         icon: 'purchase',
       });
-      continue;
     }
-    if (id === 'invoices') {
-      entries.push({ kind: 'dropdown', label: section.label, children: section.items });
-      entries.push({
-        kind: 'link',
-        id: 'ledger',
-        label: 'Ledger',
-        to: '/reports/accounts',
-      });
-      continue;
-    }
-    entries.push({ kind: 'dropdown', label: section.label, children: section.items });
   }
   return entries;
 })();

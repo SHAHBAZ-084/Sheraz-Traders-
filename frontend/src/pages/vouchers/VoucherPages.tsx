@@ -5,6 +5,7 @@ import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } f
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { FormActionFooter } from '../../components/ui/FormActionFooter';
 import { SearchSelect } from '../../components/ui/SearchSelect';
+import { useAuth } from '../../contexts/AuthContext';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import type { MinimizedFormKind } from '../../stores/minimizedFormsStore';
@@ -496,6 +497,8 @@ export function VoucherDetailCard({
   cancelling: boolean;
   updating: boolean;
 }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const isCancelled = voucher.status === 'CANCELLED';
   const isKachi = voucher.type === 'KACHI';
   const isPurchaseMaal = voucher.type === 'PURCHASE_MAAL';
@@ -569,7 +572,7 @@ export function VoucherDetailCard({
           </div>
           <p className="mt-1 text-sm text-textSecondary">{formatDate(voucher.date)}</p>
         </div>
-        {!isCancelled && (
+        {!isCancelled && isAdmin ? (
           <div className="flex gap-2">
             {!isMultiLeg && !editingAmount && (
               <SecondaryButton onClick={() => setEditingAmount(true)}>Update Amount</SecondaryButton>
@@ -578,10 +581,10 @@ export function VoucherDetailCard({
               disabled={cancelling || editingAmount}
               onClick={onCancel}
             >
-              {cancelling ? 'Cancelling…' : 'Cancel'}
+              {cancelling ? 'Deleting…' : 'Delete'}
             </DangerButton>
           </div>
-        )}
+        ) : null}
       </div>
 
       <dl className="divide-y divide-border">
@@ -736,14 +739,14 @@ export function VoucherListPage() {
 
   async function handleCancel() {
     if (!result || result === 'notfound') return;
-    if (!window.confirm(`Cancel voucher #${result.number}? Reversal entries will be posted.`)) return;
+    if (!window.confirm('This will reverse the ledger entries — are you sure?')) return;
     setCancelling(true);
     try {
       const updated = await api.cancelVoucher(result.id);
       setResult(updated);
       loadVouchers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Cancel failed');
+      alert(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setCancelling(false);
     }

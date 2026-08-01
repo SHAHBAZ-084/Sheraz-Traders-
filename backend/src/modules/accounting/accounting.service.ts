@@ -878,13 +878,14 @@ function entryDebitCredit(type: LedgerEntryType, amount: number) {
   return { debit: 0, credit: amount };
 }
 
-/** Reversal rows and cancelled vouchers are bookkeeping only — omit from reports. */
+/** Reversal rows and cancelled/pending vouchers are bookkeeping only — omit from reports. */
 function isReportableLedgerEntry(e: {
   isReversal: boolean;
   voucher: { status: VoucherStatus } | null;
 }) {
   if (e.isReversal) return false;
   if (e.voucher?.status === VoucherStatus.CANCELLED) return false;
+  if (e.voucher?.status === VoucherStatus.PENDING_APPROVAL) return false;
   return true;
 }
 
@@ -1517,8 +1518,10 @@ export async function createVoucherInTx(
     description?: string;
     reference: string;
     createdById: number;
+    postImmediately?: boolean;
   },
 ) {
+  const postImmediately = data.postImmediately !== false;
   const trimmedReference = data.reference.trim();
   let voucherDate: Date;
   try {
@@ -1550,21 +1553,23 @@ export async function createVoucherInTx(
       reference: trimmedReference,
       createdById: data.createdById,
       financialYearId,
-      status: VoucherStatus.ACTIVE,
+      status: postImmediately ? VoucherStatus.ACTIVE : VoucherStatus.PENDING_APPROVAL,
     },
   });
 
-  await postVoucherLedgerEntries(
-    tx,
-    voucher.id,
-    data.debitAccountId,
-    data.creditAccountId,
-    data.amount,
-    data.description,
-    financialYearId,
-  );
+  if (postImmediately) {
+    await postVoucherLedgerEntries(
+      tx,
+      voucher.id,
+      data.debitAccountId,
+      data.creditAccountId,
+      data.amount,
+      data.description,
+      financialYearId,
+    );
 
-  await assertTrialBalanceInDev(tx);
+    await assertTrialBalanceInDev(tx);
+  }
 
   return voucher;
 }
@@ -1578,9 +1583,58 @@ export async function createVoucher(data: {
   description?: string;
   reference: string;
   createdById: number;
+  postImmediately?: boolean;
 }) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const voucher = await createVoucherInTx(tx, data);
+    return tx.voucher.findUniqueOrThrow({ where: { id: voucher.id }, include: voucherInclude });
+  });
+}
+
+export async function approveVoucher(voucherId: number, approvedById: number) {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const voucher = await tx.voucher.findFirst({
+      where: { id: voucherId, status: VoucherStatus.PENDING_APPROVAL },
+    });
+    if (!voucher) throw new AppError(404, 'Pending voucher not found');
+    if (voucher.debitAccountId == null || voucher.creditAccountId == null) {
+      throw new AppError(400, 'Voucher accounts missing');
+    }
+    await assertActiveFinancialYear(tx, voucher.financialYearId);
+
+    // Mark ACTIVE before posting so ledger recompute includes the new entries.
+    await tx.voucher.update({
+      where: { id: voucher.id },
+      data: {
+        status: VoucherStatus.ACTIVE,
+        modifiedById: approvedById,
+      },
+    });
+
+    const existingEntries = await tx.ledgerEntry.count({ where: { voucherId: voucher.id } });
+    if (existingEntries === 0) {
+      await postVoucherLedgerEntries(
+        tx,
+        voucher.id,
+        voucher.debitAccountId,
+        voucher.creditAccountId,
+        Number(voucher.amount),
+        voucher.description,
+        voucher.financialYearId,
+      );
+    } else {
+      // Retry path: entries may exist from a partial prior attempt — recompute only.
+      const debitLedger = await tx.ledger.findUniqueOrThrow({
+        where: { accountId: voucher.debitAccountId },
+      });
+      const creditLedger = await tx.ledger.findUniqueOrThrow({
+        where: { accountId: voucher.creditAccountId },
+      });
+      await recomputeLedgerRunningBalancesInTx(tx, debitLedger.id, voucher.financialYearId);
+      await recomputeLedgerRunningBalancesInTx(tx, creditLedger.id, voucher.financialYearId);
+    }
+
+    await assertTrialBalanceInDev(tx);
     return tx.voucher.findUniqueOrThrow({ where: { id: voucher.id }, include: voucherInclude });
   });
 }
@@ -1856,11 +1910,15 @@ export async function getDashboardSummary() {
         prisma.voucher.count({
           where: {
             financialYearId,
+            status: { not: VoucherStatus.PENDING_APPROVAL },
             date: { gte: todayStart, lte: todayEnd },
           },
         }),
         prisma.voucher.findMany({
-          where: { financialYearId },
+          where: {
+            financialYearId,
+            status: { not: VoucherStatus.PENDING_APPROVAL },
+          },
           include: voucherInclude,
           orderBy: [{ date: 'desc' }, { number: 'desc' }],
           take: 10,
@@ -1939,6 +1997,7 @@ export async function listVouchers(
 
   const where: Prisma.VoucherWhereInput = {
     ...(financialYearId != null && { financialYearId }),
+    status: { not: VoucherStatus.PENDING_APPROVAL },
   };
 
   if (filters?.fromDate || filters?.toDate) {
@@ -1996,6 +2055,9 @@ export async function updateVoucherAmount(
     if (!voucher) throw new AppError(404, 'Voucher not found');
     if (voucher.status === VoucherStatus.CANCELLED) {
       throw new AppError(400, 'Cannot update amount on a cancelled voucher');
+    }
+    if (voucher.status === VoucherStatus.PENDING_APPROVAL) {
+      throw new AppError(400, 'Cannot update amount on a pending voucher');
     }
     if (voucher.type === 'KACHI' || voucher.type === 'PURCHASE_MAAL' || voucher.type === 'SALE_PAUNCH' || voucher.type === 'SALE_COMMISSION') {
       throw new AppError(400, 'Invoice voucher amounts cannot be edited');

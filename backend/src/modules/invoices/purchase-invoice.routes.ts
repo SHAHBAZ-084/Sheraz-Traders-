@@ -42,10 +42,13 @@ export function registerPurchaseInvoiceRoutes(router: Router) {
     '/purchase-invoice',
     validateBody(createSchema),
     asyncHandler(async (req, res) => {
-      const invoice = await purchaseInvoiceService.createPurchaseInvoice({
-        ...req.body,
-        createdById: req.session.userId!,
-      });
+      const invoice = await purchaseInvoiceService.createPurchaseInvoice(
+        {
+          ...req.body,
+          createdById: req.session.userId!,
+        },
+        { postImmediately: req.user?.role === 'ADMIN' },
+      );
       res.status(201).json(invoice);
     }),
   );

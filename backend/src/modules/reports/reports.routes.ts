@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import * as salePurchaseReport from './sale-purchase-report.service';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
+reportsRouter.use(requireReportsAccess);
 
 reportsRouter.get(
   '/sale-purchase',

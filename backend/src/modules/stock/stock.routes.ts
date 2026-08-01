@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import * as stockService from './stock.service';
 
@@ -9,6 +9,7 @@ stockRouter.use(requireAuth);
 
 stockRouter.get(
   '/report',
+  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const productId = Number(req.query.productId);
     const bagTypeRaw = String(req.query.bagType ?? '').toUpperCase();
@@ -73,5 +74,24 @@ stockRouter.get(
     }
     const balance = await stockService.getCurrentStockBalance(productId, storeId);
     res.json({ productId, storeId: storeId ?? null, balance });
+  }),
+);
+
+stockRouter.post(
+  '/transfer',
+  asyncHandler(async (req, res) => {
+    const schema = z.object({
+      transferDate: z.string().min(1),
+      fromStoreId: z.number().int().positive(),
+      toStoreId: z.number().int().positive(),
+      productId: z.number().int().positive(),
+      quantity: z.number().positive(),
+    });
+    const body = schema.parse(req.body);
+    const invoice = await stockService.createStockTransfer({
+      ...body,
+      createdById: req.session.userId!,
+    });
+    res.status(201).json(invoice);
   }),
 );

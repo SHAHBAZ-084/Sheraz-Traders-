@@ -1113,14 +1113,14 @@ export function VouchersReportPage() {
 
   async function handleCancel() {
     if (!selected) return;
-    if (!window.confirm(`Cancel voucher #${selected.number}? Reversal entries will be posted.`)) return;
+    if (!window.confirm('This will reverse the ledger entries — are you sure?')) return;
     setCancelling(true);
     try {
       const updated = await api.cancelVoucher(selected.id);
       setSelected(updated);
       await loadReport();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Cancel failed');
+      alert(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setCancelling(false);
     }

@@ -170,6 +170,8 @@ function UserMenu() {
 
 export function TopBar() {
   const location = useLocation();
+  const { user } = useAuth();
+  const isUserRole = user?.role === 'USER';
 
   return (
     <header className="app-topnav sticky top-0 isolate shadow-md">
@@ -179,6 +181,12 @@ export function TopBar() {
         </Link>
         <nav className="app-topnav-nav">
           {TOP_NAV.map((entry) => {
+            if (isUserRole && entry.kind === 'dropdown' && entry.label === 'Reports') {
+              return null;
+            }
+            if (isUserRole && entry.kind === 'link' && entry.id === 'ledger') {
+              return null;
+            }
             if (entry.kind === 'quick') {
               const Icon = entry.icon === 'sale' ? ArrowUpFromLine : ArrowDownToLine;
               return (
@@ -205,7 +213,19 @@ export function TopBar() {
                 </Link>
               );
             }
-            return <NavDropdown key={entry.label} label={entry.label} children={entry.children} />;
+            return (
+              <NavDropdown
+                key={entry.label}
+                label={entry.label}
+                children={
+                  isUserRole && entry.label === 'System'
+                    ? entry.children.filter(
+                        (item) => !(item.kind === 'link' && item.to === '/system/approvals'),
+                      )
+                    : entry.children
+                }
+              />
+            );
           })}
         </nav>
         <UserMenu />

@@ -1,5 +1,6 @@
 import {
   BoriThelaMode,
+  InvoiceStatus,
   InvoiceType,
   Prisma,
   StockBagType,
@@ -457,6 +458,145 @@ export async function postSaleInvoiceStockOut(
         invoiceType: InvoiceType.SALE_INVOICE,
         invoiceReference: data.invoiceReference,
         description: data.invoiceReference,
+      },
+    });
+  }
+}
+
+/** Pure stock transfer between stores — OUT from source + IN to destination, shared TR- reference. No ledger entries. */
+export async function createStockTransfer(
+  data: {
+    transferDate: string;
+    fromStoreId: number;
+    toStoreId: number;
+    productId: number;
+    quantity: number;
+    createdById: number;
+  },
+) {
+  if (data.fromStoreId === data.toStoreId) {
+    throw new AppError(400, 'From store and To store must be different');
+  }
+  const qty = Number(data.quantity);
+  if (!(qty > 0)) throw new AppError(400, 'Quantity must be greater than zero');
+
+  return prisma.$transaction(async (tx) => {
+    const fromStore = await tx.store.findFirst({ where: { id: data.fromStoreId, isActive: true } });
+    if (!fromStore) throw new AppError(400, 'From store not found or inactive');
+    const toStore = await tx.store.findFirst({ where: { id: data.toStoreId, isActive: true } });
+    if (!toStore) throw new AppError(400, 'To store not found or inactive');
+
+    const product = await tx.product.findFirst({ where: { id: data.productId, isActive: true } });
+    if (!product) throw new AppError(400, 'Product not found');
+
+    const available = await getCurrentStockBalance(data.productId, data.fromStoreId, tx);
+    if (qty > available) {
+      throw new AppError(
+        400,
+        `Insufficient stock for ${product.name} at ${fromStore.name}: available ${available}, requested ${qty}`,
+      );
+    }
+
+    const priorOuts = await tx.stockMovement.count({
+      where: { invoiceType: InvoiceType.STOCK_TRANSFER, direction: StockDirection.OUT },
+    });
+    const reference = `TR-${String(priorOuts + 1).padStart(5, '0')}`;
+    const transferDate = new Date(data.transferDate);
+
+    const invoice = await tx.invoice.create({
+      data: {
+        type: InvoiceType.STOCK_TRANSFER,
+        status: InvoiceStatus.POSTED,
+        reference,
+        invoiceDate: transferDate,
+        storeId: data.fromStoreId,
+        toStoreId: data.toStoreId,
+        productId: data.productId,
+        total: 0,
+        notes: `Transfer ${qty} from ${fromStore.name} to ${toStore.name}`,
+        createdById: data.createdById,
+        items: {
+          create: [
+            {
+              productId: product.id,
+              label: product.name,
+              quantity: qty,
+              unitPrice: 0,
+              total: 0,
+            },
+          ],
+        },
+      },
+    });
+
+    await tx.stockMovement.create({
+      data: {
+        productId: product.id,
+        bagType: StockBagType.BORI,
+        storeId: data.fromStoreId,
+        direction: StockDirection.OUT,
+        bags: qty,
+        date: transferDate,
+        invoiceId: invoice.id,
+        invoiceType: InvoiceType.STOCK_TRANSFER,
+        invoiceReference: reference,
+        description: `${reference} → ${toStore.name}`,
+      },
+    });
+    await tx.stockMovement.create({
+      data: {
+        productId: product.id,
+        bagType: StockBagType.BORI,
+        storeId: data.toStoreId,
+        direction: StockDirection.IN,
+        bags: qty,
+        date: transferDate,
+        invoiceId: invoice.id,
+        invoiceType: InvoiceType.STOCK_TRANSFER,
+        invoiceReference: reference,
+        description: `${reference} ← ${fromStore.name}`,
+      },
+    });
+
+    return invoice;
+  });
+}
+
+/** Reverse stock movements for a cancelled invoice by posting opposite-direction rows. */
+export async function reverseInvoiceStockMovements(
+  tx: Tx,
+  data: { invoiceId: number; invoiceReference: string; invoiceDate: Date },
+) {
+  const originals = await tx.stockMovement.findMany({
+    where: {
+      invoiceId: data.invoiceId,
+      description: { not: { startsWith: 'Reversal —' } },
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  // Already reversed if a reversal row exists for this invoice.
+  const alreadyReversed = await tx.stockMovement.findFirst({
+    where: {
+      invoiceId: data.invoiceId,
+      description: { startsWith: 'Reversal —' },
+    },
+  });
+  if (alreadyReversed) return;
+
+  for (const m of originals) {
+    await tx.stockMovement.create({
+      data: {
+        productId: m.productId,
+        bagType: m.bagType,
+        storeId: m.storeId,
+        direction: m.direction === StockDirection.IN ? StockDirection.OUT : StockDirection.IN,
+        bags: m.bags,
+        date: data.invoiceDate,
+        invoiceId: data.invoiceId,
+        invoiceType: m.invoiceType,
+        invoiceReference: data.invoiceReference,
+        description: `Reversal — ${data.invoiceReference}`,
       },
     });
   }

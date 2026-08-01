@@ -264,7 +264,11 @@ function buildLedgerLegs(
   return { legs, totalDebits, totalCredits };
 }
 
-export async function createSaleCommissionInvoice(data: CreateSaleCommissionInput) {
+export async function createSaleCommissionInvoice(
+  data: CreateSaleCommissionInput,
+  opts?: { postImmediately?: boolean },
+) {
+  const postImmediately = opts?.postImmediately !== false;
   if (data.lines.length === 0) {
     throw new AppError(400, 'At least one line is required');
   }
@@ -314,7 +318,7 @@ export async function createSaleCommissionInvoice(data: CreateSaleCommissionInpu
     const invoice = await tx.invoice.create({
       data: {
         type: InvoiceType.SALE_COMMISSION,
-        status: InvoiceStatus.POSTED,
+        status: postImmediately ? InvoiceStatus.POSTED : InvoiceStatus.PENDING_APPROVAL,
         reference,
         invoiceDate,
         billNo: data.billNo?.trim() || null,
@@ -358,18 +362,138 @@ export async function createSaleCommissionInvoice(data: CreateSaleCommissionInpu
       },
     });
 
-    const voucher = await createMultiLegVoucherInTx(tx, {
-      type: VoucherType.SALE_COMMISSION,
-      legs,
-      amount: totalDebits,
-      date: data.invoiceDate,
-      description: `Sale Commission Invoice ${reference}`,
-      reference: voucherReferenceFromBillNo(data.billNo),
-      createdById: data.createdById,
+    if (postImmediately) {
+      await postSaleCommissionAccounting(tx, {
+        invoiceId: invoice.id,
+        reference,
+        invoiceDate: data.invoiceDate,
+        billNo: data.billNo,
+        createdById: data.createdById,
+        legs,
+        totalDebits,
+      });
+    }
+
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: {
+        saleCommissionLines: { include: { partyAccount: true }, orderBy: { sortOrder: 'asc' } },
+        vouchers: { include: { voucher: { include: { ledgerEntries: true } } } },
+        debitAccount: true,
+        createdBy: { select: { id: true, displayName: true, username: true } },
+      },
+    });
+  });
+}
+
+async function postSaleCommissionAccounting(
+  tx: Prisma.TransactionClient,
+  args: {
+    invoiceId: number;
+    reference: string;
+    invoiceDate: Date | string;
+    billNo?: string | null;
+    createdById: number;
+    legs: VoucherLeg[];
+    totalDebits: number;
+  },
+) {
+  const voucher = await createMultiLegVoucherInTx(tx, {
+    type: VoucherType.SALE_COMMISSION,
+    legs: args.legs,
+    amount: args.totalDebits,
+    date: args.invoiceDate,
+    description: `Sale Commission Invoice ${args.reference}`,
+    reference: voucherReferenceFromBillNo(args.billNo ?? undefined),
+    createdById: args.createdById,
+  });
+
+  await tx.invoiceVoucher.create({
+    data: { invoiceId: args.invoiceId, voucherId: voucher.id },
+  });
+}
+
+export async function approveSaleCommissionInvoice(invoiceId: number) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        type: InvoiceType.SALE_COMMISSION,
+        status: InvoiceStatus.PENDING_APPROVAL,
+      },
+      include: {
+        saleCommissionLines: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!invoice) throw new AppError(404, 'Pending sale commission invoice not found');
+    if (invoice.debitAccountId == null) {
+      throw new AppError(400, 'Sale commission invoice missing sale party');
+    }
+
+    const prefs = await getSystemPreferences();
+    const systemAccounts = await ensureSaleCommissionAccounts(tx);
+    await assertSalePartyAccount(tx, invoice.debitAccountId);
+
+    const computedLines: ComputedLine[] = invoice.saleCommissionLines.map((line) => ({
+      partyAccountId: line.partyAccountId,
+      jins: line.jins ?? undefined,
+      qism: line.qism ?? undefined,
+      boriOrThelaMode: line.boriOrThelaMode,
+      bagCount: line.bagCount,
+      bhartii: Number(line.bhartii),
+      dharanCount: line.dharanCount,
+      looseKg: Number(line.looseKg),
+      ratePerMaund: Number(line.ratePerMaund),
+      bardanaQty: line.bardanaQty != null ? Number(line.bardanaQty) : null,
+      bardanaRate: line.bardanaRate != null ? Number(line.bardanaRate) : null,
+      dammiChecked: line.dammiChecked,
+      totalWeightKg: Number(line.totalWeightKg),
+      amount: Number(line.amount),
+      bardanaAmount: line.bardanaAmount != null ? Number(line.bardanaAmount) : null,
+      dammiAmount: Number(line.dammiAmount),
+      netCreditToParty: Number(line.netCreditToParty),
+    }));
+
+    for (const line of computedLines) {
+      await assertPurchasePartyAccount(tx, line.partyAccountId);
+    }
+
+    const totals = computeSaleCommissionInvoiceTotals(computedLines, prefs, {
+      munshianaAmount: invoice.munshianaAmount != null ? Number(invoice.munshianaAmount) : undefined,
+      miscAmount: invoice.miscAmount != null ? Number(invoice.miscAmount) : undefined,
+      lowerBardanaQty: invoice.lowerBardanaQty != null ? Number(invoice.lowerBardanaQty) : null,
+      lowerBardanaRate: invoice.lowerBardanaRate != null ? Number(invoice.lowerBardanaRate) : null,
     });
 
-    await tx.invoiceVoucher.create({
-      data: { invoiceId: invoice.id, voucherId: voucher.id },
+    const header: InvoiceVoucherHeader = {
+      tafseel: invoice.tafseel,
+      gariNo: invoice.gariNo,
+    };
+    const product = invoice.jins?.trim() || computedLines[0]?.jins?.trim() || null;
+    const { legs, totalDebits } = buildLedgerLegs(
+      invoice.debitAccountId,
+      computedLines,
+      totals,
+      systemAccounts,
+      invoice.lowerBardanaMode,
+      header,
+      invoice.reference,
+      product,
+    );
+
+    await postSaleCommissionAccounting(tx, {
+      invoiceId: invoice.id,
+      reference: invoice.reference,
+      invoiceDate: invoice.invoiceDate,
+      billNo: invoice.billNo,
+      createdById: invoice.createdById,
+      legs,
+      totalDebits,
+    });
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.POSTED },
     });
 
     return tx.invoice.findUniqueOrThrow({

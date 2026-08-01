@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler, validateBody } from '../../utils/helpers';
 import * as bardanaService from './bardana.service';
 
@@ -9,6 +9,7 @@ inventoryRouter.use(requireAuth);
 
 inventoryRouter.get(
   '/bardana',
+  requireReportsAccess,
   asyncHandler(async (_req, res) => {
     res.json(await bardanaService.getEmptyBardanaReport());
   }),
