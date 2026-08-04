@@ -23,6 +23,8 @@ import {
 import { formatLedgerAmount } from '../../lib/format';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
+import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
+
 const PURCHASE_PARTY_CATEGORIES = ['Int. Purchase Party', 'Ext. Purchase Party'] as const;
 
 type GridRow = {
@@ -120,6 +122,7 @@ export function PurchaseInvoicePage() {
   const [quantity, setQuantity] = useState(() => restoredState?.quantity ?? '1');
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
   const [supplierAccountId, setSupplierAccountId] = useState(() => restoredState?.supplierAccountId ?? '');
+  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -311,7 +314,16 @@ export function PurchaseInvoicePage() {
 
               <InvoiceFormSection label="Supplier">
                 <InvoiceField wide>
-                  <FieldLabel>Purchase Party (supplier)</FieldLabel>
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel>Purchase Party (supplier)</FieldLabel>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-financial hover:underline"
+                      onClick={() => setShowQuickAddParty(true)}
+                    >
+                      + New Supplier
+                    </button>
+                  </div>
                   <SearchSelect
                     options={supplierOptions}
                     value={supplierAccountId}
@@ -320,6 +332,19 @@ export function PurchaseInvoicePage() {
                   />
                 </InvoiceField>
               </InvoiceFormSection>
+
+              <QuickAddPartyModal
+                kind="supplier"
+                isOpen={showQuickAddParty}
+                onClose={() => setShowQuickAddParty(false)}
+                onCreated={async (party) => {
+                  const updatedAccounts = await api.listAccounts();
+                  setAccounts(updatedAccounts);
+                  if (party.accountId) {
+                    setSupplierAccountId(String(party.accountId));
+                  }
+                }}
+              />
 
               <InvoiceAddRowAction onClick={addRow} />
             </div>

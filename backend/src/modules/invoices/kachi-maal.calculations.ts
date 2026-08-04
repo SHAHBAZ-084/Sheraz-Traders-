@@ -6,6 +6,7 @@ export type KachiMaalPreferenceRates = {
   paleDariPercent: number;
   brokeryPercent: number;
   marketFeeRate: number;
+  marketFeeEnabled?: boolean;
 };
 
 export type KachiMaalRowInput = {
@@ -125,7 +126,10 @@ export function computeKachiMaalInvoiceTotals(
   }
   lineTotals.totalBardanaFromRows = roundMoney(totalBardanaFromRows);
 
-  const marketFeeAmount = roundMoney(lineTotals.totalCalculatedBags * prefs.marketFeeRate);
+  const marketFeeEnabled = prefs.marketFeeEnabled ?? true;
+  const marketFeeAmount = marketFeeEnabled
+    ? roundMoney(lineTotals.totalCalculatedBags * prefs.marketFeeRate)
+    : 0;
   const profitAmount = roundMoney(lineTotals.totalGoodsAmount * (prefs.daamiPercent / 100));
   const lowerBardanaAmount = computeLowerBardanaAmount(lowerBardanaQty, lowerBardanaRate);
   const misc = roundMoney(miscAmount);

@@ -1,10 +1,9 @@
 export const DHARAN_KG = 5;
 export const MAUND_KG = 40;
 
-export const PURCHASE_PARTY_CATEGORIES = ['Int. Purchase Party', 'Ext. Purchase Party'] as const;
+export const PURCHASE_PARTY_CATEGORIES = ['Purchase Party'] as const;
 export const DEBIT_ACCOUNT_CATEGORIES = [
-  'Int. Purchase Party',
-  'Ext. Purchase Party',
+  'Purchase Party',
   'Sale Party',
 ] as const;
 
@@ -13,6 +12,7 @@ export type KachiMaalPreferenceRates = {
   paleDariPercent: number;
   brokeryPercent: number;
   marketFeeRate: number;
+  marketFeeEnabled?: boolean;
 };
 
 export type KachiMaalRowInput = {
@@ -88,7 +88,10 @@ export function computeKachiMaalInvoiceTotals(
   totalBrokery = roundMoney(totalBrokery);
   totalBardanaFromRows = roundMoney(totalBardanaFromRows);
 
-  const marketFeeAmount = roundMoney(totalCalculatedBags * prefs.marketFeeRate);
+  const marketFeeEnabled = prefs.marketFeeEnabled ?? true;
+  const marketFeeAmount = marketFeeEnabled
+    ? roundMoney(totalCalculatedBags * prefs.marketFeeRate)
+    : 0;
   const profitAmount = roundMoney(totalGoodsAmount * (prefs.daamiPercent / 100));
 
   const lowerBardanaAmount =

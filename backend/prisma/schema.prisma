@@ -360,6 +360,7 @@ model SystemPreference {
   paleDariPercent   Decimal  @default(0)
   brokeryPercent    Decimal  @default(0)
   marketFeeRate     Decimal  @default(0)
+  marketFeeEnabled  Boolean  @default(true)
   bardanaRate       Decimal  @default(0)
   taxPercent        Decimal  @default(0)
   markeetFeeRate    Decimal  @default(0)

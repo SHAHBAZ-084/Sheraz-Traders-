@@ -25,6 +25,7 @@ import { api, Account, AccountCategory, Product, SystemPreferences } from '../..
 import { formatLedgerAmount } from '../../lib/format';
 import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
+import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
 import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
@@ -175,6 +176,7 @@ export function KachiMaalInvoicePage() {
   const [lowerBoriThela, setLowerBoriThela] = useState<BoriThelaMode>(() => restoredState?.lowerBoriThela ?? 'BORI');
   const [lowerBardanaQty, setLowerBardanaQty] = useState(() => restoredState?.lowerBardanaQty ?? '');
   const [lowerBardanaRate, setLowerBardanaRate] = useState(() => restoredState?.lowerBardanaRate ?? '');
+  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
 
   const productOptions = useMemo(
     () => products.map((p) => ({ value: String(p.id), label: p.name })),
@@ -414,8 +416,18 @@ export function KachiMaalInvoicePage() {
                 <InvoiceFieldGroup label="Identity">
                   <InvoiceFieldRow cols={6}>
                     <InvoiceField wide>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-textMuted">Party</span>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-financial hover:underline"
+                          onClick={() => setShowQuickAddParty(true)}
+                        >
+                          + New Party
+                        </button>
+                      </div>
                       <FlatAccountSelect
-                        label="Party"
+                        label=""
                         categoryNames={PURCHASE_PARTY_CATEGORIES}
                         categories={categories}
                         accounts={accounts}
@@ -424,6 +436,20 @@ export function KachiMaalInvoicePage() {
                         placeholder="Search party…"
                       />
                     </InvoiceField>
+
+                    <QuickAddPartyModal
+                      kind="supplier"
+                      isOpen={showQuickAddParty}
+                      onClose={() => setShowQuickAddParty(false)}
+                      onCreated={async (party) => {
+                        const base = await loadInvoiceFormBase({ includeProducts: true });
+                        setAccounts(base.accounts);
+                        setCategories(base.categories);
+                        if (party.accountId) {
+                          setPartyAccountId(String(party.accountId));
+                        }
+                      }}
+                    />
                     <InvoiceField>
                       <FieldLabel>Bori / Thela</FieldLabel>
                       <SegmentedControl

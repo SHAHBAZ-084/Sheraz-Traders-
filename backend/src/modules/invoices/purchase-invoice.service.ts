@@ -59,12 +59,8 @@ async function assertPurchasePartyAccount(tx: Prisma.TransactionClient, accountI
     include: { category: true },
   });
   if (!account) throw new AppError(400, 'Supplier account not found');
-  const allowed = new Set([
-    KACHI_MAAL_CATEGORY_NAMES.INT_PURCHASE,
-    KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE,
-  ]);
-  if (!allowed.has(account.category.name)) {
-    throw new AppError(400, 'Supplier must be an Int./Ext. Purchase Party account');
+  if (account.category.name !== KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY) {
+    throw new AppError(400, 'Supplier must be a Purchase Party account');
   }
   return account;
 }

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { PageShell, Panel, SecondaryButton } from '../../components/ui/PageShell';
 import { KachiMaalInvoicePage } from './KachiMaalInvoicePage';
@@ -13,15 +13,18 @@ const ROUTE_TO_TYPE: Record<string, string> = {
 
 export function InvoiceFormPage({ slug }: { slug: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const restoreId = (location.state as { minimizedFormId?: string } | null)?.minimizedFormId;
+  const formKey = restoreId ? `restore-${restoreId}` : `${slug}-${location.key}`;
 
   if (slug === 'kachi-maal') {
-    return <KachiMaalInvoicePage />;
+    return <KachiMaalInvoicePage key={formKey} />;
   }
   if (slug === 'sale-invoice') {
-    return <SaleInvoicePage />;
+    return <SaleInvoicePage key={formKey} />;
   }
   if (slug === 'purchase-invoice') {
-    return <PurchaseInvoicePage />;
+    return <PurchaseInvoicePage key={formKey} />;
   }
 
   const typeKey = ROUTE_TO_TYPE[slug];

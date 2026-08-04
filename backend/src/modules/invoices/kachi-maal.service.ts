@@ -23,7 +23,6 @@ import {
 import {
   bardanaAgainstInvoiceDescription,
   blendedLegDescription,
-  rowLegDescription,
   type InvoiceVoucherHeader,
   voucherReferenceFromBillNo,
 } from './invoice-voucher-descriptions';
@@ -85,12 +84,8 @@ async function assertPurchasePartyAccount(tx: Prisma.TransactionClient, accountI
     include: { category: true },
   });
   if (!account) throw new AppError(400, 'Invalid purchase party account');
-  const name = account.category.name;
-  if (
-    name !== KACHI_MAAL_CATEGORY_NAMES.INT_PURCHASE
-    && name !== KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE
-  ) {
-    throw new AppError(400, 'Party must be an Int. or Ext. Purchase Party account');
+  if (account.category.name !== KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY) {
+    throw new AppError(400, 'Party must be a Purchase Party account');
   }
   return account;
 }
@@ -102,8 +97,7 @@ async function assertDebitAccount(tx: Prisma.TransactionClient, accountId: numbe
   });
   if (!account) throw new AppError(400, 'Invalid debit account');
   const allowed = new Set<string>([
-    KACHI_MAAL_CATEGORY_NAMES.INT_PURCHASE,
-    KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE,
+    KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY,
     KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY,
   ]);
   if (!allowed.has(account.category.name)) {

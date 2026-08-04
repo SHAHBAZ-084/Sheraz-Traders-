@@ -37,11 +37,21 @@ function nextFiscalYearLabel(label: string): string {
 }
 
 export async function getActiveFinancialYearId(db: DbClient): Promise<number> {
-  const year = await db.financialYear.findFirst({
+  let year = await db.financialYear.findFirst({
     where: { status: FinancialYearStatus.ACTIVE },
     select: { id: true },
   });
-  if (!year) throw new AppError(400, 'No active financial year');
+  if (!year) {
+    const current = fiscalYearLabelForDate(new Date());
+    const created = await db.financialYear.create({
+      data: {
+        label: current.label,
+        startDate: current.startDate,
+        status: FinancialYearStatus.ACTIVE,
+      },
+    });
+    year = { id: created.id };
+  }
   return year.id;
 }
 
@@ -996,7 +1006,7 @@ export async function ensureSupplierAccount(
   tx: Prisma.TransactionClient,
   supplier: { id: number; name: string },
 ) {
-  const category = await ensureCategoryInTx(tx, 'Ext. Purchase Party');
+  const category = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY);
   const code = `S${String(supplier.id).padStart(4, '0')}`;
 
   const existing = await tx.account.findFirst({
@@ -1032,8 +1042,9 @@ export async function ensureSupplierAccount(
 }
 
 export const KACHI_MAAL_CATEGORY_NAMES = {
-  INT_PURCHASE: 'Int. Purchase Party',
-  EXT_PURCHASE: 'Ext. Purchase Party',
+  PURCHASE_PARTY: 'Purchase Party',
+  INT_PURCHASE: 'Purchase Party',
+  EXT_PURCHASE: 'Purchase Party',
   SALE_PARTY: 'Sale Party',
   REVENUE: 'Revenue',
   SALE_FEE: 'Sale Fee',
@@ -1054,12 +1065,31 @@ export type KachiMaalSystemAccounts = {
 export async function ensureKachiMaalAccounts(
   tx: Prisma.TransactionClient,
 ): Promise<KachiMaalSystemAccounts> {
-  await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.INT_PURCHASE);
-  await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE);
+  const purchaseTarget = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY);
   await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY);
   const revenue = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.REVENUE);
   const saleFee = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.SALE_FEE);
   const bardana = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.BARDANA);
+
+  // Migrate any legacy "Ext. Purchase Party" or "Int. Purchase Party" categories into "Purchase Party"
+  const legacyCatNames = ['Ext. Purchase Party', 'Int. Purchase Party'];
+  for (const legacyName of legacyCatNames) {
+    const oldCats = await tx.accountCategory.findMany({
+      where: { name: legacyName },
+    });
+    for (const oldCat of oldCats) {
+      if (oldCat.id !== purchaseTarget.id) {
+        await tx.account.updateMany({
+          where: { categoryId: oldCat.id },
+          data: { categoryId: purchaseTarget.id },
+        });
+        await tx.accountCategory.update({
+          where: { id: oldCat.id },
+          data: { isActive: false },
+        });
+      }
+    }
+  }
 
   const bori = await ensureDefaultAccountInTx(tx, bardana.id, 'Bori', AccountType.ASSET, 'BD-BORI');
   const thela = await ensureDefaultAccountInTx(tx, bardana.id, 'Thela', AccountType.ASSET, 'BD-THELA');
@@ -1227,6 +1257,9 @@ export async function consolidateDuplicateInventoryAccounts(
 }
 
 async function ensureCategoryInTx(tx: Prisma.TransactionClient, name: string) {
+  if (name === 'Ext. Purchase Party' || name === 'Int. Purchase Party') {
+    name = KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY;
+  }
   const existing = await tx.accountCategory.findFirst({
     where: { isActive: true, name: { equals: name } },
   });
@@ -1407,6 +1440,7 @@ async function consolidateDuplicateInventoryCategories(tx: Prisma.TransactionCli
 /** Create default chart-of-accounts categories and core accounts for a branch. Idempotent. */
 export async function bootstrapChartOfAccounts() {
   await prisma.$transaction(async (tx) => {
+    await getActiveFinancialYearId(tx);
     for (const name of DEFAULT_CATEGORY_NAMES) {
       await ensureCategoryInTx(tx, name);
     }

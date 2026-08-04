@@ -6,7 +6,7 @@ import { api, SystemPreferences } from '../../lib/api';
 
 type PrefForm = Omit<SystemPreferences, 'updatedAt'>;
 
-type NumericPrefKey = Exclude<keyof PrefForm, 'closingDate'>;
+type NumericPrefKey = Exclude<keyof PrefForm, 'closingDate' | 'marketFeeEnabled'>;
 
 type PrefTab = 'kachi' | 'general';
 
@@ -16,7 +16,7 @@ const PREF_FIELDS: Record<NumericPrefKey, PrefField> = {
   daamiPercent: { key: 'daamiPercent', label: 'Daami (%)', hint: 'Profit rate' },
   paleDariPercent: { key: 'paleDariPercent', label: 'Pale Dari (%)', hint: 'Labour rate' },
   brokeryPercent: { key: 'brokeryPercent', label: 'Brokery (%)', hint: 'Broker rate' },
-  marketFeeRate: { key: 'marketFeeRate', label: 'Market Fee (per bag)', hint: 'Charged per bag' },
+  marketFeeRate: { key: 'marketFeeRate', label: 'Market Fee (per bag)', hint: 'Charged per bag when enabled' },
   bardanaRate: { key: 'bardanaRate', label: 'Bardana Rate', hint: 'Default bardana rate reference' },
   taxPercent: { key: 'taxPercent', label: 'Tax (%)' },
   markeetFeeRate: { key: 'markeetFeeRate', label: 'Markeet Fee', hint: 'Legacy unused field' },
@@ -62,6 +62,7 @@ export function SystemPreferencesPage() {
       for (const key of ALL_NUMERIC_KEYS) {
         payload[key] = Number(form[key]) || 0;
       }
+      payload.marketFeeEnabled = form.marketFeeEnabled;
       payload.closingDate = closingDate.trim() || null;
       const updated = await api.updateSystemPreferences(payload);
       const { updatedAt: _, ...rest } = updated;
@@ -102,7 +103,21 @@ export function SystemPreferencesPage() {
                     min="0"
                     value={String(form[field.key])}
                     onChange={(e) => updateField(field.key, e.target.value)}
+                    disabled={field.key === 'marketFeeRate' && !form.marketFeeEnabled}
                   />
+                  {field.key === 'marketFeeRate' ? (
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-textPrimary cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.marketFeeEnabled}
+                        onChange={(e) =>
+                          setForm((prev) => (prev ? { ...prev, marketFeeEnabled: e.target.checked } : prev))
+                        }
+                        className="h-4 w-4 rounded border-border text-financial"
+                      />
+                      Enable Market Fee on Kachi Maal
+                    </label>
+                  ) : null}
                   {field.hint ? <p className="mt-1 text-xs text-textMuted">{field.hint}</p> : null}
                 </div>
               ))}

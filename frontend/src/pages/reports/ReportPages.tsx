@@ -228,8 +228,8 @@ export function AccountReportsPage() {
                       <td className="py-2 pl-3 pr-2 align-top truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
                       <td className={`py-2 pr-2 align-top font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
                       <td className="py-2 pr-2 align-top whitespace-normal break-words text-textSecondary">{r.description}</td>
-                      <td className="py-2 pr-2 align-top text-right tabular-nums">{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
-                      <td className="py-2 pr-2 align-top text-right tabular-nums">{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
+                      <td className={`py-2 pr-2 align-top text-right tabular-nums ${r.type.toUpperCase() === 'PAYMENT' ? 'text-danger font-semibold' : ''}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
+                      <td className={`py-2 pr-2 align-top text-right tabular-nums ${r.type.toUpperCase() === 'RECEIPT' ? 'text-success font-semibold' : ''}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
                       <td className="py-2 align-top text-right font-medium tabular-nums text-accent">{formatLedgerBalance(r.balance)}</td>
                     </tr>
                   ))}

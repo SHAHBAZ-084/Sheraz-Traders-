@@ -1,6 +1,8 @@
-export function formatLedgerAmount(amount: number | string) {
+export function formatAmount(amount: number | string | null | undefined) {
+  if (amount == null || amount === '') return '0';
   return Number(amount).toLocaleString('en-PK');
 }
+export const formatLedgerAmount = formatAmount;
 
 /** Running balance: positive = Dr, negative = Cr (never show negative Dr). Zero = no suffix. */
 export function formatLedgerBalance(balance: number | string) {

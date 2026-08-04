@@ -17,23 +17,39 @@ async function ensureAccountInCategory(
   type: AccountType,
   code: string,
 ) {
+  const targetCategoryName = (categoryName === 'Ext. Purchase Party' || categoryName === 'Int. Purchase Party')
+    ? KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY
+    : categoryName;
+
   const category = await prisma.accountCategory.findFirst({
-    where: { isActive: true, name: categoryName },
+    where: { isActive: true, name: targetCategoryName },
   });
   if (!category) throw new Error(`Category missing: ${categoryName}`);
 
   let account = await prisma.account.findFirst({
-    where: { isActive: true, name: accountName, categoryId: category.id },
-    include: { ledger: true },
+    where: { isActive: true, code },
+    include: { ledger: true, category: true },
   });
   if (!account) {
     account = await prisma.account.create({
       data: { categoryId: category.id, name: accountName, code, type },
-      include: { ledger: true },
+      include: { ledger: true, category: true },
     });
     await prisma.ledger.create({ data: { accountId: account.id, balance: 0 } });
-  } else if (!account.ledger) {
-    await prisma.ledger.create({ data: { accountId: account.id, balance: 0 } });
+  } else {
+    if (account.categoryId !== category.id) {
+      await prisma.account.update({
+        where: { id: account.id },
+        data: { categoryId: category.id },
+      });
+      account = await prisma.account.findUniqueOrThrow({
+        where: { id: account.id },
+        include: { ledger: true, category: true },
+      });
+    }
+    if (!account.ledger) {
+      await prisma.ledger.create({ data: { accountId: account.id, balance: 0 } });
+    }
   }
   return account;
 }

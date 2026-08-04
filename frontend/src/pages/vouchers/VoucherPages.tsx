@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
@@ -138,6 +138,13 @@ function categoriesForSide(
 }
 
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
+  const location = useLocation();
+  const restoreId = (location.state as { minimizedFormId?: string } | null)?.minimizedFormId;
+  const formKey = restoreId ? `restore-${restoreId}` : `${kind}-${location.key}`;
+  return <VoucherFormContent key={formKey} kind={kind} />;
+}
+
+function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const navigate = useNavigate();
   const formKind = kind as MinimizedFormKind;
   const { restoredState, minimize } = useMinimizableForm<VoucherDraft>(formKind);

@@ -23,6 +23,8 @@ import {
 import { formatLedgerAmount } from '../../lib/format';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
+import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
+
 const SALE_PARTY_CATEGORIES = ['Sale Party'] as const;
 
 type GridRow = {
@@ -123,6 +125,7 @@ export function SaleInvoicePage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
+  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -339,7 +342,16 @@ export function SaleInvoicePage() {
 
               <InvoiceFormSection label="Customer">
                 <InvoiceField wide>
-                  <FieldLabel>Sale Party (customer)</FieldLabel>
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel>Sale Party (customer)</FieldLabel>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-financial hover:underline"
+                      onClick={() => setShowQuickAddParty(true)}
+                    >
+                      + New Customer
+                    </button>
+                  </div>
                   <SearchSelect
                     options={customerOptions}
                     value={customerAccountId}
@@ -348,6 +360,19 @@ export function SaleInvoicePage() {
                   />
                 </InvoiceField>
               </InvoiceFormSection>
+
+              <QuickAddPartyModal
+                kind="customer"
+                isOpen={showQuickAddParty}
+                onClose={() => setShowQuickAddParty(false)}
+                onCreated={async (party) => {
+                  const updatedAccounts = await api.listAccounts();
+                  setAccounts(updatedAccounts);
+                  if (party.accountId) {
+                    setCustomerAccountId(String(party.accountId));
+                  }
+                }}
+              />
 
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
                 {addingRow ? 'Checking stock…' : 'Add to grid'}
