@@ -162,12 +162,12 @@ export function AddProductPage() {
             </tr>
           </thead>
           <tbody>
-            {products.length === 0 ? (
+            {(products?.length ?? 0) === 0 ? (
               <tr>
                 <td colSpan={4} className="text-textMuted">No products yet.</td>
               </tr>
             ) : (
-              products.map((p) => (
+              (products ?? []).map((p) => (
                 <tr key={p.id}>
                   <td>{p.name}</td>
                   <td>{p.category?.name ?? '—'}</td>

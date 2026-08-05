@@ -188,7 +188,7 @@ export function AccountReportsPage() {
 
         {!loaded ? (
           <p className="text-sm text-textSecondary">Select a category and account, then click Load Ledger</p>
-        ) : ledger && ledger.rows.length === 0 ? (
+        ) : ledger && (ledger.rows?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No entries in this period</p>
         ) : ledger ? (
           <>
@@ -221,7 +221,7 @@ export function AccountReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.rows.map((r, i) => (
+                  {(ledger.rows ?? []).map((r, i) => (
                     <tr key={i} className={`border-b border-border ${r.isOpeningRow ? 'bg-surface1 font-medium' : ''}`}>
                       <td className="py-2 pr-2 align-top whitespace-nowrap">{formatDate(r.date)}</td>
                       <td className="py-2 pr-4 align-top text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
@@ -456,14 +456,14 @@ export function StockReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.rows.length === 0 ? (
+                  {(report.rows?.length ?? 0) === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-6 text-center text-textSecondary">
                         No stock movements for this product / bag type yet.
                       </td>
                     </tr>
                   ) : (
-                    report.rows.map((row) => (
+                    (report.rows ?? []).map((row) => (
                       <tr key={row.id} className="border-b border-border">
                         <td className="py-2 pr-3 whitespace-nowrap">{formatDate(row.date)}</td>
                         <td className="py-2 pr-3">{row.description}</td>
@@ -617,7 +617,7 @@ export function AccountBalancePage() {
     }
   }
 
-  const showGrouped = !categoryId && (report?.groups.length ?? 0) > 0;
+  const showGrouped = !categoryId && (report?.groups?.length ?? 0) > 0;
 
   return (
     <PageShell title="Account Balance" subtitle="Balances as of a selected date">
@@ -635,7 +635,7 @@ export function AccountBalancePage() {
               onChange={(e) => setCategoryId(e.target.value)}
             >
               <option value="">All Groups</option>
-              {categories.map((c) => (
+              {(categories ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -662,7 +662,7 @@ export function AccountBalancePage() {
 
         {!loaded ? (
           <p className="text-sm text-textSecondary">Set filters and click View</p>
-        ) : report && report.accounts.length === 0 ? (
+        ) : report && (report.accounts?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No accounts match these filters</p>
         ) : report ? (
           <>
@@ -673,7 +673,7 @@ export function AccountBalancePage() {
             <div className="overflow-x-auto">
               {showGrouped ? (
                 <div className="space-y-6">
-                  {report.groups.map((group) => (
+                  {(report.groups ?? []).map((group) => (
                     <div key={group.categoryId}>
                       <div className="mb-2 border-b border-border pb-1">
                         <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
@@ -855,16 +855,16 @@ export function VouchersReportPage() {
         </div>
 
         {error ? <p className="mb-4 text-sm text-danger">{error}</p> : null}
-        {loaded && listTotal > vouchers.length ? (
+        {loaded && listTotal > (vouchers?.length ?? 0) ? (
           <p className="mb-4 text-sm text-amber-700">
-            Showing first {vouchers.length} of {listTotal} vouchers in this period. Narrow the date
+            Showing first {vouchers?.length ?? 0} of {listTotal} vouchers in this period. Narrow the date
             range for complete totals.
           </p>
         ) : null}
 
         {!loaded ? (
           <p className="text-sm text-textSecondary">Set filters and click View</p>
-        ) : vouchers.length === 0 ? (
+        ) : (vouchers?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No vouchers in this period</p>
         ) : (
           <>
@@ -887,7 +887,7 @@ export function VouchersReportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {vouchers.map((v) => (
+                  {(vouchers ?? []).map((v) => (
                     <tr
                       key={v.id}
                       onClick={() => setSelected(v)}

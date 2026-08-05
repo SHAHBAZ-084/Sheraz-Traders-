@@ -108,7 +108,7 @@ export function UserInfoPage() {
 
           <Panel className="mt-4 max-w-xl">
             <h2 className="mb-3 text-lg font-semibold text-textPrimary">Existing users</h2>
-            {users.length === 0 ? (
+            {(users?.length ?? 0) === 0 ? (
               <p className="text-sm text-textMuted">No users found.</p>
             ) : (
               <table className="w-full text-left text-sm">
@@ -120,7 +120,7 @@ export function UserInfoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((row) => (
+                  {(users ?? []).map((row) => (
                     <tr key={row.id} className="border-b border-border/50">
                       <td className="py-2 pr-3 text-textPrimary">{row.username}</td>
                       <td className="py-2 pr-3 text-textPrimary">{row.displayName}</td>

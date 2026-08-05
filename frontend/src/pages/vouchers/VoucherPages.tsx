@@ -600,7 +600,7 @@ export function VoucherDetailCard({
             <dd className="text-sm font-medium text-textPrimary">{row.value}</dd>
           </div>
         ))}
-        {isMultiLeg && kachiLegs.length > 0 ? (
+        {(isMultiLeg && (kachiLegs?.length ?? 0) > 0) ? (
           <div className="py-3">
             <dt className="mb-3 text-sm text-textSecondary">Ledger legs</dt>
             <dd>
@@ -615,7 +615,7 @@ export function VoucherDetailCard({
                     </tr>
                   </thead>
                   <tbody>
-                    {kachiLegs.map((leg) => (
+                    {(kachiLegs ?? []).map((leg) => (
                       <tr key={leg.id} className="border-b border-border">
                         <td className="py-2 pr-3 font-medium text-textPrimary">
                           {leg.ledger?.account?.name ?? '—'}
@@ -692,7 +692,7 @@ export function VoucherDetailCard({
         ) : null}
       </dl>
 
-      {auditParts.length > 0 && (
+      {(auditParts?.length ?? 0) > 0 && (
         <p className="mt-4 border-t border-border pt-3 text-xs text-textSecondary">
           {auditParts.join(' · ')}
         </p>
@@ -719,8 +719,8 @@ export function VoucherListPage() {
     api
       .listVouchers({ limit: 200, offset: 0 })
       .then((page) => {
-        setVouchers(page.items);
-        setTotal(page.total);
+        setVouchers(page?.items ?? []);
+        setTotal(page?.total ?? 0);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load vouchers'))
       .finally(() => setLoading(false));
@@ -738,7 +738,7 @@ export function VoucherListPage() {
       setSearched(true);
       return;
     }
-    const found = vouchers.find((v) => v.number === no && (!searchType || v.type === searchType));
+    const found = (vouchers ?? []).find((v) => v.number === no && (!searchType || v.type === searchType));
     setResult(found ?? 'notfound');
     setSearched(true);
   }
@@ -775,7 +775,7 @@ export function VoucherListPage() {
   const voucher = result && result !== 'notfound' ? result : null;
 
   return (
-    <PageShell subtitle={total > vouchers.length ? `Loaded ${vouchers.length} of ${total} vouchers for lookup` : 'Search a voucher by type and number'}>
+    <PageShell subtitle={total > (vouchers?.length ?? 0) ? `Loaded ${vouchers?.length ?? 0} of ${total} vouchers for lookup` : 'Search a voucher by type and number'}>
       <Panel>
         {loadError ? (
           <p className="text-sm text-danger">{loadError}</p>

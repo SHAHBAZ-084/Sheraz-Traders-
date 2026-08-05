@@ -61,10 +61,10 @@ export function StoresPage() {
             Used by Sale Invoice and Purchase Invoice stock only. Other invoice types are unaffected.
           </p>
           <div className="mt-4 space-y-2">
-            {stores.length === 0 ? (
+            {(stores?.length ?? 0) === 0 ? (
               <p className="text-sm text-textMuted">No stores yet.</p>
             ) : (
-              stores.map((store) => (
+              (stores ?? []).map((store) => (
                 <div key={store.id} className="flex items-center justify-between gap-3 border-b border-border py-2">
                   <div>
                     <p className="text-sm font-medium text-textPrimary">{store.name}</p>

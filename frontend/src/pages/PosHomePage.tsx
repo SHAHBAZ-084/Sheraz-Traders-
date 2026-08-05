@@ -115,7 +115,7 @@ export function PosHomePage() {
           </div>
           {!summary ? (
             <p className="mt-2 text-sm text-textMuted">Loading…</p>
-          ) : summary.productStock.length === 0 ? (
+          ) : (summary.productStock?.length ?? 0) === 0 ? (
             <p className="mt-2 text-sm text-textMuted">No bag stock yet.</p>
           ) : (
             <div className="mt-2 max-h-36 overflow-y-auto">
@@ -130,7 +130,7 @@ export function PosHomePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.productStock.map((row) => (
+                  {(summary.productStock ?? []).map((row) => (
                     <tr key={row.productId} className="border-t border-border">
                       <td className="py-1 pr-2 text-textPrimary">{row.name}</td>
                       <td className="py-1 pr-2 text-right tabular-nums font-medium text-financial">
@@ -208,7 +208,7 @@ function PanelSection({ summary }: { summary: DashboardSummary | null }) {
       <h2 className="legacy-section-title">Recent Vouchers</h2>
       {!summary ? (
         <p className="text-sm text-textMuted">Loading…</p>
-      ) : summary.recentVouchers.length === 0 ? (
+      ) : (summary.recentVouchers?.length ?? 0) === 0 ? (
         <p className="text-sm text-textMuted">No vouchers posted yet this year.</p>
       ) : (
         <LegacyTable>
@@ -221,7 +221,7 @@ function PanelSection({ summary }: { summary: DashboardSummary | null }) {
             </tr>
           </thead>
           <tbody>
-            {summary.recentVouchers.map((v) => (
+            {(summary.recentVouchers ?? []).map((v) => (
               <tr key={v.id}>
                 <td className="font-mono text-xs font-semibold text-financial">
                   {formatVoucherNumber(v.number, v.type)}

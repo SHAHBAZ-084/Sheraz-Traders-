@@ -73,7 +73,7 @@ export function PendingApprovalsPage() {
         {message ? <p className="mb-3 text-sm text-success">{message}</p> : null}
         {loading ? (
           <p className="text-sm text-textMuted">Loading…</p>
-        ) : items.length === 0 ? (
+        ) : (items?.length ?? 0) === 0 ? (
           <p className="text-sm text-textMuted">No pending vouchers or invoices.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -91,7 +91,7 @@ export function PendingApprovalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => {
+                {(items ?? []).map((item) => {
                   const key = `${item.kind}-${item.id}`;
                   return (
                     <tr key={key} className="border-b border-border">

@@ -110,7 +110,7 @@ function PartyPage({
             ))}
           </tbody>
         </table>
-        {parties.length === 0 ? <p className="py-4 text-sm text-textMuted">No parties yet.</p> : null}
+        {(parties?.length ?? 0) === 0 ? <p className="py-4 text-sm text-textMuted">No parties yet.</p> : null}
       </Panel>
       <PageCloseBar />
     </PageShell>
