@@ -546,9 +546,9 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
                     <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
-                    <InvoiceField>
-                      <div className="mb-1 flex items-center justify-between gap-1">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textMuted select-none">
+                    <InvoiceField className="min-w-[12.5rem]">
+                      <div className="mb-1 flex items-center justify-between gap-1 whitespace-nowrap">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textMuted select-none shrink-0">
                           <input
                             type="checkbox"
                             checked={prefs?.marketFeeEnabled ?? true}
@@ -565,7 +565,9 @@ export function KachiMaalInvoicePage() {
                           />
                           <span>Market fee</span>
                         </label>
-                        <span className="text-[11px] font-normal text-textMuted">({invoiceTotals.totalCalculatedBags.toFixed(2)} bags)</span>
+                        <span className="text-[10px] font-normal text-textMuted shrink-0">
+                          ({invoiceTotals.totalCalculatedBags.toFixed(1)} bags)
+                        </span>
                       </div>
                       <TextInput
                         value={formatLedgerAmount(invoiceTotals.marketFeeAmount)}
