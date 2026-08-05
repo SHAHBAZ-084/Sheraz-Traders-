@@ -18,15 +18,9 @@ function toAuthUser(user: {
 }
 
 export async function login(username: string, password: string) {
-  const cleanUsername = username.trim();
-  const user = await prisma.user.findFirst({
-    where: {
-      username: {
-        equals: cleanUsername,
-        mode: 'insensitive',
-      },
-    },
-  });
+  const cleanUsername = username.trim().toLowerCase();
+  const users = await prisma.user.findMany();
+  const user = users.find((u) => u.username.trim().toLowerCase() === cleanUsername);
 
   if (!user) {
     return null;
