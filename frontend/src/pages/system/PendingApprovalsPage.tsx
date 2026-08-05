@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { PageShell, Panel, PrimaryButton } from '../../components/ui/PageShell';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,7 +28,8 @@ export function PendingApprovalsPage() {
     setLoading(true);
     setError('');
     try {
-      setItems(await api.listPendingApprovals());
+      const res = await api.listPendingApprovals();
+      setItems(Array.isArray(res) ? res : (res as any)?.items ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pending approvals');
       setItems([]);
@@ -42,11 +42,10 @@ export function PendingApprovalsPage() {
     void load();
   }, [load]);
 
-  if (user?.role !== 'ADMIN') {
-    return <Navigate to="/" replace />;
-  }
+  const isAdmin = user?.role === 'ADMIN';
 
   async function onApprove(item: PendingItem) {
+    if (!isAdmin) return;
     const key = `${item.kind}-${item.id}`;
     setBusyId(key);
     setError('');
@@ -57,7 +56,7 @@ export function PendingApprovalsPage() {
       } else {
         await api.approvePendingInvoice(item.id);
       }
-      setMessage(`Approved ${item.reference ?? item.type}.`);
+      setMessage(`Approved ${item.reference ?? item.type ?? 'item'}.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Approve failed');
@@ -69,6 +68,11 @@ export function PendingApprovalsPage() {
   return (
     <PageShell title="Pending Approvals" subtitle="Review USER submissions before they post to the ledger">
       <Panel>
+        {!isAdmin ? (
+          <p className="mb-3 rounded bg-surface2 px-3 py-2 text-xs text-textSecondary font-medium">
+            Viewing pending submissions. Approval actions require an ADMIN account.
+          </p>
+        ) : null}
         {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
         {message ? <p className="mb-3 text-sm text-success">{message}</p> : null}
         {loading ? (
@@ -96,7 +100,7 @@ export function PendingApprovalsPage() {
                   return (
                     <tr key={key} className="border-b border-border">
                       <td className="py-2 pr-3 capitalize">{item.kind}</td>
-                      <td className="py-2 pr-3">{item.type.replaceAll('_', ' ')}</td>
+                      <td className="py-2 pr-3">{item.type ? String(item.type).replaceAll('_', ' ') : '—'}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{item.reference ?? '—'}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {item.date ? formatDate(item.date) : '—'}
@@ -109,10 +113,10 @@ export function PendingApprovalsPage() {
                       <td className="py-2 text-right">
                         <PrimaryButton
                           type="button"
-                          disabled={busyId === key}
+                          disabled={!isAdmin || busyId === key}
                           onClick={() => void onApprove(item)}
                         >
-                          {busyId === key ? 'Approving…' : 'Approve'}
+                          {!isAdmin ? 'Admin only' : busyId === key ? 'Approving…' : 'Approve'}
                         </PrimaryButton>
                       </td>
                     </tr>

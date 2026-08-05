@@ -392,10 +392,11 @@ function SimpleInvoiceLineTable({
 }: {
   rows: Array<{ product: string; quantity: number; rate: number; lineTotal: number }>;
 }) {
-  const empty = rows.length === 0;
+  const safeRows = rows ?? [];
+  const empty = safeRows.length === 0;
   const display = empty
     ? [{ product: '\u00A0', quantity: 0, rate: 0, lineTotal: 0 }]
-    : rows;
+    : safeRows;
 
   return (
     <table className="mt-4 w-full border-collapse text-[12px]">

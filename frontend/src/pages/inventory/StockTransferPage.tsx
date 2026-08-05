@@ -27,9 +27,9 @@ export function StockTransferPage() {
   useEffect(() => {
     Promise.all([api.listProducts(), api.listProductCategories(), api.listActiveStores()])
       .then(([prods, cats, activeStores]) => {
-        setProducts(prods);
-        setProductCategories(cats);
-        setStores(activeStores);
+        setProducts(Array.isArray(prods) ? prods : []);
+        setProductCategories(Array.isArray(cats) ? cats : []);
+        setStores(Array.isArray(activeStores) ? activeStores : []);
       })
       .catch(() => setError('Failed to load form data'));
   }, []);
@@ -52,17 +52,18 @@ export function StockTransferPage() {
   }, [productId, fromStoreId]);
 
   const storeOptions = useMemo(
-    () => stores.map((s) => ({ value: String(s.id), label: s.name })),
+    () => (Array.isArray(stores) ? stores : []).map((s) => ({ value: String(s.id), label: s.name })),
     [stores],
   );
   const productCategoryOptions = useMemo(
-    () => productCategories.map((c) => ({ value: String(c.id), label: c.name })),
+    () => (Array.isArray(productCategories) ? productCategories : []).map((c) => ({ value: String(c.id), label: c.name })),
     [productCategories],
   );
   const productOptions = useMemo(() => {
+    const safeProds = Array.isArray(products) ? products : [];
     const filtered = productCategoryId
-      ? products.filter((p) => String(p.categoryId ?? '') === productCategoryId)
-      : products;
+      ? safeProds.filter((p) => String(p.categoryId ?? '') === productCategoryId)
+      : safeProds;
     return filtered.map((p) => ({ value: String(p.id), label: p.name }));
   }, [products, productCategoryId]);
 

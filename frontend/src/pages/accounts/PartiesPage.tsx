@@ -25,11 +25,16 @@ function PartyPage({
   const [error, setError] = useState('');
 
   async function refresh() {
-    setParties(await listFn());
+    try {
+      const res = await listFn();
+      setParties(Array.isArray(res) ? res : []);
+    } catch {
+      setParties([]);
+    }
   }
 
   useEffect(() => {
-    refresh().catch(() => setParties([]));
+    void refresh();
   }, []);
 
   async function onCreate(event: FormEvent) {
@@ -98,7 +103,7 @@ function PartyPage({
             </tr>
           </thead>
           <tbody>
-            {parties.map((party) => (
+            {(Array.isArray(parties) ? parties : []).map((party) => (
               <tr key={party.id} className="border-b border-border">
                 <td className="py-2 font-medium">{party.name}</td>
                 <td className="py-2">{party.phone ?? '—'}</td>

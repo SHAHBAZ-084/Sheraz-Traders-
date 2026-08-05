@@ -56,8 +56,10 @@ function todayInputValue() {
 }
 
 function flatAccountOptions(categories: AccountCategory[], accounts: Account[], categoryNames: readonly string[]) {
-  const allowed = new Set(categories.filter((c) => categoryNames.includes(c.name)).map((c) => c.id));
-  return accounts
+  const safeCats = Array.isArray(categories) ? categories : [];
+  const safeAccs = Array.isArray(accounts) ? accounts : [];
+  const allowed = new Set(safeCats.filter((c) => categoryNames.includes(c.name)).map((c) => c.id));
+  return safeAccs
     .filter((a) => allowed.has(a.categoryId))
     .map((a) => ({ value: String(a.id), label: a.name }));
 }
@@ -154,17 +156,18 @@ export function PurchaseInvoicePage() {
   }, []);
 
   const productCategoryOptions = useMemo(
-    () => productCategories.map((c) => ({ value: String(c.id), label: c.name })),
+    () => (Array.isArray(productCategories) ? productCategories : []).map((c) => ({ value: String(c.id), label: c.name })),
     [productCategories],
   );
   const productOptions = useMemo(() => {
+    const safeProducts = Array.isArray(products) ? products : [];
     const filtered = productCategoryId
-      ? products.filter((p) => String(p.categoryId ?? '') === productCategoryId)
-      : products;
+      ? safeProducts.filter((p) => String(p.categoryId ?? '') === productCategoryId)
+      : safeProducts;
     return filtered.map((p) => ({ value: String(p.id), label: p.name }));
   }, [products, productCategoryId]);
   const storeOptions = useMemo(
-    () => stores.map((s) => ({ value: String(s.id), label: s.name })),
+    () => (Array.isArray(stores) ? stores : []).map((s) => ({ value: String(s.id), label: s.name })),
     [stores],
   );
   const supplierOptions = useMemo(

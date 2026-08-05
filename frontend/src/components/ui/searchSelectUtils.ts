@@ -1,9 +1,10 @@
 import type { SearchSelectOption } from './SearchSelect';
 
 export function filterOptions(options: SearchSelectOption[], query: string): SearchSelectOption[] {
+  const safeOpts = options ?? [];
   const q = query.trim().toLowerCase();
-  if (!q) return options;
-  return options.filter((o) => o.label.toLowerCase().includes(q));
+  if (!q) return safeOpts;
+  return safeOpts.filter((o) => o?.label?.toLowerCase().includes(q));
 }
 
 /**
@@ -16,15 +17,16 @@ export function resolveSelection(
   highlightMovedByKeyboard: boolean,
   mode: 'enter' | 'tab',
 ): SearchSelectOption | null {
-  if (filtered.length === 0) return null;
-  if (filtered.length === 1) return filtered[0]!;
+  const safe = filtered ?? [];
+  if (safe.length === 0) return null;
+  if (safe.length === 1) return safe[0]!;
 
   if (mode === 'enter') {
-    return filtered[highlightIndex] ?? filtered[0] ?? null;
+    return safe[highlightIndex] ?? safe[0] ?? null;
   }
 
-  if (highlightMovedByKeyboard && filtered[highlightIndex]) {
-    return filtered[highlightIndex]!;
+  if (highlightMovedByKeyboard && safe[highlightIndex]) {
+    return safe[highlightIndex]!;
   }
 
   return null;

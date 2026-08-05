@@ -20,7 +20,7 @@ export function ProductRemovePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.listProducts().then(setProducts).catch(() => setProducts([]));
+    api.listProducts().then((res) => setProducts(Array.isArray(res) ? res : [])).catch(() => setProducts([]));
   }, []);
 
   async function onRemove() {
@@ -31,7 +31,8 @@ export function ProductRemovePage() {
       await api.removeProduct(Number(selectedId));
       setMessage('Product removed.');
       setSelectedId('');
-      setProducts(await api.listProducts());
+      const res = await api.listProducts();
+      setProducts(Array.isArray(res) ? res : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -48,7 +49,7 @@ export function ProductRemovePage() {
             onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : '')}
           >
             <option value="">Select product</option>
-            {products.map((p) => (
+            {(Array.isArray(products) ? products : []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}{p.category ? ` (${p.category.name})` : ''}
               </option>

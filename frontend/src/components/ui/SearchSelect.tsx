@@ -47,7 +47,8 @@ export function SearchSelect({
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [highlightMovedByKeyboard, setHighlightMovedByKeyboard] = useState(false);
 
-  const selected = options.find((o) => o.value === value);
+  const safeOptions = options ?? [];
+  const selected = safeOptions.find((o) => o.value === value);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -55,11 +56,11 @@ export function SearchSelect({
   }, [query]);
 
   const filtered = useMemo(
-    () => filterOptions(options, debouncedQuery),
-    [options, debouncedQuery],
+    () => filterOptions(safeOptions, debouncedQuery),
+    [safeOptions, debouncedQuery],
   );
 
-  const filteredKey = filtered.map((o) => o.value).join('\0');
+  const filteredKey = (filtered ?? []).map((o) => o.value).join('\0');
 
   useEffect(() => {
     setHighlightIndex(0);

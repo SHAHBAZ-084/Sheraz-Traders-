@@ -26,7 +26,8 @@ export function AddProductPage() {
 
   async function loadCategories() {
     try {
-      setCategories(await api.listProductCategories());
+      const res = await api.listProductCategories();
+      setCategories(Array.isArray(res) ? res : []);
     } catch {
       setCategories([]);
     }
@@ -34,7 +35,8 @@ export function AddProductPage() {
 
   async function loadProducts() {
     try {
-      setProducts(await api.listProducts());
+      const res = await api.listProducts();
+      setProducts(Array.isArray(res) ? res : []);
     } catch {
       setProducts([]);
     }
@@ -106,7 +108,7 @@ export function AddProductPage() {
               onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
             >
               <option value="">No category</option>
-              {categories.map((c) => (
+              {(Array.isArray(categories) ? categories : []).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>

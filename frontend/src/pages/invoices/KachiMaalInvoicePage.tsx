@@ -88,8 +88,9 @@ function todayInputValue() {
 }
 
 function filterCategories(all: AccountCategory[], allowed: readonly string[]) {
+  const safeAll = Array.isArray(all) ? all : [];
   const set = new Set(allowed);
-  return all.filter((c) => set.has(c.name));
+  return safeAll.filter((c) => set.has(c.name));
 }
 
 function flatAccountOptions(
@@ -97,8 +98,10 @@ function flatAccountOptions(
   accounts: Account[],
   categoryNames: readonly string[],
 ) {
-  const allowedIds = new Set(filterCategories(categories, categoryNames).map((c) => c.id));
-  return accounts
+  const safeCats = Array.isArray(categories) ? categories : [];
+  const safeAccs = Array.isArray(accounts) ? accounts : [];
+  const allowedIds = new Set(filterCategories(safeCats, categoryNames).map((c) => c.id));
+  return safeAccs
     .filter((a) => allowedIds.has(a.categoryId))
     .map((a) => ({ value: String(a.id), label: a.name }));
 }
@@ -177,7 +180,7 @@ export function KachiMaalInvoicePage() {
   const [lowerBardanaRate, setLowerBardanaRate] = useState(() => restoredState?.lowerBardanaRate ?? '');
 
   const productOptions = useMemo(
-    () => products.map((p) => ({ value: String(p.id), label: p.name })),
+    () => (Array.isArray(products) ? products : []).map((p) => ({ value: String(p.id), label: p.name })),
     [products],
   );
 

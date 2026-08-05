@@ -5,7 +5,6 @@ import * as approvalsService from './approvals.service';
 
 export const approvalsRouter = Router();
 approvalsRouter.use(requireAuth);
-approvalsRouter.use(requireAdmin);
 
 approvalsRouter.get(
   '/pending',
@@ -16,6 +15,7 @@ approvalsRouter.get(
 
 approvalsRouter.post(
   '/vouchers/:id/approve',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const result = await approvalsService.approvePendingVoucher(id, req.user!.id);
@@ -25,6 +25,7 @@ approvalsRouter.post(
 
 approvalsRouter.post(
   '/invoices/:id/approve',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const result = await approvalsService.approvePendingInvoice(id);

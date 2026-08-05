@@ -73,8 +73,9 @@ function AccountSideFields({
   panelClassName?: string;
   labelClassName?: string;
 }) {
-  const filteredAccounts = accounts.filter((a) => categoryId && String(a.categoryId) === categoryId);
-  const selected = accounts.find((a) => String(a.id) === accountId);
+  const safeAccs = Array.isArray(accounts) ? accounts : [];
+  const filteredAccounts = safeAccs.filter((a) => categoryId && String(a.categoryId) === categoryId);
+  const selected = safeAccs.find((a) => String(a.id) === accountId);
 
   return (
     <div className={`min-w-0 overflow-visible ${panelClassName}`.trim()}>
@@ -87,7 +88,7 @@ function AccountSideFields({
             tabIndex={categoryTabIndex}
             value={categoryId}
             onChange={onCategoryChange}
-            options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
+            options={(Array.isArray(categories) ? categories : []).map((c) => ({ value: String(c.id), label: c.name }))}
             placeholder="Search category…"
             nextFocusRef={accountInputRef}
             onSelected={() => {
@@ -128,13 +129,14 @@ function categoriesForSide(
   kind: keyof typeof VOUCHER_TYPES,
   side: 'credit' | 'debit',
 ): AccountCategory[] {
-  if (kind === 'journal') return all;
+  const safeAll = Array.isArray(all) ? all : [];
+  if (kind === 'journal') return safeAll;
   const restricted =
     (kind === 'receipt' && side === 'debit') ||
     (kind === 'payment' && side === 'credit');
-  if (!restricted) return all;
-  const filtered = all.filter((c) => isBankOrCashCategory(c.name));
-  return filtered.length > 0 ? filtered : all;
+  if (!restricted) return safeAll;
+  const filtered = safeAll.filter((c) => isBankOrCashCategory(c.name));
+  return filtered.length > 0 ? filtered : safeAll;
 }
 
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {

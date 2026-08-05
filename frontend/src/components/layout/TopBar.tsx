@@ -184,7 +184,7 @@ export function TopBar() {
             if (isUserRole && entry.kind === 'dropdown' && entry.label === 'Reports') {
               return null;
             }
-            if (isUserRole && entry.kind === 'link' && (entry.id === 'ledger' || entry.id === 'pending-approvals')) {
+            if (isUserRole && entry.kind === 'link' && entry.id === 'ledger') {
               return null;
             }
             if (entry.kind === 'quick') {
