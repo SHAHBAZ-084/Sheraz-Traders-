@@ -25,7 +25,6 @@ import { api, Account, AccountCategory, Product, SystemPreferences } from '../..
 import { formatLedgerAmount } from '../../lib/format';
 import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
-import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
 import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
@@ -176,7 +175,6 @@ export function KachiMaalInvoicePage() {
   const [lowerBoriThela, setLowerBoriThela] = useState<BoriThelaMode>(() => restoredState?.lowerBoriThela ?? 'BORI');
   const [lowerBardanaQty, setLowerBardanaQty] = useState(() => restoredState?.lowerBardanaQty ?? '');
   const [lowerBardanaRate, setLowerBardanaRate] = useState(() => restoredState?.lowerBardanaRate ?? '');
-  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
 
   const productOptions = useMemo(
     () => products.map((p) => ({ value: String(p.id), label: p.name })),
@@ -212,6 +210,7 @@ export function KachiMaalInvoicePage() {
       paleDariPercent: prefs?.paleDariPercent ?? 0,
       brokeryPercent: prefs?.brokeryPercent ?? 0,
       marketFeeRate: prefs?.marketFeeRate ?? 0,
+      marketFeeEnabled: prefs?.marketFeeEnabled ?? true,
     }),
     [prefs],
   );
@@ -416,18 +415,8 @@ export function KachiMaalInvoicePage() {
                 <InvoiceFieldGroup label="Identity">
                   <InvoiceFieldRow cols={6}>
                     <InvoiceField wide>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-textMuted">Party</span>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-financial hover:underline"
-                          onClick={() => setShowQuickAddParty(true)}
-                        >
-                          + New Party
-                        </button>
-                      </div>
                       <FlatAccountSelect
-                        label=""
+                        label="Party"
                         categoryNames={PURCHASE_PARTY_CATEGORIES}
                         categories={categories}
                         accounts={accounts}
@@ -437,19 +426,6 @@ export function KachiMaalInvoicePage() {
                       />
                     </InvoiceField>
 
-                    <QuickAddPartyModal
-                      kind="supplier"
-                      isOpen={showQuickAddParty}
-                      onClose={() => setShowQuickAddParty(false)}
-                      onCreated={async (party) => {
-                        const base = await loadInvoiceFormBase({ includeProducts: true });
-                        setAccounts(base.accounts);
-                        setCategories(base.categories);
-                        if (party.accountId) {
-                          setPartyAccountId(String(party.accountId));
-                        }
-                      }}
-                    />
                     <InvoiceField>
                       <FieldLabel>Bori / Thela</FieldLabel>
                       <SegmentedControl
@@ -567,10 +543,33 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
                     <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
-                    <InvoiceReadOnlyField
-                      label={`Market fee (${invoiceTotals.totalCalculatedBags.toFixed(2)} bags)`}
-                      value={invoiceTotals.marketFeeAmount}
-                    />
+                    <InvoiceField>
+                      <div className="mb-1 flex items-center justify-between gap-1">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textMuted select-none">
+                          <input
+                            type="checkbox"
+                            checked={prefs?.marketFeeEnabled ?? true}
+                            onChange={async (e) => {
+                              const checked = e.target.checked;
+                              setPrefs((prev) => (prev ? { ...prev, marketFeeEnabled: checked } : prev));
+                              try {
+                                await api.updateSystemPreferences({ marketFeeEnabled: checked });
+                              } catch (err) {
+                                console.error('Failed to update market fee preference', err);
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded border-border text-financial cursor-pointer"
+                          />
+                          <span>Market fee</span>
+                        </label>
+                        <span className="text-[11px] font-normal text-textMuted">({invoiceTotals.totalCalculatedBags.toFixed(2)} bags)</span>
+                      </div>
+                      <TextInput
+                        value={formatLedgerAmount(invoiceTotals.marketFeeAmount)}
+                        readOnly
+                        disabled={!(prefs?.marketFeeEnabled ?? true)}
+                      />
+                    </InvoiceField>
                     <InvoiceReadOnlyField label={`Daami (${prefRates.daamiPercent}%)`} value={invoiceTotals.profitAmount} />
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>

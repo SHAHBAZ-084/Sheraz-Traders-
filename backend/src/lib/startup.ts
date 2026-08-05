@@ -30,12 +30,26 @@ export async function runMigrations(): Promise<void> {
 
   const backendRoot = path.resolve(__dirname, '../..');
   logger.info('Running prisma migrate deploy…');
-  execSync('npx prisma migrate deploy', {
-    cwd: backendRoot,
-    stdio: 'pipe',
-    env: process.env,
-  });
-  logger.info('Database migrations up to date');
+  try {
+    execSync('npx prisma migrate deploy', {
+      cwd: backendRoot,
+      stdio: 'pipe',
+      env: process.env,
+    });
+    logger.info('Database migrations up to date');
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn('prisma migrate deploy failed in dev, falling back to db push');
+      execSync('npx prisma db push --accept-data-loss', {
+        cwd: backendRoot,
+        stdio: 'pipe',
+        env: process.env,
+      });
+      logger.info('Database schema pushed successfully');
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function initializeDatabase(db: PrismaClient): Promise<StartupStatus> {

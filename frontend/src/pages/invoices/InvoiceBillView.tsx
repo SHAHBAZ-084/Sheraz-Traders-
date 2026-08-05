@@ -19,6 +19,7 @@ const DEFAULT_PREFS: SystemPreferences = {
   paleDariPercent: 0,
   brokeryPercent: 0,
   marketFeeRate: 0,
+  marketFeeEnabled: true,
   bardanaRate: 0,
   taxPercent: 0,
   markeetFeeRate: 0,

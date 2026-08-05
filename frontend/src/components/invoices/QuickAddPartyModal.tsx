@@ -1,5 +1,6 @@
-import { FormEvent, useState } from 'react';
-import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../ui/PageShell';
+import { FormEvent, useRef, useState } from 'react';
+import { FieldLabel, PrimaryButton, SecondaryButton, TextInput } from '../ui/PageShell';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { api, type Party } from '../../lib/api';
 
 export type QuickAddPartyKind = 'customer' | 'supplier';
@@ -15,6 +16,9 @@ export function QuickAddPartyModal({
   onClose: () => void;
   onCreated: (party: Party) => void;
 }) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, { disabled: !isOpen });
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -55,7 +59,12 @@ export function QuickAddPartyModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+    >
       <div className="w-full max-w-md rounded border border-border bg-surface2 p-6 shadow-xl">
         <h3 className="text-lg font-semibold text-textPrimary">{title}</h3>
         <p className="mt-1 text-xs text-textSecondary">

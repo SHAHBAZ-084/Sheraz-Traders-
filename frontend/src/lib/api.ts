@@ -81,6 +81,7 @@ export type SystemPreferences = {
   paleDariPercent: number;
   brokeryPercent: number;
   marketFeeRate: number;
+  marketFeeEnabled?: boolean;
   bardanaRate: number;
   taxPercent: number;
   markeetFeeRate: number;
