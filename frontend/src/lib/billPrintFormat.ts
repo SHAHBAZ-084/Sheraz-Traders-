@@ -2,8 +2,7 @@ import type { InvoiceDetail, MaalLineDetail, SystemPreferences } from './api';
 
 export type BillLineRow = {
   variety: string;
-  bori: number;
-  thela: number;
+  bags: number;
   compWeight: number;
   kaat: number;
   netWeight: number;
@@ -47,36 +46,21 @@ export function formatBillWeight(amount: number | string) {
   });
 }
 
-
-
-
-
 export function maalLineToBillRow(line: MaalLineDetail, kaatPercent: number): BillLineRow {
   const compWeight = Number(line.totalWeightKg);
   const kaat = kaatPercent > 0 ? round2(compWeight * (kaatPercent / 100)) : 0;
   const netWeight = round2(compWeight - kaat);
-  const bori = line.boriOrThelaMode === 'BORI' ? Number(line.bagCount) : 0;
-  const thela = line.boriOrThelaMode === 'THELA' ? Number(line.bagCount) : 0;
+  const bags = Number(line.bagCount);
 
   return {
     variety: line.qism?.trim() || line.jins?.trim() || '',
-    bori,
-    thela,
+    bags,
     compWeight,
     kaat,
     netWeight,
     rate: Number(line.ratePerMaund),
     amount: Number(line.amount),
   };
-}
-
-export function formatBoriThelaLine(
-  boriQty: number,
-  boriRate: number,
-  thelaQty: number,
-  thelaRate: number,
-) {
-  return `${boriQty} Bori @ ${formatBillAmount(boriRate)}, ${thelaQty} Thela @ ${formatBillAmount(thelaRate)}`;
 }
 
 export function invoiceBillDate(invoice: InvoiceDetail) {
@@ -114,8 +98,8 @@ export function computeMaalBillFromTotals(
   prefs: Pick<SystemPreferences, 'kantaRate'>,
   invoiceType: InvoiceDetail['type'],
 ) {
-  const purchaseThela = tableRows.reduce((s, r) => s + r.thela, 0);
-  const kantaDeduction = round2(purchaseThela * prefs.kantaRate);
+  const totalBags = tableRows.reduce((s, r) => s + r.bags, 0);
+  const kantaDeduction = round2(totalBags * prefs.kantaRate);
   const purchaseGoods = sumLineAmounts(tableRows);
 
   const purchaseNet = Math.max(0, round2(purchaseGoods - kantaDeduction));
@@ -123,13 +107,13 @@ export function computeMaalBillFromTotals(
   void lines;
 
   return {
-    purchaseThela,
+    totalBags,
     kantaDeduction,
     purchaseNet,
     totals: [
       { label: 'Less Kanta', value: formatBillAmount(kantaDeduction) },
       {
-        label: `${purchaseThela} Thela @${formatBillAmount(prefs.kantaRate)}`,
+        label: `${totalBags} Bags @${formatBillAmount(prefs.kantaRate)}`,
         value: formatBillAmount(0),
       },
     ],
@@ -160,4 +144,3 @@ export function computeKachiDeductions(
     deduction: round2(paleDari + brokery + marketFee),
   };
 }
-

@@ -123,8 +123,7 @@ export function PosHomePage() {
                 <thead>
                   <tr className="text-textSecondary">
                     <th className="pb-1 pr-2 font-medium">Product</th>
-                    <th className="pb-1 pr-2 text-right font-medium">Bori</th>
-                    <th className="pb-1 pr-2 text-right font-medium">Thela</th>
+                    <th className="pb-1 pr-2 text-right font-medium">Stock Qty</th>
                     <th className="pb-1 pr-2 text-right font-medium">Sold (SI)</th>
                     <th className="pb-1 text-right font-medium">Purchased (PI)</th>
                   </tr>
@@ -134,10 +133,7 @@ export function PosHomePage() {
                     <tr key={row.productId} className="border-t border-border">
                       <td className="py-1 pr-2 text-textPrimary">{row.name}</td>
                       <td className="py-1 pr-2 text-right tabular-nums font-medium text-financial">
-                        {row.bori}
-                      </td>
-                      <td className="py-1 pr-2 text-right tabular-nums font-medium text-financial">
-                        {row.thela}
+                        {row.totalQty ?? 0}
                       </td>
                       <td className="py-1 pr-2 text-right tabular-nums text-textSecondary">
                         {row.saleInvoiceQty}

@@ -2,7 +2,6 @@ import {
   InvoiceStatus,
   InvoiceType,
   Prisma,
-  StockBagType,
   StockDirection,
 } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
@@ -11,13 +10,8 @@ import { STOCK_TRACKING_STARTED_AT } from './stock.calculations';
 
 type Tx = Prisma.TransactionClient;
 
-function toStockBagType(bagType: 'BORI' | 'THELA'): StockBagType {
-  return bagType === 'THELA' ? StockBagType.THELA : StockBagType.BORI;
-}
-
 export async function getStockReport(params: {
   productId: number;
-  bagType?: 'BORI' | 'THELA';
   storeId?: number | null;
   limit?: number;
   offset?: number;
@@ -30,7 +24,6 @@ export async function getStockReport(params: {
   const storeId = params.storeId != null && params.storeId > 0 ? params.storeId : undefined;
   const where = {
     productId: params.productId,
-    ...(params.bagType ? { bagType: toStockBagType(params.bagType) } : {}),
     ...(storeId != null ? { storeId } : {}),
   };
 
@@ -59,11 +52,15 @@ export async function getStockReport(params: {
     if (m.direction === StockDirection.IN) {
       running += bags;
       totalIn += bags;
-      if (m.invoiceType === InvoiceType.PURCHASE_INVOICE) purchaseInvoiceTotal += bags;
     } else {
       running -= bags;
       totalOut += bags;
-      if (m.invoiceType === InvoiceType.SALE_INVOICE) saleInvoiceTotal += bags;
+    }
+    if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
+      saleInvoiceTotal += bags;
+    }
+    if (m.invoiceType === InvoiceType.PURCHASE_INVOICE && m.direction === StockDirection.IN) {
+      purchaseInvoiceTotal += bags;
     }
     return {
       id: m.id,
@@ -71,7 +68,7 @@ export async function getStockReport(params: {
       description: m.description ?? m.invoiceReference,
       invoiceReference: m.invoiceReference,
       invoiceType: m.invoiceType,
-      status: m.direction as 'IN' | 'OUT',
+      status: m.direction,
       bags,
       runningBalance: running,
     };
@@ -104,20 +101,18 @@ export async function listProductsByStore(storeId: number) {
     by: ['productId'],
     where: { storeId },
   });
+
   if (grouped.length === 0) return [];
 
+  const productIds = grouped.map((g) => g.productId);
   return prisma.product.findMany({
-    where: {
-      isActive: true,
-      id: { in: grouped.map((g) => g.productId) },
-    },
+    where: { id: { in: productIds }, isActive: true },
     select: { id: true, name: true, code: true },
     orderBy: { name: 'asc' },
   });
 }
 
-/** Net Bori/Thela bag balances per product for dashboard glance. */
-export async function getProductStockBalances() {
+export async function getStockSummary() {
   const products = await prisma.product.findMany({
     where: { isActive: true },
     select: { id: true, name: true, code: true },
@@ -126,25 +121,26 @@ export async function getProductStockBalances() {
   if (products.length === 0) return [];
 
   const movements = await prisma.stockMovement.findMany({
-    where: { productId: { in: products.map((p) => p.id) } },
-    select: { productId: true, bagType: true, direction: true, bags: true, invoiceType: true },
+    where: {
+      productId: { in: products.map((p) => p.id) },
+      invoiceType: { in: [InvoiceType.SALE_INVOICE, InvoiceType.PURCHASE_INVOICE] },
+    },
+    select: { productId: true, direction: true, bags: true, invoiceType: true },
   });
 
   const nets = new Map<
     number,
-    { bori: number; thela: number; saleInvoiceQty: number; purchaseInvoiceQty: number }
+    { totalQty: number; saleInvoiceQty: number; purchaseInvoiceQty: number }
   >();
   for (const m of movements) {
     const row = nets.get(m.productId) ?? {
-      bori: 0,
-      thela: 0,
+      totalQty: 0,
       saleInvoiceQty: 0,
       purchaseInvoiceQty: 0,
     };
     const bags = Number(m.bags);
     const signed = m.direction === StockDirection.IN ? bags : -bags;
-    if (m.bagType === StockBagType.THELA) row.thela += signed;
-    else row.bori += signed;
+    row.totalQty += signed;
     if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
       row.saleInvoiceQty += bags;
     }
@@ -157,8 +153,7 @@ export async function getProductStockBalances() {
   return products
     .map((p) => {
       const net = nets.get(p.id) ?? {
-        bori: 0,
-        thela: 0,
+        totalQty: 0,
         saleInvoiceQty: 0,
         purchaseInvoiceQty: 0,
       };
@@ -166,16 +161,14 @@ export async function getProductStockBalances() {
         productId: p.id,
         name: p.name,
         code: p.code,
-        bori: net.bori,
-        thela: net.thela,
+        totalQty: net.totalQty,
         saleInvoiceQty: net.saleInvoiceQty,
         purchaseInvoiceQty: net.purchaseInvoiceQty,
       };
     })
     .filter(
       (p) =>
-        p.bori !== 0 ||
-        p.thela !== 0 ||
+        p.totalQty !== 0 ||
         p.saleInvoiceQty !== 0 ||
         p.purchaseInvoiceQty !== 0,
     );
@@ -201,24 +194,22 @@ export async function getStockByStore(storeId: number) {
       productId: { in: products.map((p) => p.id) },
       invoiceType: { in: [InvoiceType.SALE_INVOICE, InvoiceType.PURCHASE_INVOICE] },
     },
-    select: { productId: true, bagType: true, direction: true, bags: true, invoiceType: true },
+    select: { productId: true, direction: true, bags: true, invoiceType: true },
   });
 
   const nets = new Map<
     number,
-    { bori: number; thela: number; saleInvoiceQty: number; purchaseInvoiceQty: number }
+    { totalQty: number; saleInvoiceQty: number; purchaseInvoiceQty: number }
   >();
   for (const m of movements) {
     const row = nets.get(m.productId) ?? {
-      bori: 0,
-      thela: 0,
+      totalQty: 0,
       saleInvoiceQty: 0,
       purchaseInvoiceQty: 0,
     };
     const bags = Number(m.bags);
     const signed = m.direction === StockDirection.IN ? bags : -bags;
-    if (m.bagType === StockBagType.THELA) row.thela += signed;
-    else row.bori += signed;
+    row.totalQty += signed;
     if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
       row.saleInvoiceQty += bags;
     }
@@ -233,8 +224,7 @@ export async function getStockByStore(storeId: number) {
     products: products
       .map((p) => {
         const net = nets.get(p.id) ?? {
-          bori: 0,
-          thela: 0,
+          totalQty: 0,
           saleInvoiceQty: 0,
           purchaseInvoiceQty: 0,
         };
@@ -242,16 +232,14 @@ export async function getStockByStore(storeId: number) {
           productId: p.id,
           name: p.name,
           code: p.code,
-          bori: net.bori,
-          thela: net.thela,
+          totalQty: net.totalQty,
           saleInvoiceQty: net.saleInvoiceQty,
           purchaseInvoiceQty: net.purchaseInvoiceQty,
         };
       })
       .filter(
         (p) =>
-          p.bori !== 0 ||
-          p.thela !== 0 ||
+          p.totalQty !== 0 ||
           p.saleInvoiceQty !== 0 ||
           p.purchaseInvoiceQty !== 0,
       ),
@@ -286,7 +274,7 @@ export async function getCurrentStockBalance(
   return balance;
 }
 
-/** Stock OUT for Sale Invoice — quantity treated as whole BORI bags. New helper; does not alter Paunch/Maal stock posts. */
+/** Stock OUT for Sale Invoice — quantity treated as whole bags. */
 export async function postSaleInvoiceStockOut(
   tx: Tx,
   data: {
@@ -307,7 +295,6 @@ export async function postSaleInvoiceStockOut(
     await tx.stockMovement.create({
       data: {
         productId: product.id,
-        bagType: StockBagType.BORI,
         storeId: data.storeId,
         direction: StockDirection.OUT,
         bags: bagsOut,
@@ -390,7 +377,6 @@ export async function createStockTransfer(
     await tx.stockMovement.create({
       data: {
         productId: product.id,
-        bagType: StockBagType.BORI,
         storeId: data.fromStoreId,
         direction: StockDirection.OUT,
         bags: qty,
@@ -404,7 +390,6 @@ export async function createStockTransfer(
     await tx.stockMovement.create({
       data: {
         productId: product.id,
-        bagType: StockBagType.BORI,
         storeId: data.toStoreId,
         direction: StockDirection.IN,
         bags: qty,
@@ -446,7 +431,6 @@ export async function reverseInvoiceStockMovements(
     await tx.stockMovement.create({
       data: {
         productId: m.productId,
-        bagType: m.bagType,
         storeId: m.storeId,
         direction: m.direction === StockDirection.IN ? StockDirection.OUT : StockDirection.IN,
         bags: m.bags,
@@ -460,7 +444,7 @@ export async function reverseInvoiceStockMovements(
   }
 }
 
-/** Stock IN for Purchase Invoice — quantity treated as whole BORI bags. New helper; does not alter Purchase Maal stock posts. */
+/** Stock IN for Purchase Invoice — quantity treated as whole bags. */
 export async function postPurchaseInvoiceStockIn(
   tx: Tx,
   data: {
@@ -481,7 +465,6 @@ export async function postPurchaseInvoiceStockIn(
     await tx.stockMovement.create({
       data: {
         productId: product.id,
-        bagType: StockBagType.BORI,
         storeId: data.storeId,
         direction: StockDirection.IN,
         bags: bagsIn,
@@ -494,4 +477,3 @@ export async function postPurchaseInvoiceStockIn(
     });
   }
 }
-

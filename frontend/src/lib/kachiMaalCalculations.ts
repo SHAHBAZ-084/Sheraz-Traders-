@@ -21,8 +21,6 @@ export type KachiMaalRowInput = {
   dharanCount: number;
   looseKg: number;
   ratePerMaund: number;
-  bardanaQty?: number | null;
-  bardanaRate?: number | null;
 };
 
 export function roundMoney(value: number) {
@@ -38,21 +36,12 @@ export function computeKachiMaalRow(
   const ratePerKg = input.ratePerMaund / MAUND_KG;
   const amount = roundMoney(totalWeightKg * ratePerKg);
 
-  const hasBardana =
-    input.bardanaQty != null
-    && input.bardanaRate != null
-    && input.bardanaQty > 0
-    && input.bardanaRate > 0;
-  const bardanaAmount = hasBardana
-    ? roundMoney(input.bardanaQty! * input.bardanaRate!)
-    : null;
-
   const paleDari = roundMoney(amount * (prefs.paleDariPercent / 100));
   const brokery = roundMoney(amount * (prefs.brokeryPercent / 100));
-  const netCreditToParty = roundMoney(amount + (bardanaAmount ?? 0) - paleDari - brokery);
+  const netCreditToParty = roundMoney(amount - paleDari - brokery);
   const totalMazduriPreview = roundMoney(paleDari + brokery);
 
-  return { totalWeightKg, amount, bardanaAmount, netCreditToParty, totalMazduriPreview };
+  return { totalWeightKg, amount, netCreditToParty, totalMazduriPreview };
 }
 
 export function computeKachiMaalInvoiceTotals(
@@ -60,15 +49,11 @@ export function computeKachiMaalInvoiceTotals(
     amount: number;
     totalWeightKg: number;
     bhartii: number;
-    bardanaAmount?: number | null;
   }>,
   prefs: KachiMaalPreferenceRates,
   miscAmount: number,
-  lowerBardanaQty?: number | null,
-  lowerBardanaRate?: number | null,
 ) {
   let totalGoodsAmount = 0;
-  let totalBardanaFromRows = 0;
   let totalPaleDari = 0;
   let totalBrokery = 0;
   let totalCalculatedBags = 0;
@@ -77,7 +62,6 @@ export function computeKachiMaalInvoiceTotals(
     totalGoodsAmount += row.amount;
     totalPaleDari += row.amount * (prefs.paleDariPercent / 100);
     totalBrokery += row.amount * (prefs.brokeryPercent / 100);
-    totalBardanaFromRows += row.bardanaAmount ?? 0;
     if (row.bhartii > 0) {
       totalCalculatedBags += row.totalWeightKg / row.bhartii;
     }
@@ -86,21 +70,12 @@ export function computeKachiMaalInvoiceTotals(
   totalGoodsAmount = roundMoney(totalGoodsAmount);
   totalPaleDari = roundMoney(totalPaleDari);
   totalBrokery = roundMoney(totalBrokery);
-  totalBardanaFromRows = roundMoney(totalBardanaFromRows);
 
   const marketFeeEnabled = prefs.marketFeeEnabled ?? true;
   const marketFeeAmount = marketFeeEnabled
     ? roundMoney(totalCalculatedBags * prefs.marketFeeRate)
     : 0;
   const profitAmount = roundMoney(totalGoodsAmount * (prefs.daamiPercent / 100));
-
-  const lowerBardanaAmount =
-    lowerBardanaQty != null
-    && lowerBardanaRate != null
-    && lowerBardanaQty > 0
-    && lowerBardanaRate > 0
-      ? roundMoney(lowerBardanaQty * lowerBardanaRate)
-      : null;
 
   const misc = roundMoney(miscAmount);
   const totalDebitAmount = roundMoney(
@@ -109,13 +84,11 @@ export function computeKachiMaalInvoiceTotals(
 
   return {
     totalGoodsAmount,
-    totalBardanaFromRows,
     totalPaleDari,
     totalBrokery,
     totalCalculatedBags,
     marketFeeAmount,
     profitAmount,
-    lowerBardanaAmount,
     totalDebitAmount,
   };
 }

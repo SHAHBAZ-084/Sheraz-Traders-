@@ -5,6 +5,7 @@ import { downloadExcel, downloadPdf } from '../../lib/reportExport';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, FinancialButton, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { BILL_LETTERHEAD } from '../../config/billPrint';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { VoucherDetailCard } from '../vouchers/VoucherPages';
 
@@ -143,7 +144,7 @@ export function AccountReportsPage() {
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Ledger', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows);
+      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
     }
   }
 
@@ -272,7 +273,7 @@ export function TrialBalancePage() {
     if (format === 'excel') {
       downloadExcel('trial-balance.xlsx', 'Trial Balance', headers, rows);
     } else {
-      downloadPdf('trial-balance.pdf', title, headers, rows);
+      downloadPdf('trial-balance.pdf', title, headers, rows, { letterhead: BILL_LETTERHEAD });
     }
   }
 
@@ -599,7 +600,7 @@ export function AccountBalancePage() {
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Account Balance', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows);
+      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
     }
   }
 
@@ -804,7 +805,7 @@ export function VouchersReportPage() {
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Vouchers', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows);
+      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
     }
   }
 

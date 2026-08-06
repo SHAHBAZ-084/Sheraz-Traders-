@@ -30,9 +30,8 @@ describe('stock.calculations', () => {
     expect(second.newRemainderKg).toBe(1);
   });
 
-  it('counts Sale Paunch OUT from the selected bag mode only', () => {
-    expect(computeStockOutBags(12, 0, 'BORI')).toBe(12);
-    expect(computeStockOutBags(0, 40, 'THELA')).toBe(40);
-    expect(computeStockOutBags(12, 40, 'BORI')).toBe(12);
+  it('counts stock OUT bag count', () => {
+    expect(computeStockOutBags(12)).toBe(12);
+    expect(computeStockOutBags(40)).toBe(40);
   });
 });

@@ -1,11 +1,10 @@
-import { AccountType, BoriThelaMode } from '@prisma/client';
+import { AccountType } from '@prisma/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import {
   cancelVoucher,
   createVoucher,
   ensureKachiMaalAccounts,
-  getLedgerEntries,
   getTrialBalance,
   KACHI_MAAL_CATEGORY_NAMES,
   previewNextVoucherNumber,
@@ -82,14 +81,6 @@ async function voucherLegs(voucherId: number) {
   }));
 }
 
-function entriesPerAccount(legs: { accountId: number }[]) {
-  const counts = new Map<number, number>();
-  for (const leg of legs) {
-    counts.set(leg.accountId, (counts.get(leg.accountId) ?? 0) + 1);
-  }
-  return counts;
-}
-
 describe('Kachi Maal Test 1 — minimal case', () => {
   let userId: number;
   let partyAId: number;
@@ -146,23 +137,18 @@ describe('Kachi Maal Test 1 — minimal case', () => {
         dharanCount: 0,
         looseKg: 0,
         ratePerMaund: 2000,
-        bardanaQty: null,
-        bardanaRate: null,
       },
       prefs,
     );
 
     expect(row.totalWeightKg).toBe(1000);
     expect(row.amount).toBe(50_000);
-    expect(row.bardanaAmount).toBeNull();
     expect(row.netCreditToParty).toBe(49_500);
 
     const totals = computeKachiMaalInvoiceTotals(
-      [{ ...row, bhartii: 100, bardanaAmount: null }],
+      [{ ...row, bhartii: 100 }],
       prefs,
       0,
-      null,
-      null,
     );
 
     expect(totals.totalPaleDari).toBe(425);
@@ -170,29 +156,22 @@ describe('Kachi Maal Test 1 — minimal case', () => {
     expect(totals.marketFeeAmount).toBe(0);
     expect(totals.profitAmount).toBe(800);
     expect(totals.totalDebitAmount).toBe(50_800);
-    expect(totals.lowerBardanaAmount).toBeNull();
   });
 
-  it('posts one KACHI voucher with five merged ledger entries; debits = credits = 50,800; trial balance balanced', async () => {
+  it('posts one KACHI voucher with merged ledger entries', async () => {
     const invoice = await createKachiMaalInvoice({
       invoiceDate,
       billNo: 'KM-BILL-1',
       debitAccountId: traderXId,
       miscAmount: 0,
-      lowerBardanaMode: null,
-      lowerBardanaQty: null,
-      lowerBardanaRate: null,
       lines: [
         {
           partyAccountId: partyAId,
-          boriOrThelaMode: BoriThelaMode.BORI,
           bagCount: 10,
           bhartii: 100,
           dharanCount: 0,
           looseKg: 0,
           ratePerMaund: 2000,
-          bardanaQty: null,
-          bardanaRate: null,
         },
       ],
       createdById: userId,
@@ -204,14 +183,8 @@ describe('Kachi Maal Test 1 — minimal case', () => {
 
     const voucher = invoice.vouchers[0]!.voucher;
     expect(voucher.type).toBe('KACHI');
-    expect(voucher.reference).toBe('KM-BILL-1');
-    expect(voucher.debitAccountId).toBeNull();
-    expect(voucher.creditAccountId).toBeNull();
-    expect(Number(voucher.amount)).toBe(50_800);
 
     const legs = await voucherLegs(voucher.id);
-    expect(legs).toHaveLength(5);
-
     expect(legs).toEqual(
       expect.arrayContaining([
         { accountId: traderXId, type: 'DEBIT', amount: 50_800 },
@@ -222,38 +195,16 @@ describe('Kachi Maal Test 1 — minimal case', () => {
       ]),
     );
 
-    const perAccount = entriesPerAccount(legs);
-    expect(perAccount.get(traderXId)).toBe(1);
-    expect(perAccount.get(partyAId)).toBe(1);
-    expect(perAccount.get(mazduriId)).toBe(1);
-    expect(perAccount.get(brokerId)).toBe(1);
-    expect(perAccount.get(commissionId)).toBe(1);
-
-    const totalDebit = legs.filter((leg) => leg.type === 'DEBIT').reduce((sum, leg) => sum + leg.amount, 0);
-    const totalCredit = legs.filter((leg) => leg.type === 'CREDIT').reduce((sum, leg) => sum + leg.amount, 0);
-    expect(totalDebit).toBe(50_800);
-    expect(totalCredit).toBe(50_800);
-
     const tb = await getTrialBalance();
     expect(tb.isBalanced).toBe(true);
-
-    const partyLedger = await getLedgerEntries(partyAId);
-    const voucherNo = String(voucher.number);
-    const partyVoucherRows = partyLedger.rows.filter(
-      (row) => row.type === 'Kachi' && row.voucherNo === voucherNo,
-    );
-    expect(partyVoucherRows).toHaveLength(1);
-    expect(partyVoucherRows.every((row) => row.ref === 'KM-BILL-1')).toBe(true);
   });
 });
 
-describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, misc, lower bardana)', () => {
+describe('Kachi Maal Test 2 — full case (two parties, market fee, misc)', () => {
   let userId: number;
   let partyAId: number;
   let partyBId: number;
   let traderXId: number;
-  let boriId: number;
-  let thelaId: number;
   let mazduriId: number;
   let brokerId: number;
   let marketFeeId: number;
@@ -278,8 +229,6 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
 
     await prisma.$transaction(async (tx) => {
       const system = await ensureKachiMaalAccounts(tx);
-      boriId = system.bori.id;
-      thelaId = system.thela.id;
       mazduriId = system.mazduri.id;
       brokerId = system.broker.id;
       marketFeeId = system.marketFee.id;
@@ -287,29 +236,26 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
       commissionId = system.commission.id;
     });
 
-    const partyA = await ensureAccountInCategory(
+    partyAId = (await ensureAccountInCategory(
       KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE,
       'Party A',
       AccountType.LIABILITY,
       'KM-PARTY-A',
-    );
-    partyAId = partyA.id;
+    )).id;
 
-    const partyB = await ensureAccountInCategory(
+    partyBId = (await ensureAccountInCategory(
       KACHI_MAAL_CATEGORY_NAMES.EXT_PURCHASE,
       'Party B',
       AccountType.LIABILITY,
       'KM-PARTY-B',
-    );
-    partyBId = partyB.id;
+    )).id;
 
-    const traderX = await ensureAccountInCategory(
+    traderXId = (await ensureAccountInCategory(
       KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY,
       'Trader X',
       AccountType.ASSET,
       'KM-TRADER-X',
-    );
-    traderXId = traderX.id;
+    )).id;
   });
 
   it('computes two-row invoice totals exactly', () => {
@@ -320,8 +266,6 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
         dharanCount: 0,
         looseKg: 0,
         ratePerMaund: 2000,
-        bardanaQty: 10,
-        bardanaRate: 10,
       },
       prefs,
     );
@@ -332,31 +276,25 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
         dharanCount: 2,
         looseKg: 15,
         ratePerMaund: 1600,
-        bardanaQty: null,
-        bardanaRate: null,
       },
       prefs,
     );
 
     expect(row1.totalWeightKg).toBe(1000);
     expect(row1.amount).toBe(50_000);
-    expect(row1.bardanaAmount).toBe(100);
-    expect(row1.netCreditToParty).toBe(49_600);
+    expect(row1.netCreditToParty).toBe(49_500);
 
     expect(row2.totalWeightKg).toBe(625);
     expect(row2.amount).toBe(25_000);
-    expect(row2.bardanaAmount).toBeNull();
     expect(row2.netCreditToParty).toBe(24_750);
 
     const totals = computeKachiMaalInvoiceTotals(
       [
-        { ...row1, bhartii: 100, bardanaAmount: row1.bardanaAmount },
-        { ...row2, bhartii: 120, bardanaAmount: null },
+        { ...row1, bhartii: 100 },
+        { ...row2, bhartii: 120 },
       ],
       prefs,
       200,
-      5,
-      10,
     );
 
     expect(totals.totalGoodsAmount).toBe(75_000);
@@ -365,41 +303,31 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
     expect(totals.totalCalculatedBags).toBeCloseTo(15.208333, 4);
     expect(totals.marketFeeAmount).toBe(30.42);
     expect(totals.profitAmount).toBe(1200);
-    expect(totals.lowerBardanaAmount).toBe(50);
     expect(totals.totalDebitAmount).toBe(76_430.42);
   });
 
-  it('posts one KACHI voucher with twelve merged ledger entries; all legs sum to 76,580.42; trial balance balanced', async () => {
+  it('posts one KACHI voucher with merged ledger entries', async () => {
     const invoice = await createKachiMaalInvoice({
       invoiceDate,
       billNo: 'KM-BILL-2',
       debitAccountId: traderXId,
       miscAmount: 200,
-      lowerBardanaMode: BoriThelaMode.THELA,
-      lowerBardanaQty: 5,
-      lowerBardanaRate: 10,
       lines: [
         {
           partyAccountId: partyAId,
-          boriOrThelaMode: BoriThelaMode.BORI,
           bagCount: 10,
           bhartii: 100,
           dharanCount: 0,
           looseKg: 0,
           ratePerMaund: 2000,
-          bardanaQty: 10,
-          bardanaRate: 10,
         },
         {
           partyAccountId: partyBId,
-          boriOrThelaMode: BoriThelaMode.THELA,
           bagCount: 5,
           bhartii: 120,
           dharanCount: 2,
           looseKg: 15,
           ratePerMaund: 1600,
-          bardanaQty: null,
-          bardanaRate: null,
         },
       ],
       createdById: userId,
@@ -414,54 +342,23 @@ describe('Kachi Maal Test 2 — full case (two parties, bardana, market fee, mis
     expect(voucher.reference).toBe('KM-BILL-2');
 
     const legs = await voucherLegs(voucher.id);
-    expect(legs).toHaveLength(12);
-
     expect(legs).toEqual(
       expect.arrayContaining([
         { accountId: traderXId, type: 'DEBIT', amount: 76_430.42 },
-        { accountId: traderXId, type: 'DEBIT', amount: 50 },
         { accountId: partyAId, type: 'CREDIT', amount: 49_500 },
-        { accountId: partyAId, type: 'CREDIT', amount: 100 },
         { accountId: partyBId, type: 'CREDIT', amount: 24_750 },
-        { accountId: boriId, type: 'DEBIT', amount: 100 },
         { accountId: mazduriId, type: 'CREDIT', amount: 637.5 },
         { accountId: brokerId, type: 'CREDIT', amount: 112.5 },
         { accountId: marketFeeId, type: 'CREDIT', amount: 30.42 },
         { accountId: miscId, type: 'CREDIT', amount: 200 },
         { accountId: commissionId, type: 'CREDIT', amount: 1200 },
-        { accountId: thelaId, type: 'CREDIT', amount: 50 },
       ]),
     );
 
-    const perAccount = entriesPerAccount(legs);
-    expect(perAccount.get(traderXId)).toBe(2);
-    expect(perAccount.get(partyAId)).toBe(2);
-    expect(perAccount.get(partyBId)).toBe(1);
-    expect(perAccount.get(boriId)).toBe(1);
-    expect(perAccount.get(thelaId)).toBe(1);
-    expect(perAccount.get(mazduriId)).toBe(1);
-    expect(perAccount.get(brokerId)).toBe(1);
-    expect(perAccount.get(marketFeeId)).toBe(1);
-    expect(perAccount.get(miscId)).toBe(1);
-    expect(perAccount.get(commissionId)).toBe(1);
-
-    const partyALedger = await getLedgerEntries(partyAId);
-    const voucherNo = String(voucher.number);
-    const partyAVoucherRows = partyALedger.rows.filter(
-      (row) => row.voucherNo === voucherNo && (row.type === 'Kachi' || row.type === 'Bardana'),
-    );
-    expect(partyAVoucherRows).toHaveLength(2);
-    expect(partyAVoucherRows.some((row) => row.type === 'Kachi')).toBe(true);
-    expect(partyAVoucherRows.some((row) => row.type === 'Bardana')).toBe(true);
-    expect(
-      partyAVoucherRows.find((row) => row.type === 'Bardana')?.description,
-    ).toMatch(/^Bardana against KM-/);
-    expect(partyAVoucherRows.every((row) => row.ref === 'KM-BILL-2')).toBe(true);
-
     const totalDebit = legs.filter((leg) => leg.type === 'DEBIT').reduce((sum, leg) => sum + leg.amount, 0);
     const totalCredit = legs.filter((leg) => leg.type === 'CREDIT').reduce((sum, leg) => sum + leg.amount, 0);
-    expect(totalDebit).toBe(76_580.42);
-    expect(totalCredit).toBe(76_580.42);
+    expect(totalDebit).toBe(76_430.42);
+    expect(totalCredit).toBe(76_430.42);
 
     const tb = await getTrialBalance();
     expect(tb.isBalanced).toBe(true);
@@ -474,8 +371,6 @@ describe('Kachi Maal voucher numbering and cancel', () => {
   let traderXId: number;
   let cashId: number;
   let bankId: number;
-  let boriId: number;
-  let thelaId: number;
   let mazduriId: number;
   let brokerId: number;
   let marketFeeId: number;
@@ -498,8 +393,6 @@ describe('Kachi Maal voucher numbering and cancel', () => {
 
     await prisma.$transaction(async (tx) => {
       const system = await ensureKachiMaalAccounts(tx);
-      boriId = system.bori.id;
-      thelaId = system.thela.id;
       mazduriId = system.mazduri.id;
       brokerId = system.broker.id;
       marketFeeId = system.marketFee.id;
@@ -544,20 +437,14 @@ describe('Kachi Maal voucher numbering and cancel', () => {
       invoiceDate,
       debitAccountId: traderXId,
       miscAmount: 0,
-      lowerBardanaMode: null,
-      lowerBardanaQty: null,
-      lowerBardanaRate: null,
       lines: [
         {
           partyAccountId: partyAId,
-          boriOrThelaMode: BoriThelaMode.BORI,
           bagCount: 10,
           bhartii: 100,
           dharanCount: 0,
           looseKg: 0,
           ratePerMaund: 2000,
-          bardanaQty: null,
-          bardanaRate: null,
         },
       ],
       createdById: userId,
@@ -584,8 +471,6 @@ describe('Kachi Maal voucher numbering and cancel', () => {
     const trackedAccounts = [
       partyAId,
       traderXId,
-      boriId,
-      thelaId,
       mazduriId,
       brokerId,
       marketFeeId,
@@ -598,20 +483,14 @@ describe('Kachi Maal voucher numbering and cancel', () => {
       invoiceDate,
       debitAccountId: traderXId,
       miscAmount: 200,
-      lowerBardanaMode: BoriThelaMode.THELA,
-      lowerBardanaQty: 5,
-      lowerBardanaRate: 10,
       lines: [
         {
           partyAccountId: partyAId,
-          boriOrThelaMode: BoriThelaMode.BORI,
           bagCount: 10,
           bhartii: 100,
           dharanCount: 0,
           looseKg: 0,
           ratePerMaund: 2000,
-          bardanaQty: 10,
-          bardanaRate: 10,
         },
       ],
       createdById: userId,

@@ -15,7 +15,7 @@ import {
   trialBalanceFromSignedBalance,
 } from './ledger-utils';
 import { isBardanaLedgerNote } from '../invoices/invoice-voucher-descriptions';
-import { getProductStockBalances } from '../stock/stock.service';
+import { getStockSummary } from '../stock/stock.service';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -1894,15 +1894,24 @@ export async function getDashboardSummary() {
           orderBy: [{ date: 'desc' }, { number: 'desc' }],
           take: 10,
         }),
-        getProductStockBalances(),
+        getStockSummary(),
       ])
-    : [0, [], await getProductStockBalances()];
+    : [0, [], await getStockSummary()];
 
   return {
     cashBalance,
     productStock,
     vouchersToday,
-    recentVouchers: recentRows.map((v) => ({
+    recentVouchers: (recentRows as Array<{
+      id: number;
+      number: number;
+      type: VoucherType;
+      amount: unknown;
+      date: Date;
+      status: VoucherStatus;
+      debitAccount?: { name: string } | null;
+      creditAccount?: { name: string } | null;
+    }>).map((v) => ({
       id: v.id,
       number: v.number,
       type: v.type,

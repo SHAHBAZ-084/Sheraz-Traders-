@@ -14,12 +14,6 @@ stockRouter.get(
   requireReportsAccess,
   asyncHandler(async (req, res) => {
     const productId = Number(req.query.productId);
-    const bagTypeRaw = req.query.bagType ? String(req.query.bagType).toUpperCase() : undefined;
-    const bagType = bagTypeRaw === 'BORI' || bagTypeRaw === 'THELA' ? bagTypeRaw : undefined;
-    if (!Number.isFinite(productId) || productId < 1) {
-      res.status(400).json({ error: 'productId is required' });
-      return;
-    }
     const storeIdRaw = req.query.storeId;
     const storeId =
       storeIdRaw != null && String(storeIdRaw).trim() !== ''
@@ -30,7 +24,7 @@ stockRouter.get(
       return;
     }
     const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
-    const report = await stockService.getStockReport({ productId, bagType, storeId, limit, offset });
+    const report = await stockService.getStockReport({ productId, storeId, limit, offset });
     res.json({
       ...report,
       pagination: {

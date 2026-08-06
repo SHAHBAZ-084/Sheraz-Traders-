@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bardanaAgainstInvoiceDescription,
   blendedLegDescription,
   invoiceVoucherHeaderSuffix,
-  isBardanaLedgerNote,
   rowLegDescription,
   voucherReferenceFromBillNo,
 } from './invoice-voucher-descriptions';
@@ -43,13 +41,5 @@ describe('invoice-voucher-descriptions', () => {
     expect(rowLegDescription({ totalWeightKg: 100, ratePerMaund: 500 }, {})).toBe(
       '100 kg @ Rs 500/maund',
     );
-  });
-
-  it('builds bardana-against-invoice description', () => {
-    expect(bardanaAgainstInvoiceDescription('KM-00007')).toBe('Bardana against KM-00007');
-    expect(bardanaAgainstInvoiceDescription('  ')).toBe('Bardana');
-    expect(isBardanaLedgerNote('Bardana against KM-00007')).toBe(true);
-    expect(isBardanaLedgerNote('Bardana 1000 kg @ Rs 2,000/maund')).toBe(true);
-    expect(isBardanaLedgerNote('6000 kg @ Rs 4,275/maund')).toBe(false);
   });
 });

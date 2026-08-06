@@ -17,7 +17,6 @@ const PREF_FIELDS: Record<NumericPrefKey, PrefField> = {
   paleDariPercent: { key: 'paleDariPercent', label: 'Pale Dari (%)', hint: 'Labour rate' },
   brokeryPercent: { key: 'brokeryPercent', label: 'Brokery (%)', hint: 'Broker rate' },
   marketFeeRate: { key: 'marketFeeRate', label: 'Market Fee (per bag)', hint: 'Charged per bag when enabled' },
-  bardanaRate: { key: 'bardanaRate', label: 'Bardana Rate', hint: 'Default bardana rate reference' },
   taxPercent: { key: 'taxPercent', label: 'Tax (%)' },
   markeetFeeRate: { key: 'markeetFeeRate', label: 'Markeet Fee', hint: 'Legacy unused field' },
   kantaRate: { key: 'kantaRate', label: 'Kanta' },
@@ -30,7 +29,7 @@ const TAB_OPTIONS: { value: PrefTab; label: string }[] = [
 
 const TAB_FIELDS: Record<PrefTab, NumericPrefKey[]> = {
   kachi: ['daamiPercent', 'paleDariPercent', 'brokeryPercent', 'marketFeeRate'],
-  general: ['bardanaRate', 'taxPercent', 'markeetFeeRate', 'kantaRate'],
+  general: ['taxPercent', 'markeetFeeRate', 'kantaRate'],
 };
 
 const ALL_NUMERIC_KEYS = Object.keys(PREF_FIELDS) as NumericPrefKey[];

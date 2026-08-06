@@ -5,7 +5,6 @@ import {
   computeMaalBillFromTotals,
   formatBillAmount,
   formatBillDate,
-  formatBoriThelaLine,
   invoiceBillDate,
   maalLineToBillRow,
   parseInvoiceDisplayNumber,
@@ -20,7 +19,6 @@ const DEFAULT_PREFS: SystemPreferences = {
   brokeryPercent: 0,
   marketFeeRate: 0,
   marketFeeEnabled: true,
-  bardanaRate: 0,
   taxPercent: 0,
   markeetFeeRate: 0,
   kantaRate: 0,
@@ -39,10 +37,12 @@ function BillHeader({ title }: { title: string }) {
         {h.companyName}
       </h1>
       <p className="mt-0.5 text-[13px]">{h.subtitle}</p>
-      <p className="mt-1 text-[11px]">
-        Phone: {h.phone}&nbsp;&nbsp;Mobile: {h.mobile}&nbsp;&nbsp;Email: {h.email}
-      </p>
-      <p className="mt-0.5 text-[11px]">Proprietor: {h.proprietor}</p>
+      <p className="mt-1 text-[11px]">Email: {h.email}</p>
+      {h.contacts.map((c) => (
+        <p key={c.phone} className="mt-0.5 text-[11px]">
+          {c.name}: {c.phone}
+        </p>
+      ))}
       <div className="my-3 border-b border-dashed border-black" />
       <h2 className="text-[15px] font-bold tracking-wide">{title}</h2>
     </header>
@@ -94,7 +94,6 @@ function PartyBlock({
   address?: string | null;
   phone?: string | null;
   product: string;
-  /** When true, Product sits inside the Bill To box (Sale Commission style). */
   productInsideBox?: boolean;
 }) {
   const codePrefix = partyCode ? `[${partyCode}] ` : '';
@@ -144,8 +143,7 @@ function LineTable({ rows }: { rows: BillLineRow[] }) {
       <thead>
         <tr className="border-b border-black">
           <th className="py-1.5 pr-2 text-left font-semibold">Variety</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Bori</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Thela</th>
+          <th className="px-1 py-1.5 text-right font-semibold">Bags</th>
           <th className="px-1 py-1.5 text-right font-semibold">CompWeight</th>
           <th className="px-1 py-1.5 text-right font-semibold">Kaat</th>
           <th className="px-1 py-1.5 text-right font-semibold">Net Weight</th>
@@ -157,8 +155,7 @@ function LineTable({ rows }: { rows: BillLineRow[] }) {
         {rows.map((row, i) => (
           <tr key={i}>
             <td className="py-1.5 pr-2">{row.variety || '\u00A0'}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{row.bori || '0'}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{row.thela || '0'}</td>
+            <td className="px-1 py-1.5 text-right tabular-nums">{row.bags || '0'}</td>
             <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.compWeight)}</td>
             <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.kaat)}</td>
             <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.netWeight)}</td>
@@ -248,22 +245,11 @@ function MaalBillBody({
   const goodsTotal = sumLineAmounts(tableRows);
   const misc = Number(invoice.miscAmount ?? 0);
 
-  const lowerQty = Number(invoice.lowerBardanaQty ?? 0);
-  const lowerRate = Number(invoice.lowerBardanaRate ?? 0);
-  const lowerAmount = Number(invoice.lowerBardanaAmount ?? 0);
-  const lowerMode = invoice.lowerBardanaMode;
-  const lowerBori = lowerMode === 'BORI' ? lowerQty : 0;
-  const lowerThela = lowerMode === 'THELA' ? lowerQty : 0;
-
   let deduction = 0;
   const deductionLabel = 'Deduction Of Bilty';
   deduction = computeKachiDeductions(lines, prefs).deduction;
 
   const debit = invoice.debitAccount;
-  const extraLine =
-    lowerQty > 0 && lowerRate > 0
-      ? formatBoriThelaLine(lowerBori, lowerRate, lowerThela, lowerRate)
-      : formatBoriThelaLine(0, 0, 0, 0);
 
   const billFromParty = resolveMaalBillFromPartyName(invoice, lines);
   const billFrom =
@@ -291,7 +277,6 @@ function MaalBillBody({
         lines={[
           { label: 'Misc. Expanse:', value: formatBillAmount(misc) },
           { label: 'Total Amount:', value: formatBillAmount(goodsTotal), bold: true },
-          { label: extraLine, value: formatBillAmount(lowerAmount) },
           { label: deductionLabel, value: formatBillAmount(deduction) },
         ]}
         netAmount={formatBillAmount(invoice.total)}
@@ -307,7 +292,6 @@ function MaalBillBody({
     </>
   );
 }
-
 
 function BillSignature() {
   return (
@@ -348,9 +332,12 @@ function InvoiceBillHeader({
             {h.companyName}
           </h1>
           <p className="mt-0.5 text-[12px] text-black/80">{h.subtitle}</p>
-          <p className="mt-0.5 text-[10px] text-black/70">
-            Phone: {h.phone}&nbsp;&nbsp;Mobile: {h.mobile}&nbsp;&nbsp;Email: {h.email}
-          </p>
+          <p className="mt-0.5 text-[10px] text-black/70">Email: {h.email}</p>
+          {h.contacts.map((c) => (
+            <p key={c.phone} className="mt-0.5 text-[10px] text-black/70">
+              {c.name}: {c.phone}
+            </p>
+          ))}
         </div>
       </div>
 
@@ -496,7 +483,6 @@ function PurchaseInvoiceBillBody({
     </>
   );
 }
-
 
 export function InvoiceBillView({
   invoice,

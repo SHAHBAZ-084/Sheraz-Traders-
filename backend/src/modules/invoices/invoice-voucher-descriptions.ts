@@ -61,12 +61,6 @@ export function blendedLegDescription(
   return withProduct + invoiceVoucherHeaderSuffix(header);
 }
 
-/** Separate bardana ledger legs — not weight/rate settlement text. */
-export function bardanaAgainstInvoiceDescription(invoiceReference: string): string {
-  const ref = invoiceReference.trim();
-  return ref ? `Bardana against ${ref}` : 'Bardana';
-}
-
 export function isBardanaLedgerNote(notes?: string | null): boolean {
   const n = notes?.trim().toLowerCase() ?? '';
   if (!n) return false;

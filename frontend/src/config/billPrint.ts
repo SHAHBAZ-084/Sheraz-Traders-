@@ -2,12 +2,11 @@
 export const BILL_LETTERHEAD = {
   companyName: 'Sheraz Traders',
   subtitle: 'Grain Market Chishtian',
-  phone: '0632501213',
-  mobile: '03006982486',
-  // TODO(client): replace with real Sheraz Traders email
-  email: 'client@example.com',
-  // TODO(client): replace with real proprietor name
-  proprietor: 'Sheraz Traders Proprietor',
+  email: 'sheeraztaggar786@gmail.com',
+  contacts: [
+    { name: 'Ch Waqas Waseem Taggad', phone: '03004105433' },
+    { name: 'Ch Sheraz Waseem Taggad', phone: '03008141733' },
+  ],
 } as const;
 
 export const BILL_TITLES: Record<string, string> = {

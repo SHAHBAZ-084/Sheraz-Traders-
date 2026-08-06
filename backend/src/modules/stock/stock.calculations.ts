@@ -1,5 +1,3 @@
-import type { BoriThelaMode } from '@prisma/client';
-
 /** Aligns with purchase-maal / kachi dharan weight. */
 export const STOCK_DHARAN_KG = 5;
 
@@ -8,12 +6,6 @@ export const STOCK_DHARAN_KG = 5;
  * Invoices saved before this are not backfilled into StockMovement.
  */
 export const STOCK_TRACKING_STARTED_AT = new Date('2026-07-30T00:00:00.000Z');
-
-export type StockBagKind = 'BORI' | 'THELA';
-
-export function bagTypeFromMode(mode: BoriThelaMode | 'BORI' | 'THELA'): StockBagKind {
-  return mode === 'THELA' ? 'THELA' : 'BORI';
-}
 
 function roundWeightKg(value: number) {
   const n = Number(value);
@@ -67,8 +59,8 @@ export function computeStockInFromRow(input: StockInRowInput): StockInRowResult 
   };
 }
 
-/** Sale on Paunch stock OUT — direct Bori/Thela count only. */
-export function computeStockOutBags(bagCount: number, thelaCount: number, mode: StockBagKind): number {
-  const bags = mode === 'THELA' ? Number(thelaCount) : Number(bagCount);
+/** Stock OUT — direct bag count. */
+export function computeStockOutBags(bagCount: number): number {
+  const bags = Number(bagCount);
   return Math.max(0, Number.isFinite(bags) ? bags : 0);
 }

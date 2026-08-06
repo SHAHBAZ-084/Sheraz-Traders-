@@ -26,7 +26,12 @@ export function downloadPdf(
   rows: (string | number)[][],
   options?: {
     subtitle?: string;
-    letterhead?: { companyName: string; subtitle: string; phone?: string; mobile?: string };
+    letterhead?: {
+      companyName: string;
+      subtitle: string;
+      email?: string;
+      contacts?: ReadonlyArray<{ name: string; phone: string }>;
+    };
   },
 ) {
   const doc = new jsPDF({ orientation: rows[0]?.length > 6 ? 'landscape' : 'portrait' });
@@ -38,9 +43,15 @@ export function downloadPdf(
     doc.setFontSize(10);
     doc.text(options.letterhead.subtitle, 14, y);
     y += 5;
-    const contact = [options.letterhead.phone, options.letterhead.mobile].filter(Boolean).join(' · ');
-    if (contact) {
-      doc.text(contact, 14, y);
+    if (options.letterhead.email) {
+      doc.text(`Email: ${options.letterhead.email}`, 14, y);
+      y += 5;
+    }
+    if (options.letterhead.contacts && options.letterhead.contacts.length > 0) {
+      const contactText = options.letterhead.contacts
+        .map((c) => `${c.name}: ${c.phone}`)
+        .join(' · ');
+      doc.text(contactText, 14, y);
       y += 6;
     } else {
       y += 2;
@@ -60,7 +71,7 @@ export function downloadPdf(
     body: rows.map((row) => row.map(String)),
     startY: y,
     styles: { fontSize: 8 },
-    headStyles: { fillColor: [87, 83, 78] },
   });
-  doc.save(filename);
+  const pdfBlob = doc.output('blob');
+  triggerDownload(pdfBlob, filename);
 }

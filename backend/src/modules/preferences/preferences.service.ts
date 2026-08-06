@@ -6,7 +6,6 @@ const DEFAULTS = {
   brokeryPercent: 0,
   marketFeeRate: 0,
   marketFeeEnabled: true,
-  bardanaRate: 0,
   taxPercent: 0,
   markeetFeeRate: 0,
   kantaRate: 0,
@@ -23,7 +22,6 @@ function mapPreferences(row: {
   brokeryPercent: unknown;
   marketFeeRate: unknown;
   marketFeeEnabled: boolean;
-  bardanaRate: unknown;
   taxPercent: unknown;
   markeetFeeRate: unknown;
   kantaRate: unknown;
@@ -36,7 +34,6 @@ function mapPreferences(row: {
     brokeryPercent: toNumber(row.brokeryPercent),
     marketFeeRate: toNumber(row.marketFeeRate),
     marketFeeEnabled: Boolean(row.marketFeeEnabled ?? true),
-    bardanaRate: toNumber(row.bardanaRate),
     taxPercent: toNumber(row.taxPercent),
     markeetFeeRate: toNumber(row.markeetFeeRate),
     kantaRate: toNumber(row.kantaRate),

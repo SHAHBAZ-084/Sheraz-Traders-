@@ -16,11 +16,6 @@ enum VoucherType {
   PURCHASE_INVOICE
 }
 
-enum BoriThelaMode {
-  BORI
-  THELA
-}
-
 enum VoucherStatus {
   ACTIVE
   CANCELLED
@@ -294,10 +289,6 @@ model Invoice {
   tafseel         String?
   debitAccountId  Int?
   miscAmount      Decimal       @default(0)
-  lowerBardanaMode     BoriThelaMode?
-  lowerBardanaQty      Decimal?
-  lowerBardanaRate     Decimal?
-  lowerBardanaAmount   Decimal?
   productId              Int?
   storeId                Int?
   toStoreId              Int?
@@ -333,7 +324,6 @@ model KachiMaalLine {
   partyAccountId   Int
   jins             String?
   qism             String?
-  boriOrThelaMode  BoriThelaMode
   bagCount         Decimal       @default(0)
   bhartii          Decimal       @default(0)
   dharanCount      Decimal       @default(0)
@@ -341,9 +331,6 @@ model KachiMaalLine {
   totalWeightKg    Decimal       @default(0)
   ratePerMaund     Decimal       @default(0)
   amount           Decimal       @default(0)
-  bardanaQty       Decimal?
-  bardanaRate      Decimal?
-  bardanaAmount    Decimal?
   netCreditToParty Decimal       @default(0)
   sortOrder        Int           @default(0)
 
@@ -361,7 +348,6 @@ model SystemPreference {
   brokeryPercent    Decimal  @default(0)
   marketFeeRate     Decimal  @default(0)
   marketFeeEnabled  Boolean  @default(true)
-  bardanaRate       Decimal  @default(0)
   taxPercent        Decimal  @default(0)
   markeetFeeRate    Decimal  @default(0)
   kantaRate         Decimal  @default(0)
@@ -395,12 +381,6 @@ model InvoiceVoucher {
   @@index([invoiceId])
 }
 
-/** Report-only bag stock — not linked to chart of accounts / vouchers. */
-enum StockBagType {
-  BORI
-  THELA
-}
-
 enum StockDirection {
   IN
   OUT
@@ -422,7 +402,6 @@ model Store {
 model StockRemainder {
   id           Int          @id @default(autoincrement())
   productId    Int
-  bagType      StockBagType
   storeId      Int?
   remainderKg  Decimal      @default(0)
   updatedAt    DateTime     @updatedAt
@@ -430,7 +409,7 @@ model StockRemainder {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   store   Store?  @relation(fields: [storeId], references: [id])
 
-  @@unique([productId, bagType, storeId])
+  @@unique([productId, storeId])
   @@index([productId])
   @@index([storeId])
 }
@@ -438,7 +417,6 @@ model StockRemainder {
 model StockMovement {
   id               Int            @id @default(autoincrement())
   productId        Int
-  bagType          StockBagType
   storeId          Int?
   direction        StockDirection
   bags             Decimal
@@ -453,7 +431,7 @@ model StockMovement {
   store   Store?   @relation(fields: [storeId], references: [id])
   invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
-  @@index([productId, bagType, date, id])
+  @@index([productId, date, id])
   @@index([invoiceId])
   @@index([storeId])
 }

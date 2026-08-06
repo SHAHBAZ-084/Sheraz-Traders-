@@ -91,7 +91,6 @@ export type SystemPreferences = {
   brokeryPercent: number;
   marketFeeRate: number;
   marketFeeEnabled?: boolean;
-  bardanaRate: number;
   taxPercent: number;
   markeetFeeRate: number;
   kantaRate: number;
@@ -116,7 +115,6 @@ export type MaalLineDetail = {
   id: number;
   jins?: string | null;
   qism?: string | null;
-  boriOrThelaMode: 'BORI' | 'THELA';
   bagCount: number | string;
   bhartii: number | string;
   dharanCount: number | string;
@@ -124,9 +122,6 @@ export type MaalLineDetail = {
   totalWeightKg: number | string;
   ratePerMaund: number | string;
   amount: number | string;
-  bardanaQty?: number | string | null;
-  bardanaRate?: number | string | null;
-  bardanaAmount?: number | string | null;
   netCreditToParty: number | string;
   partyAccount?: VoucherAccount | null;
   dammiChecked?: boolean;
@@ -144,10 +139,6 @@ export type InvoiceDetail = Invoice & {
   tafseel?: string | null;
   notes?: string | null;
   miscAmount?: number | string | null;
-  lowerBardanaMode?: 'BORI' | 'THELA' | null;
-  lowerBardanaQty?: number | string | null;
-  lowerBardanaRate?: number | string | null;
-  lowerBardanaAmount?: number | string | null;
   debitAccount?: VoucherAccount | null;
   items?: InvoiceItemDetail[];
   kachiMaalLines?: KachiMaalLineDetail[];
@@ -421,21 +412,15 @@ export const api = {
     tafseel?: string;
     debitAccountId: number;
     miscAmount?: number;
-    lowerBardanaMode?: 'BORI' | 'THELA' | null;
-    lowerBardanaQty?: number | null;
-    lowerBardanaRate?: number | null;
     lines: {
       partyAccountId: number;
       jins?: string;
       qism?: string;
-      boriOrThelaMode: 'BORI' | 'THELA';
       bagCount: number;
       bhartii: number;
       dharanCount: number;
       looseKg: number;
       ratePerMaund: number;
-      bardanaQty?: number | null;
-      bardanaRate?: number | null;
     }[];
   }) {
     return request<KachiMaalInvoiceResult>('/api/invoices/kachi-maal', {
@@ -527,8 +512,7 @@ export const api = {
         productId: number;
         name: string;
         code: string;
-        bori: number;
-        thela: number;
+        totalQty?: number;
         saleInvoiceQty: number;
         purchaseInvoiceQty: number;
       }>;

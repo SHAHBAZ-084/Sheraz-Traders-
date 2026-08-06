@@ -16,7 +16,6 @@ const updateSchema = z.object({
   brokeryPercent: percentField,
   marketFeeRate: rateField,
   marketFeeEnabled: z.boolean().optional(),
-  bardanaRate: rateField,
   taxPercent: percentField,
   markeetFeeRate: rateField,
   kantaRate: rateField,

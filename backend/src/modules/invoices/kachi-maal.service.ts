@@ -1,5 +1,4 @@
 import {
-  BoriThelaMode,
   InvoiceStatus,
   InvoiceType,
   LedgerEntryType,
@@ -21,7 +20,6 @@ import {
   roundMoney,
 } from './kachi-maal.calculations';
 import {
-  bardanaAgainstInvoiceDescription,
   blendedLegDescription,
   type InvoiceVoucherHeader,
   voucherReferenceFromBillNo,
@@ -45,14 +43,11 @@ export type KachiMaalLineInput = {
   partyAccountId: number;
   jins?: string;
   qism?: string;
-  boriOrThelaMode: BoriThelaMode;
   bagCount: number;
   bhartii: number;
   dharanCount: number;
   looseKg: number;
   ratePerMaund: number;
-  bardanaQty?: number | null;
-  bardanaRate?: number | null;
 };
 
 export type CreateKachiMaalInput = {
@@ -64,19 +59,9 @@ export type CreateKachiMaalInput = {
   tafseel?: string;
   debitAccountId: number;
   miscAmount?: number;
-  lowerBardanaMode?: BoriThelaMode | null;
-  lowerBardanaQty?: number | null;
-  lowerBardanaRate?: number | null;
   lines: KachiMaalLineInput[];
   createdById: number;
 };
-
-function bardanaAccountId(
-  mode: BoriThelaMode,
-  accounts: Awaited<ReturnType<typeof ensureKachiMaalAccounts>>,
-) {
-  return mode === BoriThelaMode.BORI ? accounts.bori.id : accounts.thela.id;
-}
 
 async function assertPurchasePartyAccount(tx: Prisma.TransactionClient, accountId: number) {
   const account = await tx.account.findFirst({
@@ -109,7 +94,6 @@ async function assertDebitAccount(tx: Prisma.TransactionClient, accountId: numbe
 type ComputedLine = KachiMaalLineInput & {
   totalWeightKg: number;
   amount: number;
-  bardanaAmount: number | null;
   paleDari: number;
   brokery: number;
   netCreditToParty: number;
@@ -136,13 +120,10 @@ function buildLedgerLegs(
   computedLines: ComputedLine[],
   totals: ReturnType<typeof computeKachiMaalInvoiceTotals>,
   systemAccounts: Awaited<ReturnType<typeof ensureKachiMaalAccounts>>,
-  lowerBardanaMode: BoriThelaMode | null | undefined,
   header: InvoiceVoucherHeader,
-  invoiceReference: string,
 ) {
   const legs: VoucherLeg[] = [];
   const allLines = computedLines;
-  const bardanaDesc = bardanaAgainstInvoiceDescription(invoiceReference);
 
   legs.push({
     accountId: debitAccountId,
@@ -171,46 +152,6 @@ function buildLedgerLegs(
         header,
       ),
     });
-  }
-
-  for (let i = 0; i < computedLines.length; i += 1) {
-    const line = computedLines[i]!;
-    if (line.bardanaAmount != null && line.bardanaAmount > 0) {
-      legs.push(
-        {
-          accountId: bardanaAccountId(line.boriOrThelaMode, systemAccounts),
-          type: LedgerEntryType.DEBIT,
-          amount: line.bardanaAmount,
-          description: bardanaDesc,
-        },
-        {
-          accountId: line.partyAccountId,
-          type: LedgerEntryType.CREDIT,
-          amount: line.bardanaAmount,
-          description: bardanaDesc,
-        },
-      );
-    }
-  }
-
-  if (totals.lowerBardanaAmount != null && totals.lowerBardanaAmount > 0) {
-    if (!lowerBardanaMode) {
-      throw new AppError(400, 'Lower bardana requires Bori/Thela selection');
-    }
-    legs.push(
-      {
-        accountId: debitAccountId,
-        type: LedgerEntryType.DEBIT,
-        amount: totals.lowerBardanaAmount,
-        description: bardanaDesc,
-      },
-      {
-        accountId: bardanaAccountId(lowerBardanaMode, systemAccounts),
-        type: LedgerEntryType.CREDIT,
-        amount: totals.lowerBardanaAmount,
-        description: bardanaDesc,
-      },
-    );
   }
 
   if (totals.totalPaleDari > 0) {
@@ -324,8 +265,6 @@ export async function createKachiMaalInvoice(
     computedLines,
     prefs,
     data.miscAmount ?? 0,
-    data.lowerBardanaQty,
-    data.lowerBardanaRate,
   );
 
   return prisma.$transaction(async (tx) => {
@@ -347,9 +286,7 @@ export async function createKachiMaalInvoice(
       computedLines,
       totals,
       systemAccounts,
-      data.lowerBardanaMode,
       voucherHeader,
-      reference,
     );
 
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
@@ -373,10 +310,6 @@ export async function createKachiMaalInvoice(
         notes: data.tafseel?.trim() || null,
         debitAccountId: data.debitAccountId,
         miscAmount,
-        lowerBardanaMode: data.lowerBardanaMode ?? null,
-        lowerBardanaQty: data.lowerBardanaQty ?? null,
-        lowerBardanaRate: data.lowerBardanaRate ?? null,
-        lowerBardanaAmount: totals.lowerBardanaAmount,
         total: totals.totalDebitAmount,
         financialYearId,
         createdById: data.createdById,
@@ -385,7 +318,6 @@ export async function createKachiMaalInvoice(
             partyAccountId: line.partyAccountId,
             jins: line.jins?.trim() || null,
             qism: line.qism?.trim() || null,
-            boriOrThelaMode: line.boriOrThelaMode,
             bagCount: line.bagCount,
             bhartii: line.bhartii,
             dharanCount: line.dharanCount,
@@ -393,9 +325,6 @@ export async function createKachiMaalInvoice(
             totalWeightKg: line.totalWeightKg,
             ratePerMaund: line.ratePerMaund,
             amount: line.amount,
-            bardanaQty: line.bardanaQty ?? null,
-            bardanaRate: line.bardanaRate ?? null,
-            bardanaAmount: line.bardanaAmount,
             netCreditToParty: line.netCreditToParty,
             sortOrder: index,
           })),
@@ -451,14 +380,11 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
         partyAccountId: line.partyAccountId,
         jins: line.jins ?? undefined,
         qism: line.qism ?? undefined,
-        boriOrThelaMode: line.boriOrThelaMode,
         bagCount: Number(line.bagCount),
         bhartii: Number(line.bhartii),
         dharanCount: Number(line.dharanCount),
         looseKg: Number(line.looseKg),
         ratePerMaund: Number(line.ratePerMaund),
-        bardanaQty: line.bardanaQty != null ? Number(line.bardanaQty) : null,
-        bardanaRate: line.bardanaRate != null ? Number(line.bardanaRate) : null,
       };
       const computed = computeKachiMaalRow(input, prefs);
       return { ...input, ...computed };
@@ -472,8 +398,6 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
       computedLines,
       prefs,
       invoice.miscAmount != null ? Number(invoice.miscAmount) : 0,
-      invoice.lowerBardanaQty != null ? Number(invoice.lowerBardanaQty) : null,
-      invoice.lowerBardanaRate != null ? Number(invoice.lowerBardanaRate) : null,
     );
 
     const voucherHeader: InvoiceVoucherHeader = {
@@ -485,9 +409,7 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
       computedLines,
       totals,
       systemAccounts,
-      invoice.lowerBardanaMode,
       voucherHeader,
-      invoice.reference,
     );
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
       throw new AppError(500, 'Invoice debits and credits do not balance — approve aborted');
@@ -523,20 +445,15 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
 export async function previewKachiMaalTotals(data: {
   lines: KachiMaalLineInput[];
   miscAmount?: number;
-  lowerBardanaQty?: number | null;
-  lowerBardanaRate?: number | null;
 }) {
   const prefs = await getSystemPreferences();
   const computedLines = data.lines.map((line) => ({
     ...computeKachiMaalRow(line, prefs),
     bhartii: line.bhartii,
-    bardanaAmount: computeKachiMaalRow(line, prefs).bardanaAmount,
   }));
   return computeKachiMaalInvoiceTotals(
     computedLines,
     prefs,
     data.miscAmount ?? 0,
-    data.lowerBardanaQty,
-    data.lowerBardanaRate,
   );
 }

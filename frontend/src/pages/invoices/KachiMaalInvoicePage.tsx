@@ -11,20 +11,17 @@ import {
   InvoiceHeaderRow,
   InvoiceReadOnlyField,
 } from '../../components/invoices/InvoiceFormLayout';
-import {
-  FieldLabel,
-  PageShell,
-  Panel,
-  TextInput,
-} from '../../components/ui/PageShell';
-import { SearchSelect } from '../../components/ui/SearchSelect';
-import { SegmentedControl } from '../../components/ui/SegmentedControl';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
-import { useMinimizableForm } from '../../hooks/useMinimizableForm';
-import { api, Account, AccountCategory, Product, SystemPreferences } from '../../lib/api';
-import { formatLedgerAmount } from '../../lib/format';
-import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
+import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
+import { useMinimizableForm } from '../../hooks/useMinimizableForm';
+import {
+  Account,
+  AccountCategory,
+  api,
+  Product,
+  SystemPreferences,
+} from '../../lib/api';
+import { formatLedgerAmount } from '../../lib/format';
 import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
@@ -32,8 +29,8 @@ import {
   parseNum,
   PURCHASE_PARTY_CATEGORIES,
 } from '../../lib/kachiMaalCalculations';
-
-type BoriThelaMode = 'BORI' | 'THELA';
+import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
+import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type GridRow = {
   clientId: string;
@@ -41,7 +38,6 @@ type GridRow = {
   partyName: string;
   jins: string;
   qism: string;
-  boriOrThelaMode: BoriThelaMode;
   bagCount: number;
   bhartii: number;
   dharanCount: number;
@@ -49,9 +45,6 @@ type GridRow = {
   totalWeightKg: number;
   ratePerMaund: number;
   amount: number;
-  bardanaQty: number | null;
-  bardanaRate: number | null;
-  bardanaAmount: number | null;
   netCreditToParty: number;
   totalMazduriPreview: number;
 };
@@ -67,19 +60,13 @@ type KachiMaalDraft = {
   gariNo: string;
   tafseel: string;
   partyAccountId: string;
-  boriThelaMode: BoriThelaMode;
   bagCount: string;
   bhartii: string;
   dharanCount: string;
   looseKg: string;
   ratePerMaund: string;
-  rowBardanaQty: string;
-  rowBardanaRate: string;
   debitAccountId: string;
   miscAmount: string;
-  lowerBoriThela?: BoriThelaMode;
-  lowerBardanaQty: string;
-  lowerBardanaRate: string;
 };
 
 function todayInputValue() {
@@ -120,20 +107,30 @@ function FlatAccountSelect({
   categories: AccountCategory[];
   accounts: Account[];
   value: string;
-  onChange: (id: string) => void;
+  onChange: (v: string) => void;
   placeholder?: string;
 }) {
-  const options = flatAccountOptions(categories, accounts, categoryNames);
+  const options = useMemo(
+    () => flatAccountOptions(categories, accounts, categoryNames),
+    [categories, accounts, categoryNames],
+  );
+
   return (
-    <>
+    <div>
       <FieldLabel>{label}</FieldLabel>
-      <SearchSelect
+      <select
         value={value}
-        onChange={onChange}
-        options={options}
-        placeholder={placeholder}
-      />
-    </>
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-textPrimary focus:outline-none focus:ring-1 focus:ring-financial"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -141,19 +138,18 @@ export function KachiMaalInvoicePage() {
   const navigate = useNavigate();
   const { restoredState, minimize } = useMinimizableForm<KachiMaalDraft>('kachi-maal');
   const keepRestoredPredictedRef = useRef(Boolean(restoredState?.predictedRef));
-  const trapRef = useRef<HTMLDivElement>(null);
-  const dateRef = useRef<HTMLInputElement>(null);
-  useFocusTrap(trapRef, { initialFocusRef: dateRef });
 
+  const [predictedRef, setPredictedRef] = useState(() => restoredState?.predictedRef ?? '…');
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [prefs, setPrefs] = useState<SystemPreferences | null>(null);
-  const [predictedRef, setPredictedRef] = useState(() => restoredState?.predictedRef ?? '');
-  const [gridRows, setGridRows] = useState<GridRow[]>(() => restoredState?.gridRows ?? []);
+  const [products, setProducts] = useState<Product[]>([]);
+
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const [gridRows, setGridRows] = useState<GridRow[]>(() => restoredState?.gridRows ?? []);
 
   const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
@@ -164,25 +160,14 @@ export function KachiMaalInvoicePage() {
   const [tafseel, setTafseel] = useState(() => restoredState?.tafseel ?? '');
 
   const [partyAccountId, setPartyAccountId] = useState(() => restoredState?.partyAccountId ?? '');
-  const [boriThelaMode, setBoriThelaMode] = useState<BoriThelaMode>(() => restoredState?.boriThelaMode ?? 'BORI');
   const [bagCount, setBagCount] = useState(() => restoredState?.bagCount ?? '');
   const [bhartii, setBhartii] = useState(() => restoredState?.bhartii ?? '');
   const [dharanCount, setDharanCount] = useState(() => restoredState?.dharanCount ?? '');
   const [looseKg, setLooseKg] = useState(() => restoredState?.looseKg ?? '');
   const [ratePerMaund, setRatePerMaund] = useState(() => restoredState?.ratePerMaund ?? '');
-  const [rowBardanaQty, setRowBardanaQty] = useState(() => restoredState?.rowBardanaQty ?? '');
-  const [rowBardanaRate, setRowBardanaRate] = useState(() => restoredState?.rowBardanaRate ?? '');
 
   const [debitAccountId, setDebitAccountId] = useState(() => restoredState?.debitAccountId ?? '');
   const [miscAmount, setMiscAmount] = useState(() => restoredState?.miscAmount ?? '');
-  const [lowerBoriThela, setLowerBoriThela] = useState<BoriThelaMode>(() => restoredState?.lowerBoriThela ?? 'BORI');
-  const [lowerBardanaQty, setLowerBardanaQty] = useState(() => restoredState?.lowerBardanaQty ?? '');
-  const [lowerBardanaRate, setLowerBardanaRate] = useState(() => restoredState?.lowerBardanaRate ?? '');
-
-  const productOptions = useMemo(
-    () => (Array.isArray(products) ? products : []).map((p) => ({ value: String(p.id), label: p.name })),
-    [products],
-  );
 
   const reload = useCallback(async () => {
     const base = await loadInvoiceFormBase({ includeProducts: true });
@@ -239,36 +224,34 @@ export function KachiMaalInvoicePage() {
     [prefs],
   );
 
-  const entryPreview = useMemo(() => {
-    const input = {
-      bagCount: parseNum(bagCount),
-      bhartii: parseNum(bhartii),
-      dharanCount: parseNum(dharanCount),
-      looseKg: parseNum(looseKg),
-      ratePerMaund: parseNum(ratePerMaund),
-      bardanaQty: rowBardanaQty.trim() ? parseNum(rowBardanaQty) : null,
-      bardanaRate: rowBardanaRate.trim() ? parseNum(rowBardanaRate) : null,
-    };
-    return computeKachiMaalRow(input, prefRates);
-  }, [bagCount, bhartii, dharanCount, looseKg, ratePerMaund, rowBardanaQty, rowBardanaRate, prefRates]);
-
-  const invoiceTotals = useMemo(
-    () =>
-      computeKachiMaalInvoiceTotals(
-        gridRows,
-        prefRates,
-        parseNum(miscAmount),
-        lowerBardanaQty.trim() ? parseNum(lowerBardanaQty) : null,
-        lowerBardanaRate.trim() ? parseNum(lowerBardanaRate) : null,
-      ),
-    [gridRows, prefRates, miscAmount, lowerBardanaQty, lowerBardanaRate],
-  );
-
-  function onProductChange(id: string) {
-    setProductId(id);
-    const product = products.find((p) => String(p.id) === id);
-    setJins(product?.name ?? '');
+  function handleProductSelect(idStr: string) {
+    setProductId(idStr);
+    const p = products.find((x) => String(x.id) === idStr);
+    if (p) {
+      setJins(p.name);
+    }
   }
+
+  const entryPreview = useMemo(() => {
+    return computeKachiMaalRow(
+      {
+        bagCount: parseNum(bagCount),
+        bhartii: parseNum(bhartii),
+        dharanCount: parseNum(dharanCount),
+        looseKg: parseNum(looseKg),
+        ratePerMaund: parseNum(ratePerMaund),
+      },
+      prefRates,
+    );
+  }, [bagCount, bhartii, dharanCount, looseKg, ratePerMaund, prefRates]);
+
+  const invoiceTotals = useMemo(() => {
+    return computeKachiMaalInvoiceTotals(
+      gridRows,
+      prefRates,
+      parseNum(miscAmount),
+    );
+  }, [gridRows, prefRates, miscAmount]);
 
   function addRow() {
     setError('');
@@ -298,7 +281,6 @@ export function KachiMaalInvoicePage() {
       partyName: party?.name ?? '',
       jins: jins.trim(),
       qism: qism.trim(),
-      boriOrThelaMode: boriThelaMode,
       bagCount: parseNum(bagCount),
       bhartii: bh,
       dharanCount: parseNum(dharanCount),
@@ -306,9 +288,6 @@ export function KachiMaalInvoicePage() {
       totalWeightKg: entryPreview.totalWeightKg,
       ratePerMaund: rate,
       amount: entryPreview.amount,
-      bardanaQty: rowBardanaQty.trim() ? parseNum(rowBardanaQty) : null,
-      bardanaRate: rowBardanaRate.trim() ? parseNum(rowBardanaRate) : null,
-      bardanaAmount: entryPreview.bardanaAmount,
       netCreditToParty: entryPreview.netCreditToParty,
       totalMazduriPreview: entryPreview.totalMazduriPreview,
     };
@@ -317,8 +296,6 @@ export function KachiMaalInvoicePage() {
     setDharanCount('');
     setLooseKg('');
     setRatePerMaund('');
-    setRowBardanaQty('');
-    setRowBardanaRate('');
   }
 
   function removeRow(clientId: string) {
@@ -333,10 +310,6 @@ export function KachiMaalInvoicePage() {
       setError('Add at least one row to the grid');
       return;
     }
-    if (invoiceTotals.lowerBardanaAmount != null && invoiceTotals.lowerBardanaAmount > 0 && !lowerBoriThela) {
-      setError('Select Bori or Thela for lower-section bardana');
-      return;
-    }
 
     setSaving(true);
     try {
@@ -349,31 +322,20 @@ export function KachiMaalInvoicePage() {
         tafseel: tafseel.trim() || undefined,
         debitAccountId: Number(debitAccountId),
         miscAmount: parseNum(miscAmount),
-        lowerBardanaMode:
-          invoiceTotals.lowerBardanaAmount != null && invoiceTotals.lowerBardanaAmount > 0
-            ? lowerBoriThela
-            : null,
-        lowerBardanaQty: lowerBardanaQty.trim() ? parseNum(lowerBardanaQty) : null,
-        lowerBardanaRate: lowerBardanaRate.trim() ? parseNum(lowerBardanaRate) : null,
         lines: gridRows.map((row) => ({
           partyAccountId: row.partyAccountId,
           jins: row.jins || undefined,
           qism: row.qism || undefined,
-          boriOrThelaMode: row.boriOrThelaMode,
           bagCount: row.bagCount,
           bhartii: row.bhartii,
           dharanCount: row.dharanCount,
           looseKg: row.looseKg,
           ratePerMaund: row.ratePerMaund,
-          bardanaQty: row.bardanaQty,
-          bardanaRate: row.bardanaRate,
         })),
       });
       setMessage(`Invoice ${result.reference} posted with ${result.vouchers?.length ?? 0} vouchers.`);
       setGridRows([]);
       setMiscAmount('');
-      setLowerBardanaQty('');
-      setLowerBardanaRate('');
       const refRow = await api.getNextKachiMaalReference();
       setPredictedRef(refRow.reference);
     } catch (err) {
@@ -384,35 +346,22 @@ export function KachiMaalInvoicePage() {
   }
 
   return (
-    <PageShell centerTitle invoiceTitleBand title="Kachi Maal" className="app-page--kachi-maal">
-      <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
-        <div ref={trapRef} className="overflow-visible">
-          <form onSubmit={onSave} className="space-y-0">
-            <InvoiceFormSection>
+    <PageShell title="Kachi Maal Invoice" subtitle="Create and post multi-party purchase invoices">
+      <Panel>
+        <form onSubmit={onSave} className="space-y-6">
+          <div className="flex flex-col gap-6">
+            <InvoiceFormSection label="Invoice metadata">
               <InvoiceHeaderRow>
+                <InvoiceField>
+                  <FieldLabel>Reference</FieldLabel>
+                  <TextInput value={predictedRef} readOnly />
+                </InvoiceField>
                 <InvoiceField>
                   <FieldLabel>Date</FieldLabel>
                   <TextInput
-                    ref={dateRef}
                     type="date"
-                    required
                     value={invoiceDate}
                     onChange={(e) => setInvoiceDate(e.target.value)}
-                  />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Invoice #</FieldLabel>
-                  <div className="app-input-static app-input-static--emphasis tabular-nums">
-                    {predictedRef || '…'}
-                  </div>
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Jins</FieldLabel>
-                  <SearchSelect
-                    value={productId}
-                    onChange={onProductChange}
-                    options={productOptions}
-                    placeholder="Select product…"
                   />
                 </InvoiceField>
                 <InvoiceField>
@@ -423,6 +372,32 @@ export function KachiMaalInvoicePage() {
                   <FieldLabel>Gari #</FieldLabel>
                   <TextInput value={gariNo} onChange={(e) => setGariNo(e.target.value)} />
                 </InvoiceField>
+              </InvoiceHeaderRow>
+
+              <InvoiceHeaderRow>
+                <InvoiceField>
+                  <FieldLabel>Item (Jins)</FieldLabel>
+                  <select
+                    value={productId}
+                    onChange={(e) => handleProductSelect(e.target.value)}
+                    className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-textPrimary focus:outline-none focus:ring-1 focus:ring-financial"
+                  >
+                    <option value="">Select item (optional)…</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </InvoiceField>
+                <InvoiceField>
+                  <FieldLabel>Jins (free text)</FieldLabel>
+                  <TextInput value={jins} onChange={(e) => setJins(e.target.value)} />
+                </InvoiceField>
+                <InvoiceField>
+                  <FieldLabel>Qism / Variety</FieldLabel>
+                  <TextInput value={qism} onChange={(e) => setQism(e.target.value)} />
+                </InvoiceField>
                 <InvoiceField>
                   <FieldLabel>Tafseel</FieldLabel>
                   <TextInput value={tafseel} onChange={(e) => setTafseel(e.target.value)} />
@@ -432,8 +407,8 @@ export function KachiMaalInvoicePage() {
 
             <InvoiceFormSection label="Add dheri row">
               <InvoiceFieldStack>
-                <InvoiceFieldGroup label="Identity">
-                  <InvoiceFieldRow cols={6}>
+                <InvoiceFieldGroup label="Identity & Bags">
+                  <InvoiceFieldRow cols={5}>
                     <InvoiceField wide>
                       <FlatAccountSelect
                         label="Party"
@@ -447,18 +422,7 @@ export function KachiMaalInvoicePage() {
                     </InvoiceField>
 
                     <InvoiceField>
-                      <FieldLabel>Bori / Thela</FieldLabel>
-                      <SegmentedControl
-                        value={boriThelaMode}
-                        onChange={(v) => setBoriThelaMode(v as BoriThelaMode)}
-                        options={[
-                          { value: 'BORI', label: 'Bori' },
-                          { value: 'THELA', label: 'Thela' },
-                        ]}
-                      />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>{boriThelaMode === 'BORI' ? 'Bori count' : 'Thela count'}</FieldLabel>
+                      <FieldLabel>Bags count</FieldLabel>
                       <TextInput value={bagCount} onChange={(e) => setBagCount(e.target.value)} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
@@ -476,24 +440,13 @@ export function KachiMaalInvoicePage() {
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
-                <InvoiceFieldGroup label="Pricing & Bardana">
-                  <InvoiceFieldRow cols={6}>
+                <InvoiceFieldGroup label="Pricing">
+                  <InvoiceFieldRow cols={3}>
                     <InvoiceField>
                       <FieldLabel>Rate / Maund</FieldLabel>
                       <TextInput value={ratePerMaund} onChange={(e) => setRatePerMaund(e.target.value)} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceReadOnlyField label="Amount" value={entryPreview.amount} />
-                    <InvoiceField>
-                      <FieldLabel>Bardana qty</FieldLabel>
-                      <TextInput value={rowBardanaQty} onChange={(e) => setRowBardanaQty(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Bardana rate</FieldLabel>
-                      <TextInput value={rowBardanaRate} onChange={(e) => setRowBardanaRate(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    {entryPreview.bardanaAmount != null ? (
-                      <InvoiceReadOnlyField label="Bardana amount" value={entryPreview.bardanaAmount} />
-                    ) : null}
                     <InvoiceReadOnlyField label="Net to party" value={entryPreview.netCreditToParty} />
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
@@ -504,7 +457,7 @@ export function KachiMaalInvoicePage() {
 
             <InvoiceFormSection label="Preview grid">
               <InvoicePreviewGridShell isEmpty={gridRows.length === 0}>
-                <table className="w-full min-w-[960px] text-left text-sm">
+                <table className="w-full min-w-[800px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-surface2">
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
                       <th className="px-3 py-2.5">Party</th>
@@ -513,9 +466,7 @@ export function KachiMaalInvoicePage() {
                       <th className="px-3 py-2.5 text-right">Weight</th>
                       <th className="px-3 py-2.5 text-right">Rate</th>
                       <th className="px-3 py-2.5 text-right">Amount</th>
-                      <th className="px-3 py-2.5 text-right">Bardana</th>
                       <th className="px-3 py-2.5 text-right">Net</th>
-                      <th className="px-3 py-2.5">Mode</th>
                       <th className="px-3 py-2.5" />
                     </tr>
                   </thead>
@@ -528,11 +479,7 @@ export function KachiMaalInvoicePage() {
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.totalWeightKg)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.ratePerMaund)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {row.bardanaAmount != null ? formatLedgerAmount(row.bardanaAmount) : '—'}
-                        </td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.netCreditToParty)}</td>
-                        <td className="px-3 py-2">{row.boriOrThelaMode === 'BORI' ? 'Bori' : 'Thela'}</td>
                         <td className="px-3 py-2 text-right">
                           <button
                             type="button"
@@ -596,34 +543,12 @@ export function KachiMaalInvoicePage() {
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
-                <InvoiceFieldGroup label="Misc & lower bardana">
-                  <InvoiceFieldRow cols={4}>
+                <InvoiceFieldGroup label="Misc">
+                  <InvoiceFieldRow cols={2}>
                     <InvoiceField>
                       <FieldLabel>Misc (optional)</FieldLabel>
                       <TextInput value={miscAmount} onChange={(e) => setMiscAmount(e.target.value)} inputMode="decimal" />
                     </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana</FieldLabel>
-                      <SegmentedControl
-                        value={lowerBoriThela}
-                        onChange={(v) => setLowerBoriThela(v as BoriThelaMode)}
-                        options={[
-                          { value: 'BORI', label: 'Bori' },
-                          { value: 'THELA', label: 'Thela' },
-                        ]}
-                      />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana qty</FieldLabel>
-                      <TextInput value={lowerBardanaQty} onChange={(e) => setLowerBardanaQty(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana rate</FieldLabel>
-                      <TextInput value={lowerBardanaRate} onChange={(e) => setLowerBardanaRate(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    {invoiceTotals.lowerBardanaAmount != null ? (
-                      <InvoiceReadOnlyField label="Lower bardana amount" value={invoiceTotals.lowerBardanaAmount} />
-                    ) : null}
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFieldStack>
@@ -647,27 +572,23 @@ export function KachiMaalInvoicePage() {
                       gariNo,
                       tafseel,
                       partyAccountId,
-                      boriThelaMode,
                       bagCount,
                       bhartii,
                       dharanCount,
                       looseKg,
                       ratePerMaund,
-                      rowBardanaQty,
-                      rowBardanaRate,
                       debitAccountId,
                       miscAmount,
-                      lowerBardanaQty,
-                      lowerBardanaRate,
                     },
-                    `Kachi Maal — ${predictedRef || 'draft'}`,
+                    `Ref ${predictedRef || 'Draft'} (${gridRows.length} rows)`,
                   )
                 }
               />
             </InvoiceFormSection>
-          </form>
-        </div>
+          </div>
+        </form>
       </Panel>
+      <PageCloseBar />
     </PageShell>
   );
 }
