@@ -77,7 +77,7 @@ type KachiMaalDraft = {
   rowBardanaRate: string;
   debitAccountId: string;
   miscAmount: string;
-  lowerBoriThela: BoriThelaMode;
+  lowerBoriThela?: BoriThelaMode;
   lowerBardanaQty: string;
   lowerBardanaRate: string;
 };
@@ -158,7 +158,7 @@ export function KachiMaalInvoicePage() {
   const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
   const [jins, setJins] = useState(() => restoredState?.jins ?? '');
-  const [qism] = useState(() => restoredState?.qism ?? '');
+  const [qism, setQism] = useState(() => restoredState?.qism ?? '');
   const [billNo, setBillNo] = useState(() => restoredState?.billNo ?? '');
   const [gariNo, setGariNo] = useState(() => restoredState?.gariNo ?? '');
   const [tafseel, setTafseel] = useState(() => restoredState?.tafseel ?? '');
@@ -175,7 +175,6 @@ export function KachiMaalInvoicePage() {
 
   const [debitAccountId, setDebitAccountId] = useState(() => restoredState?.debitAccountId ?? '');
   const [miscAmount, setMiscAmount] = useState(() => restoredState?.miscAmount ?? '');
-  const [lowerBoriThela, setLowerBoriThela] = useState<BoriThelaMode>(() => restoredState?.lowerBoriThela ?? 'BORI');
   const [lowerBardanaQty, setLowerBardanaQty] = useState(() => restoredState?.lowerBardanaQty ?? '');
   const [lowerBardanaRate, setLowerBardanaRate] = useState(() => restoredState?.lowerBardanaRate ?? '');
 
@@ -202,6 +201,27 @@ export function KachiMaalInvoicePage() {
       keepRestoredPredictedRef.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    if (restoredState) {
+      if (restoredState.invoiceDate) setInvoiceDate(restoredState.invoiceDate);
+      if (restoredState.billNo !== undefined) setBillNo(restoredState.billNo);
+      if (restoredState.gariNo !== undefined) setGariNo(restoredState.gariNo);
+      if (restoredState.productId) setProductId(restoredState.productId);
+      if (restoredState.jins) setJins(restoredState.jins);
+      if (restoredState.qism) setQism(restoredState.qism);
+      if (restoredState.tafseel) setTafseel(restoredState.tafseel);
+      if (restoredState.debitAccountId) setDebitAccountId(restoredState.debitAccountId);
+      if (restoredState.gridRows) setGridRows(restoredState.gridRows);
+      if (restoredState.partyAccountId) setPartyAccountId(restoredState.partyAccountId);
+      if (restoredState.bagCount) setBagCount(restoredState.bagCount);
+      if (restoredState.dharanCount) setDharanCount(restoredState.dharanCount);
+      if (restoredState.looseKg) setLooseKg(restoredState.looseKg);
+      if (restoredState.bhartii) setBhartii(restoredState.bhartii);
+      if (restoredState.ratePerMaund) setRatePerMaund(restoredState.ratePerMaund);
+      if (restoredState.miscAmount) setMiscAmount(restoredState.miscAmount);
+    }
+  }, [restoredState]);
 
   useEffect(() => {
     reload().catch((err) => setError(invoiceLoadErrorMessage(err)));
@@ -316,11 +336,6 @@ export function KachiMaalInvoicePage() {
       setError('Select the debit account for this invoice');
       return;
     }
-    if (invoiceTotals.lowerBardanaAmount != null && invoiceTotals.lowerBardanaAmount > 0 && !lowerBoriThela) {
-      setError('Select Bori or Thela for lower-section bardana');
-      return;
-    }
-
     setSaving(true);
     try {
       const result = await api.createKachiMaalInvoice({
@@ -332,10 +347,7 @@ export function KachiMaalInvoicePage() {
         tafseel: tafseel.trim() || undefined,
         debitAccountId: Number(debitAccountId),
         miscAmount: parseNum(miscAmount),
-        lowerBardanaMode:
-          invoiceTotals.lowerBardanaAmount != null && invoiceTotals.lowerBardanaAmount > 0
-            ? lowerBoriThela
-            : null,
+        lowerBardanaMode: null,
         lowerBardanaQty: lowerBardanaQty.trim() ? parseNum(lowerBardanaQty) : null,
         lowerBardanaRate: lowerBardanaRate.trim() ? parseNum(lowerBardanaRate) : null,
         lines: gridRows.map((row) => ({
@@ -460,21 +472,13 @@ export function KachiMaalInvoicePage() {
                 </InvoiceFieldGroup>
 
                 <InvoiceFieldGroup label="Pricing">
-                  <InvoiceFieldRow cols={5}>
+                  <InvoiceFieldRow cols={3}>
                     <InvoiceField>
                       <FieldLabel>Rate / Maund</FieldLabel>
                       <TextInput value={ratePerMaund} onChange={(e) => setRatePerMaund(e.target.value)} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceReadOnlyField label="Amount" value={entryPreview.amount} />
                     <InvoiceReadOnlyField label="Net to party" value={entryPreview.netCreditToParty} />
-                    <InvoiceField>
-                      <FieldLabel>Bardana qty</FieldLabel>
-                      <TextInput value={rowBardanaQty} onChange={(e) => setRowBardanaQty(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Bardana rate</FieldLabel>
-                      <TextInput value={rowBardanaRate} onChange={(e) => setRowBardanaRate(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
@@ -493,9 +497,7 @@ export function KachiMaalInvoicePage() {
                       <th className="px-3 py-2.5 text-right">Weight</th>
                       <th className="px-3 py-2.5 text-right">Rate</th>
                       <th className="px-3 py-2.5 text-right">Amount</th>
-                      <th className="px-3 py-2.5 text-right">Bardana</th>
                       <th className="px-3 py-2.5 text-right">Net</th>
-                      <th className="px-3 py-2.5">Mode</th>
                       <th className="px-3 py-2.5" />
                     </tr>
                   </thead>
@@ -508,11 +510,7 @@ export function KachiMaalInvoicePage() {
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.totalWeightKg)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.ratePerMaund)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {row.bardanaAmount != null ? formatLedgerAmount(row.bardanaAmount) : '—'}
-                        </td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.netCreditToParty)}</td>
-                        <td className="px-3 py-2">{row.boriOrThelaMode === 'BORI' ? 'Bori' : 'Thela'}</td>
                         <td className="px-3 py-2 text-right">
                           <button
                             type="button"
@@ -532,7 +530,7 @@ export function KachiMaalInvoicePage() {
             <InvoiceFormSection label="Settlement (debit side)">
               <InvoiceFieldStack>
                 <InvoiceFieldGroup label="Debit account & totals">
-                  <InvoiceFieldRow cols={4}>
+                  <InvoiceFieldRow cols={6}>
                     <InvoiceField wide>
                       <FlatAccountSelect
                         label="Debit account"
@@ -546,9 +544,9 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
                     <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
-                    <InvoiceField className="min-w-[12.5rem]">
-                      <div className="mb-1 flex items-center justify-between gap-1 whitespace-nowrap">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textMuted select-none shrink-0">
+                    <InvoiceField>
+                      <div className="mb-1 flex items-center justify-between gap-1">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textPrimary select-none">
                           <input
                             type="checkbox"
                             checked={prefs?.marketFeeEnabled ?? true}
@@ -565,9 +563,6 @@ export function KachiMaalInvoicePage() {
                           />
                           <span>Market fee</span>
                         </label>
-                        <span className="text-[10px] font-normal text-textMuted shrink-0">
-                          ({invoiceTotals.totalCalculatedBags.toFixed(1)} bags)
-                        </span>
                       </div>
                       <TextInput
                         value={formatLedgerAmount(invoiceTotals.marketFeeAmount)}
@@ -579,34 +574,12 @@ export function KachiMaalInvoicePage() {
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
-                <InvoiceFieldGroup label="Misc & lower bardana">
-                  <InvoiceFieldRow cols={4}>
+                <InvoiceFieldGroup label="Misc">
+                  <InvoiceFieldRow cols={2}>
                     <InvoiceField>
                       <FieldLabel>Misc (optional)</FieldLabel>
                       <TextInput value={miscAmount} onChange={(e) => setMiscAmount(e.target.value)} inputMode="decimal" />
                     </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana</FieldLabel>
-                      <SegmentedControl
-                        value={lowerBoriThela}
-                        onChange={(v) => setLowerBoriThela(v as BoriThelaMode)}
-                        options={[
-                          { value: 'BORI', label: 'Bori' },
-                          { value: 'THELA', label: 'Thela' },
-                        ]}
-                      />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana qty</FieldLabel>
-                      <TextInput value={lowerBardanaQty} onChange={(e) => setLowerBardanaQty(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    <InvoiceField>
-                      <FieldLabel>Lower bardana rate</FieldLabel>
-                      <TextInput value={lowerBardanaRate} onChange={(e) => setLowerBardanaRate(e.target.value)} inputMode="decimal" />
-                    </InvoiceField>
-                    {invoiceTotals.lowerBardanaAmount != null ? (
-                      <InvoiceReadOnlyField label="Lower bardana amount" value={invoiceTotals.lowerBardanaAmount} />
-                    ) : null}
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFieldStack>
@@ -640,7 +613,6 @@ export function KachiMaalInvoicePage() {
                       rowBardanaRate,
                       debitAccountId,
                       miscAmount,
-                      lowerBoriThela,
                       lowerBardanaQty,
                       lowerBardanaRate,
                     },

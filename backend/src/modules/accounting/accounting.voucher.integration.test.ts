@@ -7,6 +7,7 @@ import {
 import {
   bootstrapChartOfAccounts,
   createVoucher,
+  createVouchersBatch,
   ensureCustomerAccount,
   getTrialBalance,
   listAccounts,
@@ -202,5 +203,38 @@ describe('voucher posting (PART 7 scenarios)', () => {
 
     expect(await ledgerBalance(cashId)).toBeCloseTo(cashBefore, 2);
     expect(await ledgerBalance(bankId)).toBeCloseTo(bankBefore, 2);
+  });
+
+  it('createVouchersBatch posts all queued vouchers in a single transaction', async () => {
+    const cashBefore = await ledgerBalance(cashId);
+    const expBefore = await ledgerBalance(electricityId);
+
+    const batch = await createVouchersBatch({
+      vouchers: [
+        {
+          type: 'PAYMENT',
+          debitAccountId: electricityId,
+          creditAccountId: cashId,
+          amount: 1500,
+          date: voucherDate,
+          reference: 'BATCH-1',
+        },
+        {
+          type: 'PAYMENT',
+          debitAccountId: electricityId,
+          creditAccountId: cashId,
+          amount: 2500,
+          date: voucherDate,
+          reference: 'BATCH-2',
+        },
+      ],
+      createdById: userId,
+      postImmediately: true,
+    });
+
+    expect(batch).toHaveLength(2);
+    expect(batch[0].number).not.toBe(batch[1].number);
+    expect(await ledgerBalance(electricityId)).toBe(expBefore + 4000);
+    expect(await ledgerBalance(cashId)).toBe(cashBefore - 4000);
   });
 });

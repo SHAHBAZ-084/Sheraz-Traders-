@@ -49,6 +49,12 @@ export async function getUserById(id: number) {
   return toAuthUser(user);
 }
 
+export async function verifyUserPassword(id: number, password: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return false;
+  return bcrypt.compare(password, user.passwordHash);
+}
+
 export async function listUsers() {
   const users = await prisma.user.findMany({
     orderBy: { username: 'asc' },
@@ -99,4 +105,53 @@ export async function createUser(data: {
   });
 
   return toAuthUser(user);
+}
+
+export async function deleteUser(userIdToDelete: number, requestingAdminId: number) {
+  if (userIdToDelete === requestingAdminId) {
+    throw new AppError(400, 'Cannot delete your own account');
+  }
+
+  const userToDelete = await prisma.user.findUnique({ where: { id: userIdToDelete } });
+  if (!userToDelete) {
+    throw new AppError(404, 'User not found');
+  }
+
+  if (userToDelete.role === Role.ADMIN) {
+    const adminCount = await prisma.user.count({ where: { role: Role.ADMIN } });
+    if (adminCount <= 1) {
+      throw new AppError(400, 'Cannot delete the last remaining ADMIN account');
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.voucher.updateMany({
+      where: { createdById: userIdToDelete },
+      data: { createdById: requestingAdminId },
+    });
+    await tx.voucher.updateMany({
+      where: { modifiedById: userIdToDelete },
+      data: { modifiedById: null },
+    });
+    await tx.voucher.updateMany({
+      where: { deletedById: userIdToDelete },
+      data: { deletedById: null },
+    });
+
+    await tx.invoice.updateMany({
+      where: { createdById: userIdToDelete },
+      data: { createdById: requestingAdminId },
+    });
+
+    await tx.financialYear.updateMany({
+      where: { closedById: userIdToDelete },
+      data: { closedById: null },
+    });
+
+    await tx.trialBalanceApproval.deleteMany({
+      where: { approvedById: userIdToDelete },
+    });
+
+    return tx.user.delete({ where: { id: userIdToDelete } });
+  });
 }

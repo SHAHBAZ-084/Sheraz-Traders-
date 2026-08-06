@@ -106,7 +106,7 @@ describe('Sale Invoice per-store stock validation', () => {
     });
 
     const invoicesBefore = await prisma.invoice.count({
-      where: { type: InvoiceType.SALE_INVOICE },
+      where: { type: InvoiceType.SALE_INVOICE, storeId: storeAId },
     });
     const movementsBefore = await prisma.stockMovement.count({
       where: { productId, storeId: storeAId, invoiceType: InvoiceType.SALE_INVOICE },
@@ -127,7 +127,7 @@ describe('Sale Invoice per-store stock validation', () => {
     });
 
     const invoicesAfter = await prisma.invoice.count({
-      where: { type: InvoiceType.SALE_INVOICE },
+      where: { type: InvoiceType.SALE_INVOICE, storeId: storeAId },
     });
     const movementsAfter = await prisma.stockMovement.count({
       where: { productId, storeId: storeAId, invoiceType: InvoiceType.SALE_INVOICE },

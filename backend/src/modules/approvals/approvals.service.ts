@@ -12,6 +12,8 @@ export type PendingApprovalItem = {
   type: string;
   reference: string | null;
   date: string | null;
+  debitAccountName?: string | null;
+  creditAccountName?: string | null;
   amount: number;
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
@@ -21,12 +23,21 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
   const [vouchers, invoices] = await Promise.all([
     prisma.voucher.findMany({
       where: { status: VoucherStatus.PENDING_APPROVAL },
-      include: { createdBy: { select: { id: true, displayName: true, username: true } } },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true } },
+        debitAccount: { select: { name: true, code: true } },
+        creditAccount: { select: { name: true, code: true } },
+      },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.invoice.findMany({
       where: { status: InvoiceStatus.PENDING_APPROVAL },
-      include: { createdBy: { select: { id: true, displayName: true, username: true } } },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true } },
+        debitAccount: { select: { name: true, code: true } },
+        customer: { select: { name: true } },
+        supplier: { select: { name: true } },
+      },
       orderBy: { createdAt: 'asc' },
     }),
   ]);
@@ -38,6 +49,8 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       type: v.type,
       reference: v.reference,
       date: v.date?.toISOString() ?? null,
+      debitAccountName: v.debitAccount ? `${v.debitAccount.name} (${v.debitAccount.code})` : null,
+      creditAccountName: v.creditAccount ? `${v.creditAccount.name} (${v.creditAccount.code})` : null,
       amount: Number(v.amount),
       description: v.description,
       createdBy: v.createdBy
@@ -54,6 +67,8 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       type: inv.type,
       reference: inv.reference,
       date: inv.invoiceDate?.toISOString() ?? null,
+      debitAccountName: inv.debitAccount ? inv.debitAccount.name : inv.customer ? inv.customer.name : null,
+      creditAccountName: inv.supplier ? inv.supplier.name : null,
       amount: Number(inv.total),
       description: inv.notes ?? inv.billNo,
       createdBy: inv.createdBy
@@ -71,6 +86,24 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
 
 export async function approvePendingVoucher(voucherId: number, approvedById: number) {
   return approveVoucher(voucherId, approvedById);
+}
+
+export async function rejectPendingVoucher(voucherId: number) {
+  const voucher = await prisma.voucher.findFirst({
+    where: { id: voucherId, status: VoucherStatus.PENDING_APPROVAL },
+  });
+  if (!voucher) throw new AppError(404, 'Pending voucher not found');
+  await prisma.voucher.delete({ where: { id: voucherId } });
+  return { ok: true, id: voucherId };
+}
+
+export async function rejectPendingInvoice(invoiceId: number) {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, status: InvoiceStatus.PENDING_APPROVAL },
+  });
+  if (!invoice) throw new AppError(404, 'Pending invoice not found');
+  await prisma.invoice.delete({ where: { id: invoiceId } });
+  return { ok: true, id: invoiceId };
 }
 
 export async function approvePendingInvoice(invoiceId: number) {

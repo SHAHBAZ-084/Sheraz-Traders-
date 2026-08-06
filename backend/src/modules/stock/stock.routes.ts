@@ -4,6 +4,8 @@ import { requireAuth, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import * as stockService from './stock.service';
 
+import { parsePagination, paginateArray } from '../../utils/pagination';
+
 export const stockRouter = Router();
 stockRouter.use(requireAuth);
 
@@ -12,8 +14,8 @@ stockRouter.get(
   requireReportsAccess,
   asyncHandler(async (req, res) => {
     const productId = Number(req.query.productId);
-    const bagTypeRaw = String(req.query.bagType ?? '').toUpperCase();
-    const bagType = z.enum(['BORI', 'THELA']).parse(bagTypeRaw);
+    const bagTypeRaw = req.query.bagType ? String(req.query.bagType).toUpperCase() : undefined;
+    const bagType = bagTypeRaw === 'BORI' || bagTypeRaw === 'THELA' ? bagTypeRaw : undefined;
     if (!Number.isFinite(productId) || productId < 1) {
       res.status(400).json({ error: 'productId is required' });
       return;
@@ -27,7 +29,18 @@ stockRouter.get(
       res.status(400).json({ error: 'storeId must be a positive integer' });
       return;
     }
-    res.json(await stockService.getStockReport({ productId, bagType, storeId }));
+    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
+    const report = await stockService.getStockReport({ productId, bagType, storeId });
+    const paginatedRows = paginateArray(report.rows, limit, offset);
+    res.json({
+      ...report,
+      rows: paginatedRows.items,
+      pagination: {
+        total: paginatedRows.total,
+        limit: paginatedRows.limit,
+        offset: paginatedRows.offset,
+      },
+    });
   }),
 );
 

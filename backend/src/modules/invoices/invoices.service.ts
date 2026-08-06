@@ -113,52 +113,57 @@ export async function getInvoiceByReference(reference: string) {
  * Cancel a posted (or pending) invoice: reverse linked vouchers' ledger entries,
  * reverse stock movements where applicable, set CANCELLED.
  */
+export async function cancelInvoiceInTx(
+  tx: Prisma.TransactionClient,
+  invoiceId: number,
+  userId: number,
+) {
+  const invoice = await tx.invoice.findFirst({
+    where: { id: invoiceId },
+    include: {
+      vouchers: { select: { voucherId: true } },
+    },
+  });
+  if (!invoice) throw new AppError(404, 'Invoice not found');
+  if (invoice.status === InvoiceStatus.CANCELLED) {
+    throw new AppError(400, 'Invoice is already cancelled');
+  }
+
+  for (const link of invoice.vouchers) {
+    const voucher = await tx.voucher.findFirst({ where: { id: link.voucherId } });
+    if (!voucher) continue;
+    if (voucher.status === VoucherStatus.CANCELLED) continue;
+    await cancelVoucherInTx(tx, voucher.id, userId);
+  }
+
+  const invoiceDate = invoice.invoiceDate ?? new Date();
+
+  if (
+    invoice.type === InvoiceType.SALE_INVOICE ||
+    invoice.type === InvoiceType.PURCHASE_INVOICE ||
+    invoice.type === InvoiceType.STOCK_TRANSFER
+  ) {
+    await reverseInvoiceStockMovements(tx, {
+      invoiceId: invoice.id,
+      invoiceReference: invoice.reference,
+      invoiceDate,
+    });
+  }
+
+  await tx.invoice.update({
+    where: { id: invoice.id },
+    data: { status: InvoiceStatus.CANCELLED },
+  });
+
+  return tx.invoice.findUniqueOrThrow({
+    where: { id: invoice.id },
+    include: invoiceDetailInclude,
+  });
+}
+
 export async function cancelInvoice(invoiceId: number, userId: number) {
   return prisma.$transaction(async (tx) => {
-    const invoice = await tx.invoice.findFirst({
-      where: { id: invoiceId },
-      include: {
-        vouchers: { select: { voucherId: true } },
-      },
-    });
-    if (!invoice) throw new AppError(404, 'Invoice not found');
-    if (invoice.status === InvoiceStatus.CANCELLED) {
-      throw new AppError(400, 'Invoice is already cancelled');
-    }
-    if (invoice.status === InvoiceStatus.DRAFT) {
-      throw new AppError(400, 'Draft invoices cannot be cancelled this way — delete is not supported for drafts');
-    }
-
-    for (const link of invoice.vouchers) {
-      const voucher = await tx.voucher.findFirst({ where: { id: link.voucherId } });
-      if (!voucher) continue;
-      if (voucher.status === VoucherStatus.CANCELLED) continue;
-      await cancelVoucherInTx(tx, voucher.id, userId);
-    }
-
-    const invoiceDate = invoice.invoiceDate ?? new Date();
-
-    if (
-      invoice.type === InvoiceType.SALE_INVOICE ||
-      invoice.type === InvoiceType.PURCHASE_INVOICE ||
-      invoice.type === InvoiceType.STOCK_TRANSFER
-    ) {
-      await reverseInvoiceStockMovements(tx, {
-        invoiceId: invoice.id,
-        invoiceReference: invoice.reference,
-        invoiceDate,
-      });
-    }
-
-    await tx.invoice.update({
-      where: { id: invoice.id },
-      data: { status: InvoiceStatus.CANCELLED },
-    });
-
-    return tx.invoice.findUniqueOrThrow({
-      where: { id: invoice.id },
-      include: invoiceDetailInclude,
-    });
+    return cancelInvoiceInTx(tx, invoiceId, userId);
   });
 }
 

@@ -17,7 +17,7 @@ function toStockBagType(bagType: 'BORI' | 'THELA'): StockBagType {
 
 export async function getStockReport(params: {
   productId: number;
-  bagType: 'BORI' | 'THELA';
+  bagType?: 'BORI' | 'THELA';
   storeId?: number | null;
 }) {
   const product = await prisma.product.findFirst({
@@ -25,23 +25,22 @@ export async function getStockReport(params: {
   });
   if (!product) throw new AppError(404, 'Product not found');
 
-  const bagType = toStockBagType(params.bagType);
   const storeId = params.storeId != null && params.storeId > 0 ? params.storeId : undefined;
   const movements = await prisma.stockMovement.findMany({
     where: {
       productId: params.productId,
-      bagType,
+      ...(params.bagType ? { bagType: toStockBagType(params.bagType) } : {}),
       ...(storeId != null ? { storeId } : {}),
     },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   });
 
-  const remainder = await prisma.stockRemainder.findFirst({
+  const remainder = await prisma.stockRemainder.aggregate({
     where: {
       productId: params.productId,
-      bagType,
       storeId: storeId ?? null,
     },
+    _sum: { remainderKg: true },
   });
 
   let running = 0;
@@ -74,12 +73,10 @@ export async function getStockReport(params: {
 
   return {
     product: { id: product.id, name: product.name, code: product.code },
-    bagType: params.bagType,
     storeId: storeId ?? null,
     trackingStartedAt: STOCK_TRACKING_STARTED_AT.toISOString(),
-    /** Historical invoices before stock feature ship are not backfilled. */
     historicalBackfill: false as const,
-    carriedRemainderKg: remainder ? Number(remainder.remainderKg) : 0,
+    carriedRemainderKg: remainder._sum.remainderKg ? Number(remainder._sum.remainderKg) : 0,
     rows,
     totals: {
       totalIn,

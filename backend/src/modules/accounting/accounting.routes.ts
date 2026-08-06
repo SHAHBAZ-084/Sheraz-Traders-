@@ -3,7 +3,7 @@ import { AccountType, VoucherType } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler, param, validateBody } from '../../utils/helpers';
-import { parsePagination } from '../../utils/pagination';
+import { parsePagination, paginateArray } from '../../utils/pagination';
 import * as accountingService from './accounting.service';
 
 export const accountingRouter = Router();
@@ -127,12 +127,22 @@ accountingRouter.get(
         ? sideParam
         : 'both';
 
+    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
     const report = await accountingService.getAccountBalancesAsOf({
       date,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
       side,
     });
-    res.json(report);
+    const paginatedAccounts = paginateArray(report.accounts, limit, offset);
+    res.json({
+      ...report,
+      accounts: paginatedAccounts.items,
+      pagination: {
+        total: paginatedAccounts.total,
+        limit: paginatedAccounts.limit,
+        offset: paginatedAccounts.offset,
+      },
+    });
   }),
 );
 
@@ -159,8 +169,36 @@ accountingRouter.post(
   }),
 );
 
+accountingRouter.post(
+  '/vouchers/batch',
+  validateBody(
+    z.object({
+      vouchers: z.array(
+        z.object({
+          type: z.nativeEnum(VoucherType),
+          debitAccountId: z.number().int(),
+          creditAccountId: z.number().int(),
+          amount: z.number().positive(),
+          date: z.union([z.string().min(1), z.coerce.date()]),
+          description: z.string().optional(),
+          reference: z.string().trim().min(1, 'Reference is required'),
+        }),
+      ).min(1, 'At least one voucher is required'),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await accountingService.createVouchersBatch({
+      vouchers: req.body.vouchers,
+      createdById: req.session.userId!,
+      postImmediately: req.user?.role === 'ADMIN',
+    });
+    res.status(201).json(result);
+  }),
+);
+
 accountingRouter.patch(
   '/vouchers/:voucherId',
+  requireAdmin,
   validateBody(z.object({ amount: z.number().positive() })),
   asyncHandler(async (req, res) => {
     const voucher = await accountingService.updateVoucherAmount(
@@ -187,9 +225,19 @@ accountingRouter.delete(
 accountingRouter.get(
   '/trial-balance',
   requireReportsAccess,
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
     const trialBalance = await accountingService.getTrialBalance();
-    res.json(trialBalance);
+    const paginatedAccounts = paginateArray(trialBalance.accounts, limit, offset);
+    res.json({
+      ...trialBalance,
+      accounts: paginatedAccounts.items,
+      pagination: {
+        total: paginatedAccounts.total,
+        limit: paginatedAccounts.limit,
+        offset: paginatedAccounts.offset,
+      },
+    });
   }),
 );
 
@@ -201,6 +249,7 @@ accountingRouter.get(
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
 
     const ledger = financialYearIdParam
       ? await accountingService.getLedgerEntriesForYear(
@@ -210,7 +259,17 @@ accountingRouter.get(
           toDate,
         )
       : await accountingService.getLedgerEntries(accountId, fromDate, toDate);
-    res.json(ledger);
+
+    const paginatedRows = paginateArray(ledger.rows, limit, offset);
+    res.json({
+      ...ledger,
+      rows: paginatedRows.items,
+      pagination: {
+        total: paginatedRows.total,
+        limit: paginatedRows.limit,
+        offset: paginatedRows.offset,
+      },
+    });
   }),
 );
 

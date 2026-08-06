@@ -132,6 +132,21 @@ export function PurchaseInvoicePage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (restoredState) {
+      if (restoredState.predictedRef) setPredictedRef(restoredState.predictedRef);
+      if (restoredState.invoiceDate) setInvoiceDate(restoredState.invoiceDate);
+      if (restoredState.billNo !== undefined) setBillNo(restoredState.billNo);
+      if (restoredState.storeId) setStoreId(restoredState.storeId);
+      if (restoredState.productCategoryId) setProductCategoryId(restoredState.productCategoryId);
+      if (restoredState.gridRows) setGridRows(restoredState.gridRows);
+      if (restoredState.productId) setProductId(restoredState.productId);
+      if (restoredState.quantity) setQuantity(restoredState.quantity);
+      if (restoredState.rate) setRate(restoredState.rate);
+      if (restoredState.supplierAccountId) setSupplierAccountId(restoredState.supplierAccountId);
+    }
+  }, [restoredState]);
+
+  useEffect(() => {
     Promise.all([
       api.listProducts(),
       api.listProductCategories(),
@@ -320,11 +335,11 @@ export function PurchaseInvoicePage() {
 
               <InvoiceFormSection label="Supplier">
                 <InvoiceField wide>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="mb-2 flex items-center justify-between gap-3">
                     <FieldLabel>Purchase Party (supplier)</FieldLabel>
                     <button
                       type="button"
-                      className="text-xs font-semibold text-financial hover:underline"
+                      className="text-xs font-semibold text-financial hover:underline px-2 py-0.5 rounded hover:bg-financial/10 transition-colors"
                       onClick={() => setShowQuickAddParty(true)}
                     >
                       + New Supplier

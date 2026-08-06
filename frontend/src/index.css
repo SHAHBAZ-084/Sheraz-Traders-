@@ -1747,15 +1747,10 @@
 
 
   @media (min-width: 960px) {
-
     .inv-split {
-
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-
+      grid-template-columns: minmax(0, 4.5fr) minmax(0, 7.5fr);
       gap: 1.5rem;
-
     }
-
   }
 
 

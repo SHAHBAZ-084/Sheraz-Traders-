@@ -105,3 +105,14 @@ authRouter.post(
     res.status(201).json({ user });
   }),
 );
+
+authRouter.delete(
+  '/users/:id',
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const userIdToDelete = Number(req.params.id);
+    const result = await authService.deleteUser(userIdToDelete, req.session.userId!);
+    res.json(result);
+  }),
+);

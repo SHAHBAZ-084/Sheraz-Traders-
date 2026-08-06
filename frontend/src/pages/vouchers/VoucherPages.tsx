@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
-import { FormActionFooter } from '../../components/ui/FormActionFooter';
+
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
@@ -139,6 +139,18 @@ function categoriesForSide(
   return filtered.length > 0 ? filtered : safeAll;
 }
 
+type QueuedVoucherItem = {
+  id: string;
+  date: string;
+  debitAccountId: string;
+  debitAccountName: string;
+  creditAccountId: string;
+  creditAccountName: string;
+  amount: string;
+  reference: string;
+  description: string;
+};
+
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const location = useLocation();
   const restoreId = (location.state as { minimizedFormId?: string } | null)?.minimizedFormId;
@@ -149,9 +161,8 @@ export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) 
 function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const navigate = useNavigate();
   const formKind = kind as MinimizedFormKind;
-  const { restoredState, minimize } = useMinimizableForm<VoucherDraft>(formKind);
+  const { restoredState } = useMinimizableForm<VoucherDraft>(formKind);
   const keepRestoredPredictedNumber = useRef(restoredState?.predictedNumber != null);
-  const formRef = useRef<HTMLFormElement>(null);
   const trapRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -179,9 +190,11 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const [amount, setAmount] = useState(restoredState?.amount ?? '');
   const [voucherDate, setVoucherDate] = useState(restoredState?.voucherDate ?? todayInputValue);
   const [predictedNumber, setPredictedNumber] = useState<number | null>(restoredState?.predictedNumber ?? null);
-  const [numberMismatch, setNumberMismatch] = useState(false);
   const [reference, setReference] = useState(restoredState?.reference ?? '');
   const [description, setDescription] = useState(restoredState?.description ?? '');
+
+  const [queuedItems, setQueuedItems] = useState<QueuedVoucherItem[]>([]);
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -208,7 +221,6 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
       } else {
         setPredictedNumber(number);
       }
-      setNumberMismatch(false);
     } catch {
       if (!keepRestoredPredictedNumber.current) setPredictedNumber(null);
       keepRestoredPredictedNumber.current = false;
@@ -216,10 +228,7 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   }, [kind]);
 
   useEffect(() => { reload(); }, [reload]);
-
-  useEffect(() => {
-    refreshPredictedNumber();
-  }, [refreshPredictedNumber]);
+  useEffect(() => { refreshPredictedNumber(); }, [refreshPredictedNumber]);
 
   const debitCategories = categoriesForSide(categories, kind, 'debit');
   const creditCategories = categoriesForSide(categories, kind, 'credit');
@@ -235,7 +244,7 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
     }
   }, [debitCategoryId, creditCategoryId, debitCategories, creditCategories]);
 
-  const variant = kind; // 'payment' | 'journal' | 'receipt'
+  const variant = kind;
   const leftLabel = variant === 'journal' ? 'Debit' : 'From';
   const rightLabel = variant === 'journal' ? 'Credit' : 'To';
 
@@ -259,18 +268,7 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
     if (variant === 'journal') setCreditAccountId(id); else setDebitAccountId(id);
   }
 
-  function canSubmit() {
-    return Boolean(
-      debitAccountId
-      && creditAccountId
-      && debitAccountId !== creditAccountId
-      && Number(amount) > 0
-      && reference.trim(),
-    );
-  }
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  function handleAddToGrid() {
     setError('');
     setMessage('');
     if (!debitAccountId || !creditAccountId) {
@@ -291,47 +289,75 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
       referenceRef.current?.focus();
       return;
     }
+
+    const debAcc = accounts.find((a) => String(a.id) === debitAccountId);
+    const credAcc = accounts.find((a) => String(a.id) === creditAccountId);
+
+    const newItem: QueuedVoucherItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      date: voucherDate,
+      debitAccountId,
+      debitAccountName: debAcc ? `${debAcc.name} (${debAcc.code})` : debitAccountId,
+      creditAccountId,
+      creditAccountName: credAcc ? `${credAcc.name} (${credAcc.code})` : creditAccountId,
+      amount: String(parsedAmount),
+      reference: reference.trim(),
+      description: description.trim(),
+    };
+
+    setQueuedItems((prev) => [...prev, newItem]);
+    setAmount('');
+    setReference('');
+    setDescription('');
+    amountRef.current?.focus();
+  }
+
+  function handleRemoveFromGrid(id: string) {
+    setQueuedItems((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  async function handleSaveAll() {
+    if (queuedItems.length === 0) {
+      setError('Add at least one voucher to the grid before saving');
+      return;
+    }
+
     setSaving(true);
+    setError('');
+    setMessage('');
+
     try {
-      const voucher = await api.createVoucher({
+      const payload = queuedItems.map((item) => ({
         type: VOUCHER_TYPES[kind],
-        debitAccountId: Number(debitAccountId),
-        creditAccountId: Number(creditAccountId),
-        amount: parsedAmount,
-        date: voucherDate,
-        description: description || undefined,
-        reference: reference.trim(),
-      });
-      const expected = predictedNumber;
-      if (expected != null && voucher.number !== expected) {
-        setNumberMismatch(true);
-        setMessage(
-          `Voucher #${voucher.number} posted (expected #${expected} — sequence changed).`,
-        );
-      } else {
-        setNumberMismatch(false);
-        setMessage(`Voucher #${voucher.number} posted (debit + credit pair).`);
-      }
+        debitAccountId: Number(item.debitAccountId),
+        creditAccountId: Number(item.creditAccountId),
+        amount: Number(item.amount),
+        date: item.date,
+        description: item.description || undefined,
+        reference: item.reference,
+      }));
+
+      const createdVouchers = await api.createVouchersBatch(payload);
+      setMessage(`Successfully posted ${createdVouchers.length} voucher(s) to ledger.`);
+      setQueuedItems([]);
       setAmount('');
       setReference('');
       setDescription('');
       await Promise.all([reload(), refreshPredictedNumber()]);
-      amountRef.current?.focus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
+      setError(err instanceof Error ? err.message : 'Failed to save batch vouchers');
     } finally {
       setSaving(false);
     }
   }
-
-  const voucherNumberDisplay =
-    predictedNumber != null ? formatVoucherNumber(predictedNumber) : '';
 
   const titleText = VOUCHER_PAGE_TITLES[kind] ?? 'Voucher';
   const titleColorClass =
     kind === 'payment' || kind === 'receipt'
       ? voucherTypeColorClass(VOUCHER_TYPES[kind])
       : undefined;
+
+  const totalGridAmount = queuedItems.reduce((sum, item) => sum + Number(item.amount), 0);
 
   return (
     <PageShell
@@ -340,137 +366,203 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
       titleRef={titleRef}
       title={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
     >
-      <div className="mx-auto w-full max-w-[980px] overflow-visible px-2">
+      <div className="mx-auto w-full max-w-[1400px] overflow-visible px-2">
         <div ref={trapRef} className="overflow-visible">
-          <form ref={formRef} className="space-y-8 overflow-visible" onSubmit={onSubmit}>
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div>
-              <FieldLabel>Date</FieldLabel>
-              <TextInput
-                ref={dateRef}
-                tabIndex={1}
-                type="date"
-                required
-                value={voucherDate}
-                onChange={(e) => setVoucherDate(e.target.value)}
-              />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Form Panel */}
+            <div className="lg:col-span-5 bg-surface rounded-xl border border-border p-5 space-y-5">
+              <h3 className="text-sm font-semibold text-textPrimary uppercase tracking-wider border-b border-border pb-2">
+                New Voucher Details
+              </h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput
+                    ref={dateRef}
+                    tabIndex={1}
+                    type="date"
+                    required
+                    value={voucherDate}
+                    onChange={(e) => setVoucherDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Next Voucher #</FieldLabel>
+                  <TextInput
+                    readOnly
+                    tabIndex={-1}
+                    value={predictedNumber != null ? formatVoucherNumber(predictedNumber) : '…'}
+                    className="font-bold tabular-nums text-financial"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <AccountSideFields
+                  label={leftLabel}
+                  categoryId={leftCategoryId}
+                  accountId={leftAccountId}
+                  categories={variant === 'journal' ? debitCategories : creditCategories}
+                  accounts={accounts}
+                  onCategoryChange={setLeftCategory}
+                  onAccountChange={setLeftAccount}
+                  categoryTabIndex={2}
+                  accountTabIndex={3}
+                  categoryInputRef={leftCategoryRef}
+                  accountInputRef={leftAccountRef}
+                  accountNextFocusRef={rightCategoryRef}
+                />
+                <AccountSideFields
+                  label={rightLabel}
+                  categoryId={rightCategoryId}
+                  accountId={rightAccountId}
+                  categories={variant === 'journal' ? creditCategories : debitCategories}
+                  accounts={accounts}
+                  onCategoryChange={setRightCategory}
+                  onAccountChange={setRightAccount}
+                  categoryTabIndex={4}
+                  accountTabIndex={5}
+                  categoryInputRef={rightCategoryRef}
+                  accountInputRef={rightAccountRef}
+                  accountNextFocusRef={amountRef}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Amount</FieldLabel>
+                  <TextInput
+                    ref={amountRef}
+                    tabIndex={6}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Reference</FieldLabel>
+                  <TextInput
+                    ref={referenceRef}
+                    tabIndex={7}
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="Cheque / Ref"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel>Description</FieldLabel>
+                <TextInput
+                  ref={descriptionRef}
+                  tabIndex={8}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Notes / description"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddToGrid();
+                    }
+                  }}
+                />
+              </div>
+
+              {error ? <p className="text-xs text-danger font-medium">{error}</p> : null}
+
+              <button
+                type="button"
+                tabIndex={9}
+                onClick={handleAddToGrid}
+                className="w-full py-2.5 px-4 bg-accent/10 hover:bg-accent/20 text-accent font-semibold text-sm rounded-lg border border-accent/30 transition-colors flex items-center justify-center gap-2"
+              >
+                + Add to Grid Queue
+              </button>
             </div>
-            <div>
-              <FieldLabel>Voucher #</FieldLabel>
-              <TextInput
-                readOnly
-                tabIndex={-1}
-                value={voucherNumberDisplay || '…'}
-                className={`font-bold tabular-nums text-financial ${numberMismatch ? 'border-accent ring-1 ring-accent' : ''}`}
-                aria-live="polite"
-              />
+
+            {/* Right Preview Grid Panel */}
+            <div className="lg:col-span-7 bg-surface rounded-xl border border-border p-5 space-y-4 flex flex-col min-h-[500px]">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="text-sm font-semibold text-textPrimary uppercase tracking-wider">
+                  Queued Vouchers Batch ({queuedItems.length})
+                </h3>
+                <span className="text-xs font-semibold text-textSecondary">
+                  Total: <span className="font-mono text-financial text-textPrimary">{formatLedgerAmount(totalGridAmount)}</span>
+                </span>
+              </div>
+
+              {message ? <p className="text-xs text-success font-medium bg-success/10 p-2 rounded">{message}</p> : null}
+
+              <div className="flex-1 overflow-x-auto">
+                {queuedItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-textMuted border-2 border-dashed border-border/50 rounded-lg p-6 text-center">
+                    <p className="text-sm font-medium">No vouchers in batch queue.</p>
+                    <p className="text-xs mt-1">Fill the details on the left and click &quot;+ Add to Grid Queue&quot; to queue up multiple vouchers.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-border text-textSecondary bg-surface2/50">
+                        <th className="py-2 px-2">Date</th>
+                        <th className="py-2 px-2">{leftLabel} Account</th>
+                        <th className="py-2 px-2">{rightLabel} Account</th>
+                        <th className="py-2 px-2 text-right">Amount</th>
+                        <th className="py-2 px-2">Reference</th>
+                        <th className="py-2 px-2">Description</th>
+                        <th className="py-2 px-2 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queuedItems.map((item) => (
+                        <tr key={item.id} className="border-b border-border hover:bg-surface2/30">
+                          <td className="py-2 px-2 whitespace-nowrap">{formatDate(item.date)}</td>
+                          <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.debitAccountName : item.creditAccountName}</td>
+                          <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.creditAccountName : item.debitAccountName}</td>
+                          <td className="py-2 px-2 text-right font-mono font-semibold tabular-nums text-textPrimary">
+                            {formatLedgerAmount(Number(item.amount))}
+                          </td>
+                          <td className="py-2 px-2 text-textSecondary font-mono">{item.reference}</td>
+                          <td className="py-2 px-2 text-textSecondary truncate max-w-[120px]">{item.description || '—'}</td>
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromGrid(item.id)}
+                              className="text-danger hover:text-danger/80 font-bold px-2 py-0.5 rounded hover:bg-danger/10 text-xs"
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-border flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="px-4 py-2 text-xs font-semibold text-textSecondary hover:text-textPrimary transition-colors"
+                >
+                  Cancel / Close
+                </button>
+                <button
+                  ref={saveRef}
+                  type="button"
+                  disabled={saving || queuedItems.length === 0}
+                  onClick={() => void handleSaveAll()}
+                  className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-semibold text-sm rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                >
+                  {saving ? 'Posting Batch…' : `Save & Post Batch (${queuedItems.length})`}
+                </button>
+              </div>
             </div>
           </div>
-
-          <div className="grid gap-8 sm:grid-cols-2">
-            <AccountSideFields
-              label={leftLabel}
-              categoryId={leftCategoryId}
-              accountId={leftAccountId}
-              categories={variant === 'journal' ? debitCategories : creditCategories}
-              accounts={accounts}
-              onCategoryChange={setLeftCategory}
-              onAccountChange={setLeftAccount}
-              categoryTabIndex={2}
-              accountTabIndex={3}
-              categoryInputRef={leftCategoryRef}
-              accountInputRef={leftAccountRef}
-              accountNextFocusRef={rightCategoryRef}
-            />
-            <AccountSideFields
-              label={rightLabel}
-              categoryId={rightCategoryId}
-              accountId={rightAccountId}
-              categories={variant === 'journal' ? creditCategories : debitCategories}
-              accounts={accounts}
-              onCategoryChange={setRightCategory}
-              onAccountChange={setRightAccount}
-              categoryTabIndex={4}
-              accountTabIndex={5}
-              categoryInputRef={rightCategoryRef}
-              accountInputRef={rightAccountRef}
-              accountNextFocusRef={amountRef}
-            />
-          </div>
-
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div>
-              <FieldLabel>Amount</FieldLabel>
-              <TextInput
-                ref={amountRef}
-                tabIndex={6}
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onFocus={(e) => e.currentTarget.select()}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <FieldLabel>Reference</FieldLabel>
-              <TextInput
-                ref={referenceRef}
-                tabIndex={7}
-                required
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder="Cheque, bill, or slip reference"
-              />
-            </div>
-          </div>
-
-          <div>
-            <FieldLabel>Description</FieldLabel>
-            <TextInput
-              ref={descriptionRef}
-              tabIndex={8}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional notes — press Enter to save when ready"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && canSubmit() && !saving) {
-                  e.preventDefault();
-                  formRef.current?.requestSubmit();
-                }
-              }}
-            />
-          </div>
-
-          <FormActionFooter
-            error={error || undefined}
-            message={message || undefined}
-            primaryLabel="Save & Post"
-            saving={saving}
-            primaryRef={saveRef}
-            primaryTabIndex={9}
-            closeTabIndex={10}
-            onClose={() => navigate('/')}
-            onMinimize={() =>
-              minimize(
-                {
-                  debitCategoryId,
-                  creditCategoryId,
-                  debitAccountId,
-                  creditAccountId,
-                  amount,
-                  voucherDate,
-                  reference,
-                  description,
-                  predictedNumber,
-                },
-                `${VOUCHER_PAGE_TITLES[kind]} — ${predictedNumber != null ? formatVoucherNumber(predictedNumber) : 'draft'}`,
-              )
-            }
-          />
-        </form>
         </div>
       </div>
     </PageShell>

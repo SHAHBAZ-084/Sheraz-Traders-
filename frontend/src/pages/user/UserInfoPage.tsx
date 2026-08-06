@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, type User } from '../../lib/api';
 
 export function UserInfoPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
 
   const [users, setUsers] = useState<User[]>([]);
@@ -51,6 +51,25 @@ export function UserInfoPage() {
     }
   }
 
+  async function onDeleteUser(u: User) {
+    if (u.id === user?.id) {
+      alert('Cannot delete your own account.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete user "${u.username}"?`)) {
+      return;
+    }
+    setError('');
+    setMessage('');
+    try {
+      await api.deleteUser(u.id);
+      setMessage(`User "${u.username}" deleted.`);
+      setUsers(await api.listUsers());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete user');
+    }
+  }
+
   return (
     <PageShell title="User Information" subtitle="Signed-in clerk profile">
       <Panel className="max-w-md space-y-4">
@@ -66,7 +85,6 @@ export function UserInfoPage() {
           <p className="text-xs uppercase tracking-wide text-textSecondary">Role</p>
           <p className="text-textPrimary">{user?.role}</p>
         </div>
-        <SecondaryButton onClick={() => logout()}>Sign out</SecondaryButton>
       </Panel>
 
       {isAdmin ? (
@@ -116,7 +134,8 @@ export function UserInfoPage() {
                   <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
                     <th className="py-2 pr-3">Username</th>
                     <th className="py-2 pr-3">Display name</th>
-                    <th className="py-2">Role</th>
+                    <th className="py-2 pr-3">Role</th>
+                    <th className="py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,7 +143,18 @@ export function UserInfoPage() {
                     <tr key={row.id} className="border-b border-border/50">
                       <td className="py-2 pr-3 text-textPrimary">{row.username}</td>
                       <td className="py-2 pr-3 text-textPrimary">{row.displayName}</td>
-                      <td className="py-2 text-textSecondary">{row.role}</td>
+                      <td className="py-2 pr-3 text-textSecondary">{row.role}</td>
+                      <td className="py-2 text-right">
+                        {row.id !== user?.id && (
+                          <button
+                            type="button"
+                            onClick={() => void onDeleteUser(row)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

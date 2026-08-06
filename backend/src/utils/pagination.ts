@@ -18,3 +18,14 @@ export function parsePagination(
   const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
   return { limit, offset };
 }
+
+export function paginateArray<T>(items: T[], limit: number, offset: number): PaginatedResult<T> {
+  const total = items.length;
+  const sliced = items.slice(offset, offset + limit);
+  return {
+    items: sliced,
+    total,
+    limit,
+    offset,
+  };
+}

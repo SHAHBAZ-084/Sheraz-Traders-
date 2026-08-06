@@ -1546,6 +1546,41 @@ export async function createVoucher(data: {
   });
 }
 
+export async function createVouchersBatch(data: {
+  vouchers: Array<{
+    type: VoucherType;
+    debitAccountId: number;
+    creditAccountId: number;
+    amount: number;
+    date: Date | string;
+    description?: string;
+    reference: string;
+  }>;
+  createdById: number;
+  postImmediately?: boolean;
+}) {
+  if (!Array.isArray(data.vouchers) || data.vouchers.length === 0) {
+    throw new AppError(400, 'At least one voucher is required');
+  }
+
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const createdList = [];
+    for (const vData of data.vouchers) {
+      const createdVoucher = await createVoucherInTx(tx, {
+        ...vData,
+        createdById: data.createdById,
+        postImmediately: data.postImmediately,
+      });
+      const fullVoucher = await tx.voucher.findUniqueOrThrow({
+        where: { id: createdVoucher.id },
+        include: voucherInclude,
+      });
+      createdList.push(fullVoucher);
+    }
+    return createdList;
+  });
+}
+
 export async function approveVoucher(voucherId: number, approvedById: number) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const voucher = await tx.voucher.findFirst({

@@ -17,25 +17,27 @@ export function useMinimizableForm<T>(kind: MinimizedFormKind) {
   const navigate = useNavigate();
   const location = useLocation();
   const minimizeIntoStore = useMinimizedFormsStore((s) => s.minimize);
-  const claim = useMinimizedFormsStore((s) => s.claim);
+  const getById = useMinimizedFormsStore((s) => s.getById);
+  const discard = useMinimizedFormsStore((s) => s.discard);
+
+  const restoreId = (location.state as RestoreLocationState | null)?.minimizedFormId;
 
   const [restoredState, setRestoredState] = useState<T | null>(() => {
-    const restoreId = (location.state as RestoreLocationState | null)?.minimizedFormId;
     if (!restoreId) return null;
-    const entry = claim(restoreId);
+    const entry = getById(restoreId);
     if (!entry || entry.kind !== kind) return null;
     return entry.formState as T;
   });
 
   useEffect(() => {
-    const restoreId = (location.state as RestoreLocationState | null)?.minimizedFormId;
     if (!restoreId) return;
-    const entry = claim(restoreId);
+    const entry = getById(restoreId);
     if (entry && entry.kind === kind) {
       setRestoredState(entry.formState as T);
+      discard(restoreId);
     }
     navigate(location.pathname, { replace: true, state: {} });
-  }, [location.pathname, location.state, navigate, claim, kind]);
+  }, [location.pathname, restoreId, navigate, getById, discard, kind]);
 
   const minimize = useCallback(
     (formState: T, label: string) => {

@@ -24,11 +24,31 @@ approvalsRouter.post(
 );
 
 approvalsRouter.post(
+  '/vouchers/:id/reject',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const result = await approvalsService.rejectPendingVoucher(id);
+    res.json(result);
+  }),
+);
+
+approvalsRouter.post(
   '/invoices/:id/approve',
   requireAdmin,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const result = await approvalsService.approvePendingInvoice(id);
+    res.json(result);
+  }),
+);
+
+approvalsRouter.post(
+  '/invoices/:id/reject',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const result = await approvalsService.rejectPendingInvoice(id);
     res.json(result);
   }),
 );

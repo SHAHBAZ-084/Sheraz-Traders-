@@ -323,7 +323,6 @@ export function StockReportPage() {
   const [storeId, setStoreId] = useState('');
   const [products, setProducts] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [productId, setProductId] = useState('');
-  const [bagType, setBagType] = useState<'BORI' | 'THELA'>('BORI');
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockReport>> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -376,7 +375,6 @@ export function StockReportPage() {
       setReport(
         await api.getStockReport({
           productId: id,
-          bagType,
           storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
         }),
       );
@@ -388,9 +386,9 @@ export function StockReportPage() {
   }
 
   return (
-    <PageShell title="Stock Report" subtitle="Bag stock by product — Sale Invoice / Purchase Invoice breakdown when filtered by store">
+    <PageShell title="Stock Report" subtitle="Stock movements by product name and date — Sale Invoice / Purchase Invoice breakdown">
       <Panel>
-        <div className="grid gap-3 md:grid-cols-5 md:items-end">
+        <div className="grid gap-3 md:grid-cols-4 md:items-end">
           <div>
             <FieldLabel>Store</FieldLabel>
             <SearchSelect
@@ -412,17 +410,6 @@ export function StockReportPage() {
               placeholder={storeId ? 'Products with store stock…' : 'Search product…'}
             />
           </div>
-          <div>
-            <FieldLabel>Bag type</FieldLabel>
-            <SegmentedControl
-              value={bagType}
-              onChange={(v) => setBagType(v as 'BORI' | 'THELA')}
-              options={[
-                { value: 'BORI', label: 'Bori' },
-                { value: 'THELA', label: 'Thela' },
-              ]}
-            />
-          </div>
           <FinancialButton type="button" onClick={onLoad} disabled={loading}>
             {loading ? 'Loading…' : 'Show report'}
           </FinancialButton>
@@ -437,8 +424,7 @@ export function StockReportPage() {
               {!report.historicalBackfill
                 ? ' Invoices saved before stock tracking started are not included.'
                 : null}
-              {' '}Carried loose remainder: {report.carriedRemainderKg} kg
-              ({report.bagType === 'BORI' ? 'Bori' : 'Thela'}).
+              {' '}Carried loose remainder: {report.carriedRemainderKg} kg.
               {report.storeId
                 ? ` Filtered to store: ${stores.find((s) => s.id === report.storeId)?.name ?? `#${report.storeId}`}.`
                 : null}
@@ -451,7 +437,7 @@ export function StockReportPage() {
                     <th className="py-2 pr-3">Date</th>
                     <th className="py-2 pr-3">Description</th>
                     <th className="py-2 pr-3">Status</th>
-                    <th className="py-2 pr-3 text-right">Bags</th>
+                    <th className="py-2 pr-3 text-right">Quantity</th>
                     <th className="py-2 text-right">Running Balance</th>
                   </tr>
                 </thead>
@@ -459,7 +445,7 @@ export function StockReportPage() {
                   {(report.rows?.length ?? 0) === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-6 text-center text-textSecondary">
-                        No stock movements for this product / bag type yet.
+                        No stock movements for this product yet.
                       </td>
                     </tr>
                   ) : (

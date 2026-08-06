@@ -11,6 +11,8 @@ type PendingItem = {
   type: string;
   reference: string | null;
   date: string | null;
+  debitAccountName?: string | null;
+  creditAccountName?: string | null;
   amount: number;
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
@@ -46,7 +48,7 @@ export function PendingApprovalsPage() {
 
   async function onApprove(item: PendingItem) {
     if (!isAdmin) return;
-    const key = `${item.kind}-${item.id}`;
+    const key = `approve-${item.kind}-${item.id}`;
     setBusyId(key);
     setError('');
     setMessage('');
@@ -60,6 +62,27 @@ export function PendingApprovalsPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Approve failed');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onReject(item: PendingItem) {
+    if (!isAdmin) return;
+    const key = `reject-${item.kind}-${item.id}`;
+    setBusyId(key);
+    setError('');
+    setMessage('');
+    try {
+      if (item.kind === 'voucher') {
+        await api.rejectPendingVoucher(item.id);
+      } else {
+        await api.rejectPendingInvoice(item.id);
+      }
+      setMessage(`Cancelled/Rejected ${item.reference ?? item.type ?? 'item'}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reject failed');
     } finally {
       setBusyId(null);
     }
@@ -88,6 +111,8 @@ export function PendingApprovalsPage() {
                   <th className="py-2 pr-3">Type</th>
                   <th className="py-2 pr-3">Reference</th>
                   <th className="py-2 pr-3">Date</th>
+                  <th className="py-2 pr-3">Debit Account</th>
+                  <th className="py-2 pr-3">Credit Account</th>
                   <th className="py-2 pr-3">Creator</th>
                   <th className="py-2 pr-3 text-right">Amount</th>
                   <th className="py-2 pr-3">Description</th>
@@ -96,28 +121,44 @@ export function PendingApprovalsPage() {
               </thead>
               <tbody>
                 {(items ?? []).map((item) => {
-                  const key = `${item.kind}-${item.id}`;
+                  const keyApprove = `approve-${item.kind}-${item.id}`;
+                  const keyReject = `reject-${item.kind}-${item.id}`;
+                  const isBusy = busyId === keyApprove || busyId === keyReject;
                   return (
-                    <tr key={key} className="border-b border-border">
+                    <tr key={`${item.kind}-${item.id}`} className="border-b border-border">
                       <td className="py-2 pr-3 capitalize">{item.kind}</td>
                       <td className="py-2 pr-3">{item.type ? String(item.type).replaceAll('_', ' ') : '—'}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{item.reference ?? '—'}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {item.date ? formatDate(item.date) : '—'}
                       </td>
+                      <td className="py-2 pr-3 font-medium text-textPrimary">{item.debitAccountName ?? '—'}</td>
+                      <td className="py-2 pr-3 font-medium text-textPrimary">{item.creditAccountName ?? '—'}</td>
                       <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
                         {formatLedgerAmount(item.amount)}
                       </td>
                       <td className="py-2 pr-3 text-textSecondary">{item.description ?? '—'}</td>
-                      <td className="py-2 text-right">
-                        <PrimaryButton
-                          type="button"
-                          disabled={!isAdmin || busyId === key}
-                          onClick={() => void onApprove(item)}
-                        >
-                          {!isAdmin ? 'Admin only' : busyId === key ? 'Approving…' : 'Approve'}
-                        </PrimaryButton>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          <PrimaryButton
+                            type="button"
+                            disabled={!isAdmin || isBusy}
+                            onClick={() => void onApprove(item)}
+                          >
+                            {!isAdmin ? 'Admin only' : busyId === keyApprove ? 'Approving…' : 'Approve'}
+                          </PrimaryButton>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void onReject(item)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded bg-danger/10 text-danger hover:bg-danger/20 disabled:opacity-50 transition-colors"
+                            >
+                              {busyId === keyReject ? 'Cancelling…' : 'Cancel'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -126,9 +167,6 @@ export function PendingApprovalsPage() {
             </table>
           </div>
         )}
-        <p className="mt-4 text-xs text-textMuted">
-          Reject is not available yet — confirm whether pending items should be deleted or flagged first.
-        </p>
       </Panel>
       <PageCloseBar />
     </PageShell>

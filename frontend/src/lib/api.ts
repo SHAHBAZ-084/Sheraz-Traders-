@@ -226,6 +226,11 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+  deleteUser(id: number) {
+    return request<{ id: number }>(`/api/auth/users/${id}`, {
+      method: 'DELETE',
+    });
+  },
 
   listPendingApprovals() {
     return request<
@@ -235,6 +240,8 @@ export const api = {
         type: string;
         reference: string | null;
         date: string | null;
+        debitAccountName?: string | null;
+        creditAccountName?: string | null;
         amount: number;
         description: string | null;
         createdBy: { id: number; displayName: string; username: string } | null;
@@ -244,8 +251,14 @@ export const api = {
   approvePendingVoucher(id: number) {
     return request(`/api/approvals/vouchers/${id}/approve`, { method: 'POST', body: '{}' });
   },
+  rejectPendingVoucher(id: number) {
+    return request(`/api/approvals/vouchers/${id}/reject`, { method: 'POST', body: '{}' });
+  },
   approvePendingInvoice(id: number) {
     return request(`/api/approvals/invoices/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  rejectPendingInvoice(id: number) {
+    return request(`/api/approvals/invoices/${id}/reject`, { method: 'POST', body: '{}' });
   },
 
   listCategories() {
@@ -293,6 +306,22 @@ export const api = {
     return request<Store>(`/api/stores/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ isActive }),
+    });
+  },
+  getStoreDeletionSummary(id: number) {
+    return request<{
+      store: Store;
+      saleInvoicesCount: number;
+      purchaseInvoicesCount: number;
+      stockMovementsCount: number;
+      stockRemaindersCount: number;
+      totalLinkedRecords: number;
+    }>(`/api/stores/${id}/deletion-summary`);
+  },
+  deleteStore(id: number, confirmPassword: string) {
+    return request<Store>(`/api/stores/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmPassword }),
     });
   },
   getStockByStore(storeId: number) {
@@ -523,6 +552,20 @@ export const api = {
   }) {
     return request<Voucher>('/api/accounting/vouchers', { method: 'POST', body: JSON.stringify(data) });
   },
+  createVouchersBatch(vouchers: Array<{
+    type: string;
+    debitAccountId: number;
+    creditAccountId: number;
+    amount: number;
+    date: string;
+    description?: string;
+    reference: string;
+  }>) {
+    return request<Voucher[]>('/api/accounting/vouchers/batch', {
+      method: 'POST',
+      body: JSON.stringify({ vouchers }),
+    });
+  },
   updateVoucherAmount(voucherId: number, amount: number) {
     return request<Voucher>(`/api/accounting/vouchers/${voucherId}`, {
       method: 'PATCH',
@@ -624,17 +667,18 @@ export const api = {
   },
 
 
-  getStockReport(params: { productId: number; bagType: 'BORI' | 'THELA'; storeId?: number | null }) {
+  getStockReport(params: { productId: number; bagType?: 'BORI' | 'THELA'; storeId?: number | null }) {
     const query = new URLSearchParams({
       productId: String(params.productId),
-      bagType: params.bagType,
     });
+    if (params.bagType) {
+      query.set('bagType', params.bagType);
+    }
     if (params.storeId != null && params.storeId > 0) {
       query.set('storeId', String(params.storeId));
     }
     return request<{
       product: { id: number; name: string; code: string };
-      bagType: 'BORI' | 'THELA';
       storeId: number | null;
       trackingStartedAt: string;
       historicalBackfill: false;
