@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import { prisma } from '../../lib/prisma';
 import {
@@ -13,6 +13,7 @@ import type { StartupStatus } from '../../lib/startup';
 export const systemRouter = Router();
 
 systemRouter.use(requireAuth);
+systemRouter.use(requireAdmin);
 
 systemRouter.get(
   '/status',

@@ -18,9 +18,14 @@ function toAuthUser(user: {
 }
 
 export async function login(username: string, password: string) {
-  const cleanUsername = username.trim().toLowerCase();
-  const users = await prisma.user.findMany();
-  const user = users.find((u) => u.username.trim().toLowerCase() === cleanUsername);
+  const cleanUsername = username.trim();
+  let user = await prisma.user.findUnique({ where: { username: cleanUsername } });
+
+  if (!user) {
+    const cleanLower = cleanUsername.toLowerCase();
+    const candidates = await prisma.user.findMany({ take: 100 });
+    user = candidates.find((u) => u.username.trim().toLowerCase() === cleanLower) ?? null;
+  }
 
   if (!user) {
     return null;

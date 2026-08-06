@@ -6,8 +6,32 @@ import * as authService from './auth.service';
 
 export const authRouter = Router();
 
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOGIN_ATTEMPTS = 15;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkLoginRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_ATTEMPT_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
 authRouter.post('/login', async (req, res, next) => {
   try {
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    if (!checkLoginRateLimit(ip)) {
+      res.status(429).json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' });
+      return;
+    }
+
     const { username, password } = req.body as { username?: string; password?: string };
 
     if (!username?.trim() || !password) {
@@ -21,6 +45,9 @@ authRouter.post('/login', async (req, res, next) => {
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
+
+    // Reset rate limit count on successful authentication
+    loginAttempts.delete(ip);
 
     req.session.userId = user.id;
     res.json({ user });

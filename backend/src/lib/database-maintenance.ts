@@ -4,6 +4,8 @@ import { PrismaClient } from '@prisma/client';
 import { getBackupDirectory, getDatabaseFilePath, ensureDatabaseDirectoryExists } from './database-path';
 import { logger } from './logger';
 
+import { prisma } from './prisma';
+
 const DEFAULT_BACKUP_RETENTION_DAYS = 30;
 
 export async function configureSqlitePragmas(db: PrismaClient): Promise<void> {
@@ -58,6 +60,13 @@ export async function createDatabaseBackup(retentionDays = DEFAULT_BACKUP_RETENT
   if (!fs.existsSync(dbPath)) {
     logger.info('Skipping backup — database file does not exist yet');
     return null;
+  }
+
+  // Ensure WAL log is checkpointed into the main SQLite file before copying
+  try {
+    await walCheckpointTruncate(prisma);
+  } catch (err) {
+    logger.warn('WAL checkpoint failed before backup, proceeding with raw copy', err);
   }
 
   const backupDir = getBackupDirectory();

@@ -1566,6 +1566,7 @@ export async function approveVoucher(voucherId: number, approvedById: number) {
       },
     });
 
+    const finYearId = voucher.financialYearId ?? (await getActiveFinancialYearId(tx));
     const existingEntries = await tx.ledgerEntry.count({ where: { voucherId: voucher.id } });
     if (existingEntries === 0) {
       await postVoucherLedgerEntries(
@@ -1575,7 +1576,7 @@ export async function approveVoucher(voucherId: number, approvedById: number) {
         voucher.creditAccountId,
         Number(voucher.amount),
         voucher.description,
-        voucher.financialYearId,
+        finYearId,
       );
     } else {
       // Retry path: entries may exist from a partial prior attempt — recompute only.
@@ -1585,8 +1586,8 @@ export async function approveVoucher(voucherId: number, approvedById: number) {
       const creditLedger = await tx.ledger.findUniqueOrThrow({
         where: { accountId: voucher.creditAccountId },
       });
-      await recomputeLedgerRunningBalancesInTx(tx, debitLedger.id, voucher.financialYearId);
-      await recomputeLedgerRunningBalancesInTx(tx, creditLedger.id, voucher.financialYearId);
+      await recomputeLedgerRunningBalancesInTx(tx, debitLedger.id, finYearId);
+      await recomputeLedgerRunningBalancesInTx(tx, creditLedger.id, finYearId);
     }
 
     await assertTrialBalanceInDev(tx);

@@ -263,7 +263,7 @@ export async function approvePurchaseInvoice(invoiceId: number) {
       {
         id: invoice.id,
         reference: invoice.reference,
-        invoiceDate: invoice.invoiceDate,
+        invoiceDate: invoice.invoiceDate ?? new Date(),
         billNo: invoice.billNo,
         storeId: invoice.storeId,
         debitAccountId: invoice.debitAccountId,

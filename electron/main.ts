@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
 import path from 'path';
 import { autoUpdater } from 'electron-updater';
 
@@ -35,6 +35,22 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://127.0.0.1:') || url.startsWith('http://localhost:')) {
+      return { action: 'allow' };
+    }
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isAllowed = url.startsWith('http://127.0.0.1:') || url.startsWith('http://localhost:');
+    if (!isAllowed) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {

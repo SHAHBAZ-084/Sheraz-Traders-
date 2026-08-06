@@ -187,9 +187,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     credentials: 'include',
   });
-  const data = (await response.json().catch(() => ({}))) as T & ApiError;
-  if (!response.ok) throw new Error(data.error ?? 'Request failed');
-  return data;
+
+  if (!response.ok) {
+    let errorMessage = `HTTP ${response.status} ${response.statusText}`.trim();
+    try {
+      const data = (await response.json()) as ApiError;
+      if (data && typeof data.error === 'string' && data.error.trim()) {
+        errorMessage = data.error;
+      }
+    } catch {
+      // Non-JSON error payload
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
 }
 
 export const api = {
