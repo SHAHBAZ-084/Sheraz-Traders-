@@ -19,6 +19,8 @@ export async function getStockReport(params: {
   productId: number;
   bagType?: 'BORI' | 'THELA';
   storeId?: number | null;
+  limit?: number;
+  offset?: number;
 }) {
   const product = await prisma.product.findFirst({
     where: { id: params.productId, isActive: true },
@@ -26,13 +28,17 @@ export async function getStockReport(params: {
   if (!product) throw new AppError(404, 'Product not found');
 
   const storeId = params.storeId != null && params.storeId > 0 ? params.storeId : undefined;
+  const where = {
+    productId: params.productId,
+    ...(params.bagType ? { bagType: toStockBagType(params.bagType) } : {}),
+    ...(storeId != null ? { storeId } : {}),
+  };
+
+  const total = await prisma.stockMovement.count({ where });
   const movements = await prisma.stockMovement.findMany({
-    where: {
-      productId: params.productId,
-      ...(params.bagType ? { bagType: toStockBagType(params.bagType) } : {}),
-      ...(storeId != null ? { storeId } : {}),
-    },
+    where,
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    ...(params.limit != null ? { skip: params.offset ?? 0, take: params.limit } : {}),
   });
 
   const remainder = await prisma.stockRemainder.aggregate({
@@ -77,6 +83,7 @@ export async function getStockReport(params: {
     trackingStartedAt: STOCK_TRACKING_STARTED_AT.toISOString(),
     historicalBackfill: false as const,
     carriedRemainderKg: remainder._sum.remainderKg ? Number(remainder._sum.remainderKg) : 0,
+    totalCount: total,
     rows,
     totals: {
       totalIn,

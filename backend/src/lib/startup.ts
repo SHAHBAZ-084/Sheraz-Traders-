@@ -12,6 +12,7 @@ import {
 } from './database-maintenance';
 import { ensureDatabaseDirectoryExists } from './database-path';
 import { logger } from './logger';
+import { startAutoBackupScheduler } from './google-drive-backup';
 
 export type StartupStatus = {
   ok: boolean;
@@ -68,16 +69,12 @@ export async function initializeDatabase(db: PrismaClient): Promise<StartupStatu
 
     await configureSqlitePragmas(db);
 
-    if (status.databaseExists && process.env.NODE_ENV === 'production') {
-      await createDatabaseBackup();
+    if (status.databaseExists) {
       const integrity = await verifyDatabaseIntegrity(db);
       status.integrityOk = integrity.ok;
       if (!integrity.ok) {
         logger.warn('Database integrity check failed on startup', { results: integrity.results });
       }
-    } else if (status.databaseExists && process.env.NODE_ENV !== 'test') {
-      const integrity = await verifyDatabaseIntegrity(db);
-      status.integrityOk = integrity.ok;
     }
 
     const readable = status.databaseExists ? await isDatabaseReadable() : true;
@@ -88,6 +85,10 @@ export async function initializeDatabase(db: PrismaClient): Promise<StartupStatu
 
     if (checkpointTimer) clearInterval(checkpointTimer);
     checkpointTimer = scheduleWalCheckpoint(db);
+
+    if (process.env.NODE_ENV !== 'test') {
+      startAutoBackupScheduler();
+    }
 
     status.ok = true;
     return status;

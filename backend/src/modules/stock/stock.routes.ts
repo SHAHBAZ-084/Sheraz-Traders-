@@ -30,15 +30,13 @@ stockRouter.get(
       return;
     }
     const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
-    const report = await stockService.getStockReport({ productId, bagType, storeId });
-    const paginatedRows = paginateArray(report.rows, limit, offset);
+    const report = await stockService.getStockReport({ productId, bagType, storeId, limit, offset });
     res.json({
       ...report,
-      rows: paginatedRows.items,
       pagination: {
-        total: paginatedRows.total,
-        limit: paginatedRows.limit,
-        offset: paginatedRows.offset,
+        total: report.totalCount,
+        limit,
+        offset,
       },
     });
   }),

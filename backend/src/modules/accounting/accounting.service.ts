@@ -2157,19 +2157,25 @@ export async function getAccountBalancesAsOf(params: {
   date: string;
   categoryId?: number;
   side?: 'debit' | 'credit' | 'both';
+  limit?: number;
+  offset?: number;
 }) {
   const side = params.side ?? 'both';
   const asOf = parseDateEnd(params.date);
   const financialYearId = await getActiveFinancialYearId(prisma);
   const { yearStart, yearEnd } = await loadFinancialYearBounds(prisma, financialYearId);
 
+  const where = {
+    isActive: true,
+    ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
+  };
+
+  const total = await prisma.account.count({ where });
   const accounts = await prisma.account.findMany({
-    where: {
-      isActive: true,
-      ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
-    },
+    where,
     include: { category: true, ledger: true },
     orderBy: [{ category: { name: 'asc' } }, { code: 'asc' }],
+    ...(params.limit != null ? { skip: params.offset ?? 0, take: params.limit } : {}),
   });
 
   const accountIds = accounts.map((a) => a.id);
@@ -2279,6 +2285,7 @@ export async function getAccountBalancesAsOf(params: {
     date: params.date,
     side,
     categoryId: params.categoryId ?? null,
+    totalCount: total,
     accounts: rows,
     groups,
     totalDebit,
@@ -2286,11 +2293,13 @@ export async function getAccountBalancesAsOf(params: {
   };
 }
 
-export async function getTrialBalance() {
+export async function getTrialBalance(pagination?: { limit?: number; offset?: number }) {
+  const total = await prisma.ledger.count();
   const ledgers = await prisma.ledger.findMany({
     where: {},
     include: { account: true },
     orderBy: [{ account: { type: 'asc' } }, { account: { code: 'asc' } }],
+    ...(pagination?.limit != null ? { skip: pagination.offset ?? 0, take: pagination.limit } : {}),
   });
 
   const accounts = ledgers.map((l: (typeof ledgers)[number]) => {
@@ -2307,14 +2316,21 @@ export async function getTrialBalance() {
     };
   });
 
-  const totalDebit = accounts.reduce((s, a) => s + a.debit, 0);
-  const totalCredit = accounts.reduce((s, a) => s + a.credit, 0);
+  const allLedgers = await prisma.ledger.findMany({ select: { balance: true } });
+  let totalDebit = 0;
+  let totalCredit = 0;
+  for (const l of allLedgers) {
+    const { debit, credit } = trialBalanceFromSignedBalance(Number(l.balance));
+    totalDebit += debit;
+    totalCredit += credit;
+  }
 
   return {
     accounts,
     totalDebit,
     totalCredit,
     isBalanced: isTrialBalanceBalanced(totalDebit, totalCredit),
+    totalCount: total,
   };
 }
 
@@ -2322,9 +2338,10 @@ export async function getLedgerEntries(
   accountId: number,
   fromDate?: string,
   toDate?: string,
+  pagination?: { limit?: number; offset?: number },
 ) {
   const financialYearId = await getActiveFinancialYearId(prisma);
-  return buildLedgerEntriesReport(accountId, financialYearId, fromDate, toDate);
+  return buildLedgerEntriesReport(accountId, financialYearId, fromDate, toDate, pagination);
 }
 
 export async function getLedgerEntriesForYear(
@@ -2332,12 +2349,13 @@ export async function getLedgerEntriesForYear(
   financialYearId: number,
   fromDate?: string,
   toDate?: string,
+  pagination?: { limit?: number; offset?: number },
 ) {
   const year = await prisma.financialYear.findFirst({
     where: { id: financialYearId },
   });
   if (!year) throw new AppError(404, 'Financial year not found');
-  return buildLedgerEntriesReport(accountId, financialYearId, fromDate, toDate);
+  return buildLedgerEntriesReport(accountId, financialYearId, fromDate, toDate, pagination);
 }
 
 async function buildLedgerEntriesReport(
@@ -2345,6 +2363,7 @@ async function buildLedgerEntriesReport(
   financialYearId: number,
   fromDate?: string,
   toDate?: string,
+  pagination?: { limit?: number; offset?: number },
 ) {
   let ledger = await prisma.ledger.findFirst({
     where: { accountId },
@@ -2501,10 +2520,16 @@ async function buildLedgerEntriesReport(
         return sum + debit - credit;
       }, 0);
 
+  const totalCount = rows.length;
+  const paginatedRows = pagination?.limit != null
+    ? rows.slice(pagination.offset ?? 0, (pagination.offset ?? 0) + pagination.limit)
+    : rows;
+
   return {
     account: ledger.account,
     balance: closingBalance,
-    rows,
+    totalCount,
+    rows: paginatedRows,
     summary: {
       periodOpening: from ? periodOpening : baseOpening,
       totalDebit,

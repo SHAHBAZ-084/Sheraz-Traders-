@@ -5,6 +5,15 @@ export type Paginated<T> = {
   offset: number;
 };
 
+export type BackupStatus = {
+  connected: boolean;
+  needsReconnect: boolean;
+  lastSuccessAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  overdue: boolean;
+};
+
 export type User = {
   id: number;
   username: string;
@@ -703,4 +712,25 @@ export const api = {
     }>(`/api/stock/report?${query.toString()}`);
   },
 
+  getBackupStatus() {
+    return request<BackupStatus>('/api/system/backup-status');
+  },
+
+  connectGoogleDrive() {
+    return request<{ success: boolean; message: string }>('/api/system/google-drive/connect', {
+      method: 'POST',
+    });
+  },
+
+  disconnectGoogleDrive() {
+    return request<{ ok: boolean }>('/api/system/google-drive/disconnect', {
+      method: 'POST',
+    });
+  },
+
+  triggerGoogleDriveBackup() {
+    return request<{ ok: boolean }>('/api/system/google-drive/backup-now', {
+      method: 'POST',
+    });
+  },
 };

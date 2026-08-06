@@ -132,15 +132,15 @@ accountingRouter.get(
       date,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
       side,
+      limit,
+      offset,
     });
-    const paginatedAccounts = paginateArray(report.accounts, limit, offset);
     res.json({
       ...report,
-      accounts: paginatedAccounts.items,
       pagination: {
-        total: paginatedAccounts.total,
-        limit: paginatedAccounts.limit,
-        offset: paginatedAccounts.offset,
+        total: report.totalCount,
+        limit,
+        offset,
       },
     });
   }),
@@ -227,15 +227,13 @@ accountingRouter.get(
   requireReportsAccess,
   asyncHandler(async (req, res) => {
     const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
-    const trialBalance = await accountingService.getTrialBalance();
-    const paginatedAccounts = paginateArray(trialBalance.accounts, limit, offset);
+    const trialBalance = await accountingService.getTrialBalance({ limit, offset });
     res.json({
       ...trialBalance,
-      accounts: paginatedAccounts.items,
       pagination: {
-        total: paginatedAccounts.total,
-        limit: paginatedAccounts.limit,
-        offset: paginatedAccounts.offset,
+        total: trialBalance.totalCount,
+        limit,
+        offset,
       },
     });
   }),
@@ -257,17 +255,16 @@ accountingRouter.get(
           parseInt(financialYearIdParam, 10),
           fromDate,
           toDate,
+          { limit, offset },
         )
-      : await accountingService.getLedgerEntries(accountId, fromDate, toDate);
+      : await accountingService.getLedgerEntries(accountId, fromDate, toDate, { limit, offset });
 
-    const paginatedRows = paginateArray(ledger.rows, limit, offset);
     res.json({
       ...ledger,
-      rows: paginatedRows.items,
       pagination: {
-        total: paginatedRows.total,
-        limit: paginatedRows.limit,
-        offset: paginatedRows.offset,
+        total: ledger.totalCount,
+        limit,
+        offset,
       },
     });
   }),

@@ -10,6 +10,13 @@ import {
 import { getBackupDirectory, getDatabaseFilePath } from '../../lib/database-path';
 import type { StartupStatus } from '../../lib/startup';
 
+import {
+  connectGoogleDrive,
+  disconnectGoogleDrive,
+  getBackupStatus,
+  runAutoBackupCycle,
+} from '../../lib/google-drive-backup';
+
 export const systemRouter = Router();
 
 systemRouter.use(requireAuth);
@@ -22,6 +29,38 @@ systemRouter.get(
       databasePath: getDatabaseFilePath(),
       backupDirectory: getBackupDirectory(),
     });
+  }),
+);
+
+systemRouter.get(
+  '/backup-status',
+  asyncHandler(async (_req, res) => {
+    const status = getBackupStatus();
+    res.json(status);
+  }),
+);
+
+systemRouter.post(
+  '/google-drive/connect',
+  asyncHandler(async (_req, res) => {
+    const result = await connectGoogleDrive();
+    res.json(result);
+  }),
+);
+
+systemRouter.post(
+  '/google-drive/disconnect',
+  asyncHandler(async (_req, res) => {
+    disconnectGoogleDrive();
+    res.json({ ok: true, message: 'Google Drive disconnected' });
+  }),
+);
+
+systemRouter.post(
+  '/google-drive/backup-now',
+  asyncHandler(async (_req, res) => {
+    const success = await runAutoBackupCycle();
+    res.json({ ok: success });
   }),
 );
 
