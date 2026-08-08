@@ -292,6 +292,11 @@ export const api = {
   removeProduct(id: number) {
     return request<{ ok: boolean }>(`/api/products/${id}`, { method: 'DELETE' });
   },
+  getProductInsight(productId: number, storeId: number) {
+    return request<{ averageRate: number | null; storeStock: number; storeName: string }>(
+      `/api/products/${productId}/insight?storeId=${storeId}`,
+    );
+  },
 
   listStores() {
     return request<Store[]>('/api/stores');

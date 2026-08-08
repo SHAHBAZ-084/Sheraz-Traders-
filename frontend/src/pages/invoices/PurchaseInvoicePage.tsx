@@ -25,6 +25,7 @@ import { formatLedgerAmount } from '../../lib/format';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
 import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
+import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
 
 const PURCHASE_PARTY_CATEGORIES = ['Int. Purchase Party', 'Ext. Purchase Party'] as const;
 
@@ -313,7 +314,10 @@ export function PurchaseInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField wide>
-                      <FieldLabel>Product</FieldLabel>
+                      <div className="flex items-center gap-1.5">
+                        <FieldLabel>Product</FieldLabel>
+                        <ProductInsightPopover productId={productId} storeId={storeId} />
+                      </div>
                       <SearchSelect
                         options={productOptions}
                         value={productId}

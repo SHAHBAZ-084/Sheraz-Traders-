@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
-import { asyncHandler, param, validateBody } from '../../utils/helpers';
+import { AppError, asyncHandler, param, validateBody } from '../../utils/helpers';
 import * as productsService from './products.service';
 
 export const productsRouter = Router();
@@ -54,5 +54,21 @@ productsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     res.json(await productsService.removeProduct(parseInt(param(req.params.id), 10)));
+  }),
+);
+
+productsRouter.get(
+  '/:id/insight',
+  asyncHandler(async (req, res) => {
+    const productId = parseInt(param(req.params.id), 10);
+    const storeIdRaw = req.query.storeId;
+    if (storeIdRaw === undefined || storeIdRaw === '') {
+      throw new AppError(400, 'storeId query parameter is required');
+    }
+    const storeId = parseInt(param(storeIdRaw as string | string[]), 10);
+    if (!Number.isFinite(productId) || !Number.isFinite(storeId)) {
+      throw new AppError(400, 'Invalid productId or storeId');
+    }
+    res.json(await productsService.getProductInsight(productId, storeId));
   }),
 );

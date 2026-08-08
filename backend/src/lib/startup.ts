@@ -39,17 +39,20 @@ export async function runMigrations(): Promise<void> {
     });
     logger.info('Database migrations up to date');
   } catch (err) {
-    if (process.env.NODE_ENV !== 'production') {
-      logger.warn('prisma migrate deploy failed in dev, falling back to db push');
-      execSync('npx prisma db push --accept-data-loss', {
-        cwd: backendRoot,
-        stdio: 'pipe',
-        env: process.env,
+    if (process.env.NODE_ENV === 'production') {
+      logger.warn('prisma migrate deploy CLI skipped or unavailable in packaged app environment', {
+        err: err instanceof Error ? err.message : String(err),
       });
-      logger.info('Database schema pushed successfully');
       return;
     }
-    throw err;
+    logger.warn('prisma migrate deploy failed in dev, falling back to db push');
+    execSync('npx prisma db push --accept-data-loss', {
+      cwd: backendRoot,
+      stdio: 'pipe',
+      env: process.env,
+    });
+    logger.info('Database schema pushed successfully');
+    return;
   }
 }
 
