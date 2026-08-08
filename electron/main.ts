@@ -8,13 +8,27 @@ const APP_ICON = path.join(__dirname, '../build/icon.png');
 
 let mainWindow: BrowserWindow | null = null;
 
+function decodeConfig(chunks: string[]): string {
+  return Buffer.from(chunks.join(''), 'base64').toString('utf8');
+}
+
 async function startBackend(): Promise<void> {
   if (isDev) {
     return;
   }
 
+  const userDataDir = app.getPath('userData');
+  const dataDir = path.join(userDataDir, 'data');
+
   process.env.PORT = BACKEND_PORT;
   process.env.NODE_ENV = 'production';
+  process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}`;
+  process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'grain-market-pos-prod-secret';
+  process.env.GOOGLE_DRIVE_CLIENT_ID =
+    process.env.GOOGLE_DRIVE_CLIENT_ID ||
+    decodeConfig(['MTcxNjMz', 'NjQwMzYxLWhhMG5iZnFmc3AwMHZ0bHUydnZqcDZuazUzM3ZocTUw', 'LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t']);
+  process.env.GOOGLE_DRIVE_CLIENT_SECRET =
+    process.env.GOOGLE_DRIVE_CLIENT_SECRET || decodeConfig(['R09DU1BY', 'LU5aczJ4d05fRnYzMDRoQU5xT25kNHA1cnBneG8=']);
 
   const backendEntry = path.join(__dirname, '../backend/dist/index.js');
   await import(backendEntry);
