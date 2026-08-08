@@ -13,6 +13,7 @@ import {
 import { ensureDatabaseDirectoryExists } from './database-path';
 import { logger } from './logger';
 import { startAutoBackupScheduler } from './google-drive-backup';
+import { applyMigrationsProgrammatically } from './programmatic-migrations';
 
 export type StartupStatus = {
   ok: boolean;
@@ -24,7 +25,7 @@ export type StartupStatus = {
 
 let checkpointTimer: NodeJS.Timeout | null = null;
 
-export async function runMigrations(): Promise<void> {
+export async function runMigrations(db?: PrismaClient): Promise<void> {
   if (process.env.NODE_ENV === 'test' || process.env.SKIP_MIGRATIONS === '1') {
     return;
   }
@@ -39,10 +40,11 @@ export async function runMigrations(): Promise<void> {
     });
     logger.info('Database migrations up to date');
   } catch (err) {
-    if (process.env.NODE_ENV === 'production') {
-      logger.warn('prisma migrate deploy CLI skipped or unavailable in packaged app environment', {
+    if (process.env.NODE_ENV === 'production' && db) {
+      logger.warn('prisma migrate deploy CLI unavailable in packaged app environment — executing programmatic migrations…', {
         err: err instanceof Error ? err.message : String(err),
       });
+      await applyMigrationsProgrammatically(db);
       return;
     }
     logger.warn('prisma migrate deploy failed in dev, falling back to db push');
@@ -67,7 +69,7 @@ export async function initializeDatabase(db: PrismaClient): Promise<StartupStatu
   };
 
   try {
-    await runMigrations();
+    await runMigrations(db);
     status.migrationsApplied = true;
 
     await configureSqlitePragmas(db);
