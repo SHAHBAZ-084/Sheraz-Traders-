@@ -9,9 +9,11 @@ type FormActionFooterProps = {
   primaryLabel: string;
   savingLabel?: string;
   saving?: boolean;
+  disabled?: boolean;
   onClose: () => void;
   /** Pause this form and keep its draft in the session tray. */
   onMinimize?: () => void;
+  onPrimaryClick?: () => void;
   primaryRef?: Ref<HTMLButtonElement>;
   primaryType?: ButtonHTMLAttributes<HTMLButtonElement>['type'];
   primaryTabIndex?: number;
@@ -30,8 +32,10 @@ export function FormActionFooter({
   primaryLabel,
   savingLabel = 'Saving…',
   saving = false,
+  disabled = false,
   onClose,
   onMinimize,
+  onPrimaryClick,
   primaryRef,
   primaryType = 'submit',
   primaryTabIndex,
@@ -48,7 +52,8 @@ export function FormActionFooter({
           ref={primaryRef}
           type={primaryType}
           tabIndex={primaryTabIndex}
-          disabled={saving}
+          disabled={saving || disabled}
+          onClick={onPrimaryClick}
           className="px-6 py-2.5"
         >
           {saving ? savingLabel : primaryLabel}

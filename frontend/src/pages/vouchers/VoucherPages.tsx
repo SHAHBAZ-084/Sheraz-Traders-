@@ -10,6 +10,8 @@ import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import type { MinimizedFormKind } from '../../stores/minimizedFormsStore';
 
+import { FormActionFooter } from '../../components/ui/FormActionFooter';
+
 type VoucherDraft = {
   debitCategoryId: string;
   creditCategoryId: string;
@@ -20,6 +22,7 @@ type VoucherDraft = {
   reference: string;
   description: string;
   predictedNumber?: number | null;
+  queuedItems?: QueuedVoucherItem[];
 };
 
 const VOUCHER_TYPES: Record<string, string> = {
@@ -141,6 +144,7 @@ function categoriesForSide(
 
 type QueuedVoucherItem = {
   id: string;
+  voucherNumber: string;
   date: string;
   debitAccountId: string;
   debitAccountName: string;
@@ -161,7 +165,7 @@ export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) 
 function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const navigate = useNavigate();
   const formKind = kind as MinimizedFormKind;
-  const { restoredState } = useMinimizableForm<VoucherDraft>(formKind);
+  const { restoredState, minimize } = useMinimizableForm<VoucherDraft>(formKind);
   const keepRestoredPredictedNumber = useRef(restoredState?.predictedNumber != null);
   const trapRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -193,7 +197,9 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const [reference, setReference] = useState(restoredState?.reference ?? '');
   const [description, setDescription] = useState(restoredState?.description ?? '');
 
-  const [queuedItems, setQueuedItems] = useState<QueuedVoucherItem[]>([]);
+  const [queuedItems, setQueuedItems] = useState<QueuedVoucherItem[]>(
+    () => restoredState?.queuedItems ?? [],
+  );
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -293,8 +299,11 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
     const debAcc = accounts.find((a) => String(a.id) === debitAccountId);
     const credAcc = accounts.find((a) => String(a.id) === creditAccountId);
 
+    const assignedVoucherNumber = predictedNumber != null ? formatVoucherNumber(predictedNumber) : '—';
+
     const newItem: QueuedVoucherItem = {
       id: Math.random().toString(36).substring(2, 9),
+      voucherNumber: assignedVoucherNumber,
       date: voucherDate,
       debitAccountId,
       debitAccountName: debAcc ? `${debAcc.name} (${debAcc.code})` : debitAccountId,
@@ -306,6 +315,9 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
     };
 
     setQueuedItems((prev) => [...prev, newItem]);
+    if (predictedNumber != null) {
+      setPredictedNumber((prev) => (prev != null ? prev + 1 : null));
+    }
     setAmount('');
     setReference('');
     setDescription('');
@@ -315,6 +327,26 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   function handleRemoveFromGrid(id: string) {
     setQueuedItems((prev) => prev.filter((item) => item.id !== id));
   }
+
+  const handleMinimize = () => {
+    const title = VOUCHER_PAGE_TITLES[kind] ?? 'Voucher';
+    const label = `${title} ${predictedNumber ? `#${predictedNumber}` : ''}`.trim();
+    minimize(
+      {
+        debitCategoryId,
+        creditCategoryId,
+        debitAccountId,
+        creditAccountId,
+        amount,
+        voucherDate,
+        reference,
+        description,
+        predictedNumber,
+        queuedItems,
+      },
+      label,
+    );
+  };
 
   async function handleSaveAll() {
     if (queuedItems.length === 0) {
@@ -507,6 +539,7 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-border text-textSecondary bg-surface2/50">
+                        <th className="py-2 px-2">Voucher #</th>
                         <th className="py-2 px-2">Date</th>
                         <th className="py-2 px-2">{leftLabel} Account</th>
                         <th className="py-2 px-2">{rightLabel} Account</th>
@@ -519,6 +552,9 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                     <tbody>
                       {queuedItems.map((item) => (
                         <tr key={item.id} className="border-b border-border hover:bg-surface2/30">
+                          <td className="py-2 px-2 font-mono font-semibold tabular-nums text-textPrimary">
+                            {formatVoucherNumber(item.voucherNumber)}
+                          </td>
                           <td className="py-2 px-2 whitespace-nowrap">{formatDate(item.date)}</td>
                           <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.debitAccountName : item.creditAccountName}</td>
                           <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.creditAccountName : item.debitAccountName}</td>
@@ -543,24 +579,20 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                 )}
               </div>
 
-              <div className="pt-4 border-t border-border flex items-center justify-between gap-4">
-                <button
-                  type="button"
-                  onClick={() => navigate('/')}
-                  className="px-4 py-2 text-xs font-semibold text-textSecondary hover:text-textPrimary transition-colors"
-                >
-                  Cancel / Close
-                </button>
-                <button
-                  ref={saveRef}
-                  type="button"
-                  disabled={saving || queuedItems.length === 0}
-                  onClick={() => void handleSaveAll()}
-                  className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-semibold text-sm rounded-lg shadow-sm transition-colors flex items-center gap-2"
-                >
-                  {saving ? 'Posting Batch…' : `Save & Post Batch (${queuedItems.length})`}
-                </button>
-              </div>
+              <FormActionFooter
+                error={error}
+                message={message}
+                primaryLabel={`Save & Post Batch (${queuedItems.length})`}
+                savingLabel="Posting Batch…"
+                saving={saving}
+                disabled={queuedItems.length === 0}
+                primaryType="button"
+                primaryRef={saveRef}
+                onPrimaryClick={() => void handleSaveAll()}
+                onMinimize={handleMinimize}
+                onClose={() => navigate('/')}
+                className="pt-4 border-t border-border"
+              />
             </div>
           </div>
         </div>
