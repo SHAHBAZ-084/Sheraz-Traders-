@@ -157,8 +157,17 @@ type QueuedVoucherItem = {
 
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const location = useLocation();
-  const restoreId = (location.state as { minimizedFormId?: string } | null)?.minimizedFormId;
-  const formKey = restoreId ? `restore-${restoreId}` : `${kind}-${location.key}`;
+  // Captured ONCE at first render — see matching comment in
+  // frontend/src/pages/invoices/InvoiceFormPage.tsx for why this can't be
+  // derived from location.state on every render. useMinimizableForm clears
+  // location.state right after consuming the restored draft; if formKey
+  // reacted to that clear, React would remount VoucherFormContent after the
+  // draft had already been discarded from the store, wiping the just
+  // restored data.
+  const [stableRestoreId] = useState(
+    () => (location.state as { minimizedFormId?: string } | null)?.minimizedFormId,
+  );
+  const formKey = stableRestoreId ? `restore-${stableRestoreId}` : `${kind}-${location.key}`;
   return <VoucherFormContent key={formKey} kind={kind} />;
 }
 
