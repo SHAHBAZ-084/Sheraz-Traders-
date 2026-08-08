@@ -249,6 +249,14 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const creditCategories = categoriesForSide(categories, kind, 'credit');
 
   useEffect(() => {
+    // Don't run this validation until categories have actually loaded —
+    // on first render (including right after a minimize/restore), the
+    // categories list is still empty because the API call hasn't
+    // returned yet. Without this guard, an empty list looks identical to
+    // "this category no longer exists," so a restored (or just-selected)
+    // category/account pair gets cleared before the real data ever
+    // arrives.
+    if (categories.length === 0) return;
     if (debitCategoryId && !debitCategories.some((c) => String(c.id) === debitCategoryId)) {
       setDebitCategoryId('');
       setDebitAccountId('');
@@ -257,7 +265,7 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
       setCreditCategoryId('');
       setCreditAccountId('');
     }
-  }, [debitCategoryId, creditCategoryId, debitCategories, creditCategories]);
+  }, [debitCategoryId, creditCategoryId, debitCategories, creditCategories, categories.length]);
 
   const variant = kind;
   const leftLabel = variant === 'journal' ? 'Debit' : 'From';
