@@ -291,8 +291,7 @@ export function SaleInvoicePage() {
     <PageShell centerTitle invoiceTitleBand title="Sale Invoice">
       <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
         <form ref={trapRef} onSubmit={onSubmit}>
-          <div className="inv-split">
-            <div className="inv-split-form">
+          <div className="flex flex-col gap-6">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>
                   <InvoiceField>
@@ -394,9 +393,7 @@ export function SaleInvoicePage() {
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
                 {addingRow ? 'Checking stock…' : 'Add to grid'}
               </InvoiceAddRowAction>
-            </div>
 
-            <div className="inv-split-preview">
               <InvoiceFormSection label="Preview grid">
                 <LinesTable
                   rows={gridRows}
@@ -429,7 +426,6 @@ export function SaleInvoicePage() {
                 }
                 primaryLabel="Save"
               />
-            </div>
           </div>
         </form>
       </Panel>

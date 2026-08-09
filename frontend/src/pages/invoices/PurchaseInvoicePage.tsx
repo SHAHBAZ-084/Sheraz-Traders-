@@ -262,8 +262,7 @@ export function PurchaseInvoicePage() {
     <PageShell centerTitle invoiceTitleBand title="Purchase Invoice">
       <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
         <form ref={trapRef} onSubmit={onSubmit}>
-          <div className="inv-split">
-            <div className="inv-split-form">
+          <div className="flex flex-col gap-6">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>
                   <InvoiceField>
@@ -358,9 +357,7 @@ export function PurchaseInvoicePage() {
               />
 
               <InvoiceAddRowAction onClick={addRow} />
-            </div>
 
-            <div className="inv-split-preview">
               <InvoiceFormSection label="Preview grid">
                 <LinesTable
                   rows={gridRows}
@@ -393,7 +390,6 @@ export function PurchaseInvoicePage() {
                 }
                 primaryLabel="Save"
               />
-            </div>
           </div>
         </form>
       </Panel>

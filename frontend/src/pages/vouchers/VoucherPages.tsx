@@ -66,6 +66,7 @@ function AccountSideFields({
   categoryInputRef,
   accountInputRef,
   accountNextFocusRef,
+  embedded = false,
 }: {
   label: string;
   categoryId: string;
@@ -79,14 +80,17 @@ function AccountSideFields({
   categoryInputRef: RefObject<HTMLInputElement | null>;
   accountInputRef: RefObject<HTMLInputElement | null>;
   accountNextFocusRef?: RefObject<HTMLElement | null>;
+  /** Render as a grid column (no section border); used by Journal Voucher debit/credit row. */
+  embedded?: boolean;
 }) {
   const safeAccs = Array.isArray(accounts) ? accounts : [];
   const filteredAccounts = safeAccs.filter((a) => categoryId && String(a.categoryId) === categoryId);
   const selected = safeAccs.find((a) => String(a.id) === accountId);
 
-  return (
-    <InvoiceFormSection label={label}>
-      <div className="space-y-3">
+  const fields = (
+    <>
+      {embedded ? <h3 className="inv-section-title m-0">{label}</h3> : null}
+      <div className={embedded ? 'inv-section-body mt-0 space-y-3' : 'space-y-3'}>
         <InvoiceField>
           <FieldLabel>Category</FieldLabel>
           <SearchSelect
@@ -115,14 +119,20 @@ function AccountSideFields({
             nextFocusRef={accountNextFocusRef}
           />
         </InvoiceField>
-        {selected?.ledger ? (
-          <p className="text-xs text-textSecondary">
-            Current balance: {formatLedgerBalance(selected.ledger.balance)}
-          </p>
-        ) : null}
+        <p className="jv-account-balance mt-1 mb-3 min-h-[1.125rem] text-xs text-textSecondary">
+          {selected?.ledger
+            ? `Current balance: ${formatLedgerBalance(selected.ledger.balance)}`
+            : '\u00A0'}
+        </p>
       </div>
-    </InvoiceFormSection>
+    </>
   );
+
+  if (embedded) {
+    return <div className="jv-account-column min-w-0">{fields}</div>;
+  }
+
+  return <InvoiceFormSection label={label}>{fields}</InvoiceFormSection>;
 }
 
 function isBankOrCashCategory(name: string) {
@@ -329,7 +339,7 @@ function JournalVoucherFormContent() {
 
   return (
     <FormPageShell titleRef={titleRef} title="Journal Voucher" panelClassName="max-w-3xl">
-      <div ref={trapRef} className="overflow-visible">
+      <div ref={trapRef} className="jv-form overflow-visible">
         <InvoiceFormSection label="Header">
           <InvoiceHeaderRow>
             <InvoiceField>
@@ -355,40 +365,46 @@ function JournalVoucherFormContent() {
           </InvoiceHeaderRow>
         </InvoiceFormSection>
 
-        <AccountSideFields
-          label="Debit"
-          categoryId={debitCategoryId}
-          accountId={debitAccountId}
-          categories={debitCategories}
-          accounts={accounts}
-          onCategoryChange={(id) => {
-            setDebitCategoryId(id);
-            setDebitAccountId('');
-          }}
-          onAccountChange={setDebitAccountId}
-          categoryTabIndex={2}
-          accountTabIndex={3}
-          categoryInputRef={debitCategoryRef}
-          accountInputRef={debitAccountRef}
-          accountNextFocusRef={creditCategoryRef}
-        />
-        <AccountSideFields
-          label="Credit"
-          categoryId={creditCategoryId}
-          accountId={creditAccountId}
-          categories={creditCategories}
-          accounts={accounts}
-          onCategoryChange={(id) => {
-            setCreditCategoryId(id);
-            setCreditAccountId('');
-          }}
-          onAccountChange={setCreditAccountId}
-          categoryTabIndex={4}
-          accountTabIndex={5}
-          categoryInputRef={creditCategoryRef}
-          accountInputRef={creditAccountRef}
-          accountNextFocusRef={amountRef}
-        />
+        <InvoiceFormSection>
+          <div className="grid grid-cols-1 items-start gap-x-6 gap-y-6 md:grid-cols-2">
+            <AccountSideFields
+              embedded
+              label="Debit"
+              categoryId={debitCategoryId}
+              accountId={debitAccountId}
+              categories={debitCategories}
+              accounts={accounts}
+              onCategoryChange={(id) => {
+                setDebitCategoryId(id);
+                setDebitAccountId('');
+              }}
+              onAccountChange={setDebitAccountId}
+              categoryTabIndex={2}
+              accountTabIndex={3}
+              categoryInputRef={debitCategoryRef}
+              accountInputRef={debitAccountRef}
+              accountNextFocusRef={creditCategoryRef}
+            />
+            <AccountSideFields
+              embedded
+              label="Credit"
+              categoryId={creditCategoryId}
+              accountId={creditAccountId}
+              categories={creditCategories}
+              accounts={accounts}
+              onCategoryChange={(id) => {
+                setCreditCategoryId(id);
+                setCreditAccountId('');
+              }}
+              onAccountChange={setCreditAccountId}
+              categoryTabIndex={4}
+              accountTabIndex={5}
+              categoryInputRef={creditCategoryRef}
+              accountInputRef={creditAccountRef}
+              accountNextFocusRef={amountRef}
+            />
+          </div>
+        </InvoiceFormSection>
 
         <InvoiceFormSection label="Amount & reference">
           <InvoiceFieldRow cols={2}>
@@ -438,7 +454,7 @@ function JournalVoucherFormContent() {
         <FormActionFooter
           error={error}
           message={message}
-          primaryLabel="Save"
+          primaryLabel="Save & Post"
           savingLabel="Saving…"
           saving={saving}
           primaryType="button"
@@ -447,7 +463,6 @@ function JournalVoucherFormContent() {
           onPrimaryClick={() => void handleSave()}
           onMinimize={handleMinimize}
           onClose={() => navigate('/')}
-          className="border-t border-border pt-4"
         />
       </div>
     </FormPageShell>
@@ -696,8 +711,7 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
       titleNode={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
     >
       <div ref={trapRef} className="overflow-visible">
-        <div className="inv-split">
-          <div className="inv-split-form">
+        <div className="flex flex-col gap-6">
             <InvoiceFormSection label="New voucher details">
               <InvoiceHeaderRow>
                 <InvoiceField>
@@ -799,9 +813,7 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
             <InvoiceAddRowAction tabIndex={9} onClick={handleAddToGrid}>
               Add to grid queue
             </InvoiceAddRowAction>
-          </div>
 
-          <div className="inv-split-preview">
             <InvoiceFormSection label={`Queued vouchers batch (${queuedItems.length})`}>
               <InvoicePreviewGridShell isEmpty={queuedItems.length === 0}>
                 <table className="w-full min-w-[720px] text-left text-sm">
@@ -867,7 +879,6 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
               onClose={() => navigate('/')}
               className="border-t border-border pt-4"
             />
-          </div>
         </div>
       </div>
     </FormPageShell>

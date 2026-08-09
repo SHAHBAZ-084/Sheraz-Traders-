@@ -322,8 +322,7 @@ export function KachiMaalInvoicePage() {
   return (
     <FormPageShell title="Kachi Maal Invoice">
       <form onSubmit={onSave}>
-        <div className="inv-split">
-          <div className="inv-split-form">
+        <div className="flex flex-col gap-6">
             <InvoiceFormSection label="Header">
               <InvoiceHeaderRow>
                 <InvoiceField>
@@ -420,9 +419,7 @@ export function KachiMaalInvoicePage() {
 
             <InvoiceAddRowAction onClick={addRow} />
             {error ? <p className="text-sm text-danger">{error}</p> : null}
-          </div>
 
-          <div className="inv-split-preview">
             <InvoiceFormSection label="Preview grid">
               <InvoicePreviewGridShell isEmpty={gridRows.length === 0}>
                 <table className="w-full min-w-[720px] text-left text-sm">
@@ -553,7 +550,6 @@ export function KachiMaalInvoicePage() {
                 )
               }
             />
-          </div>
         </div>
       </form>
     </FormPageShell>

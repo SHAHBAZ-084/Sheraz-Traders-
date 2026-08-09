@@ -1586,6 +1586,62 @@
 
 
 
+  /* Journal voucher — full-width section dividers + even vertical rhythm */
+
+  .jv-form > .inv-section {
+
+    border-top: 1px solid var(--border);
+
+    margin-top: 0;
+
+    padding-block: 1.25rem;
+
+  }
+
+
+
+  .jv-form > .inv-section:first-child {
+
+    border-top: 0;
+
+    padding-top: 0;
+
+  }
+
+
+
+  .jv-form > .app-form-footer {
+
+    margin-top: 0;
+
+    padding-top: 1.25rem;
+
+  }
+
+
+
+  .jv-form .jv-account-column {
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-width: 0;
+
+  }
+
+
+
+  .jv-form .jv-account-balance {
+
+    margin-top: 0.25rem;
+
+    margin-bottom: 0.75rem;
+
+  }
+
+
+
   .inv-field-stack {
 
     display: flex;
@@ -1730,66 +1786,11 @@
 
 
 
-  /* Two-column invoice entry: form left, live grid right (stacks on small screens) */
-
-  .inv-split {
-
-    display: grid;
-
-    gap: 1.25rem;
-
-    grid-template-columns: 1fr;
-
-    align-items: start;
-
-  }
-
-
-
-  @media (min-width: 960px) {
-    .inv-split {
-      grid-template-columns: minmax(0, 4.5fr) minmax(0, 7.5fr);
-      gap: 1.5rem;
-    }
-  }
-
-
-
-  .inv-split-form,
-
-  .inv-split-preview {
-
-    min-width: 0;
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 0;
-
-  }
-
-
-
-  .inv-split-preview .inv-preview-grid,
-
-  .inv-split-preview .inv-preview-grid--empty {
+  .inv-preview-grid {
 
     max-height: min(52vh, 28rem);
 
     min-height: 14rem;
-
-    flex: 1 1 auto;
-
-  }
-
-
-
-  .inv-preview-grid {
-
-    max-height: 12rem;
-
-    min-height: 5.5rem;
 
     overflow: auto;
 
@@ -1809,7 +1810,7 @@
 
     justify-content: center;
 
-    min-height: 5.5rem;
+    min-height: 14rem;
 
     background: var(--surface-1);
 
