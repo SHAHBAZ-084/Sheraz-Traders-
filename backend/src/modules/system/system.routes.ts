@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
-import { asyncHandler } from '../../utils/helpers';
+import { asyncHandler, AppError } from '../../utils/helpers';
 import { prisma } from '../../lib/prisma';
 import {
   createDatabaseBackup,
@@ -59,8 +59,11 @@ systemRouter.post(
 systemRouter.post(
   '/google-drive/backup-now',
   asyncHandler(async (_req, res) => {
-    const success = await runAutoBackupCycle();
-    res.json({ ok: success });
+    const result = await runAutoBackupCycle();
+    if (!result.ok) {
+      throw new AppError(400, result.error ?? 'Backup failed');
+    }
+    res.json({ ok: true });
   }),
 );
 

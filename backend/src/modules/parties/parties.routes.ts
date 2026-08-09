@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
 import { asyncHandler, param, validateBody } from '../../utils/helpers';
+import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
 import * as partiesService from './parties.service';
 
 export const partiesRouter = Router();
@@ -9,8 +10,8 @@ partiesRouter.use(requireAuth);
 
 partiesRouter.get(
   '/sale-parties',
-  asyncHandler(async (_req, res) => {
-    res.json(await partiesService.listSaleParties());
+  asyncHandler(async (req, res) => {
+    res.json(await partiesService.listSaleParties(parsePagination(req.query, SELECTOR_PAGINATION)));
   }),
 );
 
@@ -59,8 +60,8 @@ partiesRouter.delete(
 
 partiesRouter.get(
   '/purchase-parties',
-  asyncHandler(async (_req, res) => {
-    res.json(await partiesService.listPurchaseParties());
+  asyncHandler(async (req, res) => {
+    res.json(await partiesService.listPurchaseParties(parsePagination(req.query, SELECTOR_PAGINATION)));
   }),
 );
 

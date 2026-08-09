@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
 import { AppError, asyncHandler, param, validateBody } from '../../utils/helpers';
+import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
 import * as productsService from './products.service';
 
 export const productsRouter = Router();
@@ -9,8 +10,8 @@ productsRouter.use(requireAuth);
 
 productsRouter.get(
   '/product-categories',
-  asyncHandler(async (_req, res) => {
-    res.json(await productsService.listProductCategories());
+  asyncHandler(async (req, res) => {
+    res.json(await productsService.listProductCategories(parsePagination(req.query, SELECTOR_PAGINATION)));
   }),
 );
 
@@ -29,8 +30,14 @@ productsRouter.post(
 
 productsRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    res.json(await productsService.listProducts());
+  asyncHandler(async (req, res) => {
+    const lite = req.query.lite === '1' || req.query.lite === 'true';
+    res.json(
+      await productsService.listProducts(
+        { includeLedger: !lite },
+        parsePagination(req.query, SELECTOR_PAGINATION),
+      ),
+    );
   }),
 );
 

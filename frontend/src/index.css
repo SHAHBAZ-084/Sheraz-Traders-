@@ -2069,6 +2069,106 @@
 
 
 
+  /* ── Report letterhead + tables (shared across all reports) ── */
+
+  .report-letterhead {
+    margin-bottom: 1.25rem;
+    text-align: center;
+  }
+
+  .report-letterhead__company {
+    color: var(--text-primary);
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .report-letterhead__detail {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    margin-top: 0.125rem;
+  }
+
+  .report-letterhead__divider {
+    border-bottom: 1px dashed var(--border);
+    margin: 0.75rem auto 0.625rem;
+    max-width: 12rem;
+  }
+
+  .report-letterhead__title {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .report-letterhead__subtitle {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+  }
+
+  .report-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 0.5rem);
+    background: #fff;
+  }
+
+  .report-table {
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    text-align: left;
+    width: 100%;
+  }
+
+  .report-table thead tr {
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .report-table th {
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 0.5rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  .report-table tbody tr {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .report-table tbody tr:hover {
+    background: #fff;
+  }
+
+  .report-table td {
+    padding: 0.5rem 0.5rem;
+    vertical-align: top;
+  }
+
+  .report-table tfoot tr {
+    background: #fff;
+    border-top: 2px solid var(--border);
+    font-weight: 600;
+  }
+
+  .report-table tbody tr.report-table-row--emphasis {
+    font-weight: 600;
+  }
+
+  .report-table tbody tr.report-table-row--interactive {
+    cursor: pointer;
+  }
+
+  .report-table tbody tr.report-table-row--selected {
+    background: #fff;
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+
+
   /* ── Dropdowns (SearchSelect etc.) ── */
 
   .app-dropdown {
@@ -2531,6 +2631,28 @@
 
   body {
     background: #fff !important;
+  }
+
+  .report-print-area {
+    box-shadow: none !important;
+  }
+
+  .report-table-wrap {
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  .report-table thead tr {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .report-table tbody tr,
+  .report-table tfoot tr,
+  .report-table tbody tr.report-table-row--selected {
+    background: #fff !important;
+    box-shadow: none !important;
   }
 
   .sale-purchase-report-print {

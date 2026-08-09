@@ -22,12 +22,11 @@ import {
   type Store,
 } from '../../lib/api';
 import { formatLedgerAmount } from '../../lib/format';
+import { flatPartyAccountOptions } from '../../lib/partyAccounts';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
 import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
 import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
-
-const SALE_PARTY_CATEGORIES = ['Sale Party'] as const;
 
 type GridRow = {
   clientId: string;
@@ -54,15 +53,6 @@ type SaleInvoiceDraft = {
 function todayInputValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function flatAccountOptions(categories: AccountCategory[], accounts: Account[], categoryNames: readonly string[]) {
-  const safeCats = Array.isArray(categories) ? categories : [];
-  const safeAccs = Array.isArray(accounts) ? accounts : [];
-  const allowed = new Set(safeCats.filter((c) => categoryNames.includes(c.name)).map((c) => c.id));
-  return safeAccs
-    .filter((a) => allowed.has(a.categoryId))
-    .map((a) => ({ value: String(a.id), label: a.name }));
 }
 
 function LinesTable({
@@ -153,7 +143,7 @@ export function SaleInvoicePage() {
       api.listProducts(),
       api.listProductCategories(),
       api.listActiveStores(),
-      api.listAccounts(),
+      api.listAccounts({ lite: true }),
       api.listCategories(),
       api.getNextSaleInvoiceReference(),
     ])
@@ -188,7 +178,7 @@ export function SaleInvoicePage() {
     [stores],
   );
   const customerOptions = useMemo(
-    () => flatAccountOptions(categories, accounts, SALE_PARTY_CATEGORIES),
+    () => flatPartyAccountOptions(categories, accounts),
     [categories, accounts],
   );
   const invoiceTotal = useMemo(
@@ -273,7 +263,7 @@ export function SaleInvoicePage() {
       return;
     }
     if (!customerAccountId) {
-      setError('Select a customer');
+      setError('Select a party');
       return;
     }
     setSaving(true);
@@ -342,16 +332,18 @@ export function SaleInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField wide>
+                      <FieldLabel>Product</FieldLabel>
                       <div className="flex items-center gap-1.5">
-                        <FieldLabel>Product</FieldLabel>
+                        <div className="min-w-0 flex-1">
+                          <SearchSelect
+                            options={productOptions}
+                            value={productId}
+                            onChange={setProductId}
+                            placeholder={productCategoryId ? 'Select product' : 'Select category first (or pick any)'}
+                          />
+                        </div>
                         <ProductInsightPopover productId={productId} storeId={storeId} />
                       </div>
-                      <SearchSelect
-                        options={productOptions}
-                        value={productId}
-                        onChange={setProductId}
-                        placeholder={productCategoryId ? 'Select product' : 'Select category first (or pick any)'}
-                      />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Qty</FieldLabel>
@@ -368,7 +360,7 @@ export function SaleInvoicePage() {
               <InvoiceFormSection label="Customer">
                 <InvoiceField wide>
                   <div className="mb-2 flex items-center justify-between gap-3">
-                    <FieldLabel>Sale Party (customer)</FieldLabel>
+                    <FieldLabel>Party</FieldLabel>
                     <button
                       type="button"
                       className="text-xs font-semibold text-financial hover:underline px-2 py-0.5 rounded hover:bg-financial/10 transition-colors"
@@ -381,7 +373,7 @@ export function SaleInvoicePage() {
                     options={customerOptions}
                     value={customerAccountId}
                     onChange={setCustomerAccountId}
-                    placeholder="Select customer"
+                    placeholder="Select party"
                   />
                 </InvoiceField>
               </InvoiceFormSection>
@@ -391,7 +383,7 @@ export function SaleInvoicePage() {
                 isOpen={showQuickAddParty}
                 onClose={() => setShowQuickAddParty(false)}
                 onCreated={async (party) => {
-                  const updatedAccounts = await api.listAccounts();
+                  const updatedAccounts = await api.listAccounts({ lite: true });
                   setAccounts(updatedAccounts);
                   if (party.accountId) {
                     setCustomerAccountId(String(party.accountId));

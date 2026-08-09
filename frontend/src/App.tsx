@@ -18,6 +18,8 @@ import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
 import { DatabaseMaintenancePage } from './pages/system/DatabaseMaintenancePage';
 import { StoresPage } from './pages/system/StoresPage';
 import { PendingApprovalsPage } from './pages/system/PendingApprovalsPage';
+import { FinancialYearProvider } from './contexts/FinancialYearContext';
+import { FinancialYearManagementPage } from './pages/admin/FinancialYearManagementPage';
 import { UserInfoPage } from './pages/user/UserInfoPage';
 import { VoucherFormPage, VoucherListPage } from './pages/vouchers/VoucherPages';
 
@@ -29,7 +31,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
-              <Route element={<AppShell />}>
+              <Route element={<FinancialYearProvider><AppShell /></FinancialYearProvider>}>
                 <Route path="/" element={<PosHomePage />} />
 
                 <Route path="/accounts/categories/add" element={<CategoryManagePage mode="add" />} />
@@ -52,9 +54,9 @@ export default function App() {
 
                 <Route path="/inventory/stock-transfer" element={<StockTransferPage />} />
 
+                <Route path="/vouchers/receipt" element={<VoucherFormPage kind="receipt" />} />
                 <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />
                 <Route path="/vouchers/journal" element={<VoucherFormPage kind="journal" />} />
-                <Route path="/vouchers/receipt" element={<VoucherFormPage kind="receipt" />} />
                 <Route path="/vouchers/view" element={<VoucherListPage />} />
 
                 <Route path="/reports/accounts" element={<AccountReportsPage />} />
@@ -68,6 +70,7 @@ export default function App() {
                 <Route path="/system/approvals" element={<PendingApprovalsPage />} />
                 <Route path="/system/preferences" element={<SystemPreferencesPage />} />
                 <Route path="/user" element={<UserInfoPage />} />
+                <Route path="/user/fy-management" element={<FinancialYearManagementPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

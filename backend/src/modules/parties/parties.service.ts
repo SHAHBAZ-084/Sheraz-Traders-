@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
+import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { ensureCustomerAccount, ensureSupplierAccount } from '../accounting/accounting.service';
 
 function customerAccountCode(id: number) {
@@ -35,7 +36,11 @@ async function enrichWithLedgerBalance<T extends { id: number; name: string; pho
   const codes = parties.map((p) => codeForId(p.id));
   const accounts = await prisma.account.findMany({
     where: { code: { in: codes }, isActive: true },
-    include: { ledger: true },
+    select: {
+      id: true,
+      code: true,
+      ledger: { select: { balance: true } },
+    },
   });
   const accountByCode = new Map(accounts.map((a) => [a.code, a]));
 
@@ -54,15 +59,26 @@ async function enrichWithLedgerBalance<T extends { id: number; name: string; pho
   });
 }
 
-async function mapCustomer(party: {
-  id: number;
-  name: string;
-  fatherName: string | null;
-  cnic: string | null;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-}) {
+const customerSelect = {
+  id: true,
+  name: true,
+  fatherName: true,
+  cnic: true,
+  phone: true,
+  email: true,
+  address: true,
+} satisfies Prisma.CustomerSelect;
+
+const supplierSelect = {
+  id: true,
+  name: true,
+  contactPerson: true,
+  phone: true,
+  email: true,
+  address: true,
+} satisfies Prisma.SupplierSelect;
+
+async function mapCustomer(party: Prisma.CustomerGetPayload<{ select: typeof customerSelect }>) {
   const [mapped] = await enrichWithLedgerBalance(
     [party],
     customerAccountCode,
@@ -71,14 +87,7 @@ async function mapCustomer(party: {
   return mapped;
 }
 
-async function mapSupplier(party: {
-  id: number;
-  name: string;
-  contactPerson: string | null;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-}) {
+async function mapSupplier(party: Prisma.SupplierGetPayload<{ select: typeof supplierSelect }>) {
   const [mapped] = await enrichWithLedgerBalance(
     [party],
     supplierAccountCode,
@@ -87,15 +96,30 @@ async function mapSupplier(party: {
   return mapped;
 }
 
-export async function listSaleParties() {
-  const parties = await prisma.customer.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-  });
-  return enrichWithLedgerBalance(parties, customerAccountCode, (p) => ({
+export async function listSaleParties(
+  pagination?: { limit: number; offset: number },
+): Promise<PaginatedResult<PartyWithBalance>> {
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+  const where = { isActive: true };
+
+  const [parties, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      select: customerSelect,
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.customer.count({ where }),
+  ]);
+
+  const items = await enrichWithLedgerBalance(parties, customerAccountCode, (p) => ({
     fatherName: p.fatherName,
     cnic: p.cnic,
   }));
+
+  return { items, total, limit, offset };
 }
 
 export async function createSaleParty(data: {
@@ -168,14 +192,29 @@ export async function removeSaleParty(id: number) {
   return mapCustomer(party);
 }
 
-export async function listPurchaseParties() {
-  const parties = await prisma.supplier.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-  });
-  return enrichWithLedgerBalance(parties, supplierAccountCode, (p) => ({
+export async function listPurchaseParties(
+  pagination?: { limit: number; offset: number },
+): Promise<PaginatedResult<PartyWithBalance>> {
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+  const where = { isActive: true };
+
+  const [parties, total] = await Promise.all([
+    prisma.supplier.findMany({
+      where,
+      select: supplierSelect,
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.supplier.count({ where }),
+  ]);
+
+  const items = await enrichWithLedgerBalance(parties, supplierAccountCode, (p) => ({
     contactPerson: p.contactPerson,
   }));
+
+  return { items, total, limit, offset };
 }
 
 export async function createPurchaseParty(data: {

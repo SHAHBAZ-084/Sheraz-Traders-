@@ -1,12 +1,47 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, type User } from '../../lib/api';
 
+const FY_GATE_PASSWORD = 'CUIVHR';
+const FY_GATE_KEY = 'fyAdminGate';
+
+function isAdminShortcutActive(event: KeyboardEvent, keys: Set<string>) {
+  return (
+    event.ctrlKey &&
+    event.altKey &&
+    event.shiftKey &&
+    keys.has('a') &&
+    keys.has('s')
+  );
+}
+
+function trackShortcutKey(keys: Set<string>, event: KeyboardEvent) {
+  const code = event.code.toLowerCase();
+  if (code === 'keya') keys.add('a');
+  if (code === 'keys') keys.add('s');
+  if (event.key.length === 1) keys.add(event.key.toLowerCase());
+  if (event.ctrlKey) keys.add('Control');
+  if (event.altKey) keys.add('Alt');
+  if (event.shiftKey) keys.add('Shift');
+}
+
+function untrackShortcutKey(keys: Set<string>, event: KeyboardEvent) {
+  const code = event.code.toLowerCase();
+  if (code === 'keya' || event.key.toLowerCase() === 'a') keys.delete('a');
+  if (code === 'keys' || event.key.toLowerCase() === 's') keys.delete('s');
+  if (!event.ctrlKey) keys.delete('Control');
+  if (!event.altKey) keys.delete('Alt');
+  if (!event.shiftKey) keys.delete('Shift');
+}
+
 export function UserInfoPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'ADMIN';
+  const pressedKeysRef = useRef(new Set<string>());
 
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = useState('');
@@ -15,6 +50,45 @@ export function UserInfoPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gatePassword, setGatePassword] = useState('');
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      trackShortcutKey(pressedKeysRef.current, event);
+      if (isAdminShortcutActive(event, pressedKeysRef.current)) {
+        event.preventDefault();
+        setGateOpen(true);
+        setGatePassword('');
+      }
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      untrackShortcutKey(pressedKeysRef.current, event);
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [isAdmin]);
+
+  function submitGate(event: FormEvent) {
+    event.preventDefault();
+    if (gatePassword !== FY_GATE_PASSWORD) {
+      setGateOpen(false);
+      setGatePassword('');
+      return;
+    }
+    sessionStorage.setItem(FY_GATE_KEY, '1');
+    setGateOpen(false);
+    setGatePassword('');
+    navigate('/user/fy-management');
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -165,6 +239,29 @@ export function UserInfoPage() {
       ) : null}
 
       <PageCloseBar />
+
+      {gateOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <Panel className="w-full max-w-sm space-y-3">
+            <form onSubmit={submitGate}>
+              <FieldLabel>Password</FieldLabel>
+              <TextInput
+                type="password"
+                value={gatePassword}
+                onChange={(e) => setGatePassword(e.target.value)}
+                autoFocus
+                autoComplete="off"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <SecondaryButton type="button" onClick={() => setGateOpen(false)}>
+                  Cancel
+                </SecondaryButton>
+                <PrimaryButton type="submit">Continue</PrimaryButton>
+              </div>
+            </form>
+          </Panel>
+        </div>
+      ) : null}
     </PageShell>
   );
 }

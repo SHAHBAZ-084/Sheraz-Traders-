@@ -7,10 +7,11 @@ import {
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import {
+  assertPartyAccount,
+  assertActiveFinancialYear,
   createKachiVoucherInTx,
   ensureKachiMaalAccounts,
   getActiveFinancialYearId,
-  KACHI_MAAL_CATEGORY_NAMES,
   type VoucherLeg,
 } from '../accounting/accounting.service';
 import { getSystemPreferences } from '../preferences/preferences.service';
@@ -24,18 +25,15 @@ import {
   type InvoiceVoucherHeader,
   voucherReferenceFromBillNo,
 } from './invoice-voucher-descriptions';
+import { nextInvoiceReferenceInTx } from './invoice-reference';
 
 const TYPE_PREFIX = 'KM';
-
-async function nextReference(tx: Prisma.TransactionClient) {
-  const count = await tx.invoice.count({ where: { type: InvoiceType.KACHI_MAAL } });
-  return `${TYPE_PREFIX}-${String(count + 1).padStart(5, '0')}`;
-}
 
 export async function getNextKachiMaalReference() {
   return prisma.$transaction(async (tx) => {
     await ensureKachiMaalAccounts(tx);
-    return { reference: await nextReference(tx) };
+    const financialYearId = await getActiveFinancialYearId(tx);
+    return { reference: await nextInvoiceReferenceInTx(tx, InvoiceType.KACHI_MAAL, financialYearId) };
   });
 }
 
@@ -64,31 +62,11 @@ export type CreateKachiMaalInput = {
 };
 
 async function assertPurchasePartyAccount(tx: Prisma.TransactionClient, accountId: number) {
-  const account = await tx.account.findFirst({
-    where: { id: accountId, isActive: true },
-    include: { category: true },
-  });
-  if (!account) throw new AppError(400, 'Invalid purchase party account');
-  if (account.category.name !== KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY) {
-    throw new AppError(400, 'Party must be a Purchase Party account');
-  }
-  return account;
+  return assertPartyAccount(tx, accountId, 'Party');
 }
 
 async function assertDebitAccount(tx: Prisma.TransactionClient, accountId: number) {
-  const account = await tx.account.findFirst({
-    where: { id: accountId, isActive: true },
-    include: { category: true },
-  });
-  if (!account) throw new AppError(400, 'Invalid debit account');
-  const allowed = new Set<string>([
-    KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY,
-    KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY,
-  ]);
-  if (!allowed.has(account.category.name)) {
-    throw new AppError(400, 'Debit account must be a Purchase Party or Sale Party account');
-  }
-  return account;
+  return assertPartyAccount(tx, accountId, 'Debit');
 }
 
 type ComputedLine = KachiMaalLineInput & {
@@ -280,7 +258,8 @@ export async function createKachiMaalInvoice(
       gariNo: data.gariNo,
     };
 
-    const reference = await nextReference(tx);
+    const financialYearId = await getActiveFinancialYearId(tx);
+    const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.KACHI_MAAL, financialYearId);
     const { legs, totalDebits, totalCredits, miscAmount } = buildLedgerLegs(
       data.debitAccountId,
       computedLines,
@@ -293,7 +272,6 @@ export async function createKachiMaalInvoice(
       throw new AppError(500, 'Invoice debits and credits do not balance — save aborted');
     }
 
-    const financialYearId = await getActiveFinancialYearId(tx);
     const invoiceDate = new Date(data.invoiceDate);
 
     const invoice = await tx.invoice.create({
@@ -367,6 +345,7 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
       include: { kachiMaalLines: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!invoice) throw new AppError(404, 'Pending kachi maal invoice not found');
+    await assertActiveFinancialYear(tx, invoice.financialYearId);
     if (invoice.debitAccountId == null) {
       throw new AppError(400, 'Kachi maal invoice missing debit account');
     }

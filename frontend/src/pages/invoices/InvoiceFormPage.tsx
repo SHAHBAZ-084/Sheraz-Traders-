@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { PageShell, Panel, SecondaryButton } from '../../components/ui/PageShell';
+import { useOpenFormsStore } from '../../stores/openFormsStore';
 import { KachiMaalInvoicePage } from './KachiMaalInvoicePage';
 import { PurchaseInvoicePage } from './PurchaseInvoicePage';
 import { SaleInvoicePage } from './SaleInvoicePage';
@@ -15,6 +16,9 @@ const ROUTE_TO_TYPE: Record<string, string> = {
 export function InvoiceFormPage({ slug }: { slug: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const registerOpenForm = useOpenFormsStore((s) => s.registerOpenForm);
+
+  useEffect(() => registerOpenForm(), [registerOpenForm]);
   // Captured ONCE at first render. useMinimizableForm clears location.state
   // right after it consumes the restored draft (see useMinimizableForm.ts).
   // If formKey were derived from location.state directly, that clear would

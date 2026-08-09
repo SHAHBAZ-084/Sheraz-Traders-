@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  FormPageShell,
   InvoiceAddRowAction,
   InvoiceField,
   InvoiceFieldGroup,
@@ -12,7 +13,8 @@ import {
   InvoiceReadOnlyField,
 } from '../../components/invoices/InvoiceFormLayout';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
-import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, TextInput } from '../../components/ui/PageShell';
+import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import {
   Account,
@@ -27,10 +29,9 @@ import {
   computeKachiMaalRow,
   DEBIT_ACCOUNT_CATEGORIES,
   parseNum,
-  PURCHASE_PARTY_CATEGORIES,
 } from '../../lib/kachiMaalCalculations';
+import { PARTY_ACCOUNT_CATEGORIES } from '../../lib/partyAccounts';
 import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
-import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type GridRow = {
   clientId: string;
@@ -90,48 +91,8 @@ function flatAccountOptions(
   const allowedIds = new Set(filterCategories(safeCats, categoryNames).map((c) => c.id));
   return safeAccs
     .filter((a) => allowedIds.has(a.categoryId))
-    .map((a) => ({ value: String(a.id), label: a.name }));
-}
-
-function FlatAccountSelect({
-  label,
-  categoryNames,
-  categories,
-  accounts,
-  value,
-  onChange,
-  placeholder = 'Search account…',
-}: {
-  label: string;
-  categoryNames: readonly string[];
-  categories: AccountCategory[];
-  accounts: Account[];
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  const options = useMemo(
-    () => flatAccountOptions(categories, accounts, categoryNames),
-    [categories, accounts, categoryNames],
-  );
-
-  return (
-    <div>
-      <FieldLabel>{label}</FieldLabel>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-textPrimary focus:outline-none focus:ring-1 focus:ring-financial"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+    .map((a) => ({ value: String(a.id), label: a.name }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 }
 
 export function KachiMaalInvoicePage() {
@@ -253,6 +214,19 @@ export function KachiMaalInvoicePage() {
     );
   }, [gridRows, prefRates, miscAmount]);
 
+  const partyOptions = useMemo(
+    () => flatAccountOptions(categories, accounts, PARTY_ACCOUNT_CATEGORIES),
+    [categories, accounts],
+  );
+  const debitAccountOptions = useMemo(
+    () => flatAccountOptions(categories, accounts, DEBIT_ACCOUNT_CATEGORIES),
+    [categories, accounts],
+  );
+  const productOptions = useMemo(
+    () => products.map((p) => ({ value: String(p.id), label: p.name })),
+    [products],
+  );
+
   function addRow() {
     setError('');
     if (!partyAccountId) {
@@ -346,14 +320,14 @@ export function KachiMaalInvoicePage() {
   }
 
   return (
-    <PageShell title="Kachi Maal Invoice" subtitle="Create and post multi-party purchase invoices">
-      <Panel>
-        <form onSubmit={onSave} className="space-y-6">
-          <div className="flex flex-col gap-6">
-            <InvoiceFormSection label="Invoice metadata">
+    <FormPageShell title="Kachi Maal Invoice">
+      <form onSubmit={onSave}>
+        <div className="inv-split">
+          <div className="inv-split-form">
+            <InvoiceFormSection label="Header">
               <InvoiceHeaderRow>
                 <InvoiceField>
-                  <FieldLabel>Reference</FieldLabel>
+                  <FieldLabel>Invoice #</FieldLabel>
                   <TextInput value={predictedRef} readOnly />
                 </InvoiceField>
                 <InvoiceField>
@@ -375,20 +349,14 @@ export function KachiMaalInvoicePage() {
               </InvoiceHeaderRow>
 
               <InvoiceHeaderRow>
-                <InvoiceField>
+                <InvoiceField wide>
                   <FieldLabel>Item (Jins)</FieldLabel>
-                  <select
+                  <SearchSelect
+                    options={productOptions}
                     value={productId}
-                    onChange={(e) => handleProductSelect(e.target.value)}
-                    className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-textPrimary focus:outline-none focus:ring-1 focus:ring-financial"
-                  >
-                    <option value="">Select item (optional)…</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={handleProductSelect}
+                    placeholder="Select product (optional)…"
+                  />
                 </InvoiceField>
                 <InvoiceField>
                   <FieldLabel>Jins (free text)</FieldLabel>
@@ -407,20 +375,17 @@ export function KachiMaalInvoicePage() {
 
             <InvoiceFormSection label="Add dheri row">
               <InvoiceFieldStack>
-                <InvoiceFieldGroup label="Identity & Bags">
+                <InvoiceFieldGroup label="Identity & bags">
                   <InvoiceFieldRow cols={5}>
                     <InvoiceField wide>
-                      <FlatAccountSelect
-                        label="Party"
-                        categoryNames={PURCHASE_PARTY_CATEGORIES}
-                        categories={categories}
-                        accounts={accounts}
+                      <FieldLabel>Party</FieldLabel>
+                      <SearchSelect
+                        options={partyOptions}
                         value={partyAccountId}
                         onChange={setPartyAccountId}
                         placeholder="Search party…"
                       />
                     </InvoiceField>
-
                     <InvoiceField>
                       <FieldLabel>Bags count</FieldLabel>
                       <TextInput value={bagCount} onChange={(e) => setBagCount(e.target.value)} inputMode="decimal" />
@@ -450,14 +415,17 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label="Net to party" value={entryPreview.netCreditToParty} />
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
-
-                <InvoiceAddRowAction onClick={addRow} />
               </InvoiceFieldStack>
             </InvoiceFormSection>
 
+            <InvoiceAddRowAction onClick={addRow} />
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+          </div>
+
+          <div className="inv-split-preview">
             <InvoiceFormSection label="Preview grid">
               <InvoicePreviewGridShell isEmpty={gridRows.length === 0}>
-                <table className="w-full min-w-[800px] text-left text-sm">
+                <table className="w-full min-w-[720px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-surface2">
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
                       <th className="px-3 py-2.5">Party</th>
@@ -472,7 +440,7 @@ export function KachiMaalInvoicePage() {
                   </thead>
                   <tbody>
                     {gridRows.map((row) => (
-                      <tr key={row.clientId} className="border-b border-border/40">
+                      <tr key={row.clientId} className="border-b border-border/50">
                         <td className="px-3 py-2">{row.partyName}</td>
                         <td className="px-3 py-2 tabular-nums">{row.bagCount}</td>
                         <td className="px-3 py-2">{row.qism || row.jins || '—'}</td>
@@ -501,13 +469,12 @@ export function KachiMaalInvoicePage() {
                 <InvoiceFieldGroup label="Debit account & totals">
                   <InvoiceFieldRow cols={6}>
                     <InvoiceField wide>
-                      <FlatAccountSelect
-                        label="Debit account"
-                        categoryNames={DEBIT_ACCOUNT_CATEGORIES}
-                        categories={categories}
-                        accounts={accounts}
+                      <FieldLabel>Debit account</FieldLabel>
+                      <SearchSelect
+                        options={debitAccountOptions}
                         value={debitAccountId}
                         onChange={setDebitAccountId}
+                        placeholder="Search account…"
                       />
                     </InvoiceField>
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
@@ -515,7 +482,7 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
                     <InvoiceField>
                       <div className="mb-1 flex items-center justify-between gap-1">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-textPrimary select-none">
+                        <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-textPrimary">
                           <input
                             type="checkbox"
                             checked={prefs?.marketFeeEnabled ?? true}
@@ -528,7 +495,7 @@ export function KachiMaalInvoicePage() {
                                 console.error('Failed to update market fee preference', err);
                               }
                             }}
-                            className="h-3.5 w-3.5 rounded border-border text-financial cursor-pointer"
+                            className="h-3.5 w-3.5 cursor-pointer rounded border-border text-financial"
                           />
                           <span>Market fee</span>
                         </label>
@@ -552,43 +519,43 @@ export function KachiMaalInvoicePage() {
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFieldStack>
-              <InvoiceFormFooter
-                totalLabel="Total debit"
-                totalValue={invoiceTotals.totalDebitAmount}
-                error={error}
-                message={message}
-                saving={saving}
-                onClose={() => navigate('/')}
-                onMinimize={() =>
-                  minimize(
-                    {
-                      predictedRef,
-                      gridRows,
-                      invoiceDate,
-                      productId,
-                      jins,
-                      qism,
-                      billNo,
-                      gariNo,
-                      tafseel,
-                      partyAccountId,
-                      bagCount,
-                      bhartii,
-                      dharanCount,
-                      looseKg,
-                      ratePerMaund,
-                      debitAccountId,
-                      miscAmount,
-                    },
-                    `Ref ${predictedRef || 'Draft'} (${gridRows.length} rows)`,
-                  )
-                }
-              />
             </InvoiceFormSection>
+
+            <InvoiceFormFooter
+              totalLabel="Total debit"
+              totalValue={invoiceTotals.totalDebitAmount}
+              error={error}
+              message={message}
+              saving={saving}
+              onClose={() => navigate('/')}
+              onMinimize={() =>
+                minimize(
+                  {
+                    predictedRef,
+                    gridRows,
+                    invoiceDate,
+                    productId,
+                    jins,
+                    qism,
+                    billNo,
+                    gariNo,
+                    tafseel,
+                    partyAccountId,
+                    bagCount,
+                    bhartii,
+                    dharanCount,
+                    looseKg,
+                    ratePerMaund,
+                    debitAccountId,
+                    miscAmount,
+                  },
+                  `Ref ${predictedRef || 'Draft'} (${gridRows.length} rows)`,
+                )
+              }
+            />
           </div>
-        </form>
-      </Panel>
-      <PageCloseBar />
-    </PageShell>
+        </div>
+      </form>
+    </FormPageShell>
   );
 }

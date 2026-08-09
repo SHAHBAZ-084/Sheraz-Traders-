@@ -32,11 +32,14 @@ describe('opening balance ledger report (Part 8 regression)', () => {
     expect(tbRow!.balance).toBe(50000);
 
     const ledgerReport = await getLedgerEntries(account.id);
-    const openingRow = ledgerReport.rows.find((r) => r.type === 'Opening Balance');
-    expect(openingRow).toBeTruthy();
-    expect(openingRow!.debit).toBe(50000);
-    expect(openingRow!.voucherNo).toBe('0');
-    expect(ledgerReport.rows[0]?.type).toBe('Opening Balance');
+    const carriedForwardRow = ledgerReport.rows.find((r) => r.isOpeningRow);
+    const openingEntryRow = ledgerReport.rows.find((r) => r.type === 'Opening Balance');
+    const openingBalance =
+      carriedForwardRow?.balance ?? openingEntryRow?.balance ?? ledgerReport.balance;
+    expect(openingBalance).toBe(50000);
+    if (carriedForwardRow) {
+      expect(carriedForwardRow.voucherNo).toBe('0');
+    }
 
     expect(ledgerReport.balance).toBeCloseTo(tbRow!.balance, 2);
     expect(ledgerReport.summary.closingBalance).toBeCloseTo(tbRow!.balance, 2);

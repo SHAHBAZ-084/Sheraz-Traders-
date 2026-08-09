@@ -1,31 +1,34 @@
 import { InvoiceStatus, InvoiceType, Prisma, VoucherStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
-import { PaginatedResult } from '../../utils/pagination';
-import { cancelVoucherInTx, getActiveFinancialYearId } from '../accounting/accounting.service';
+import { DEFAULT_PAGE_SIZE, PaginatedResult } from '../../utils/pagination';
+import { cancelVoucherInTx, assertActiveFinancialYear, getActiveFinancialYearId } from '../accounting/accounting.service';
 import { reverseInvoiceStockMovements } from '../stock/stock.service';
-import { buildInvoiceReference, INVOICE_TYPE_PREFIX } from './invoice-reference';
+import { buildInvoiceReference, INVOICE_TYPE_PREFIX, nextInvoiceReferenceInTx } from './invoice-reference';
 
 export { INVOICE_TYPE_PREFIX, buildInvoiceReference };
 
 const TYPE_PREFIX = INVOICE_TYPE_PREFIX;
 
-async function nextReference(tx: Prisma.TransactionClient, type: InvoiceType) {
-  const prefix = TYPE_PREFIX[type];
-  const count = await tx.invoice.count({ where: { type } });
-  return `${prefix}-${String(count + 1).padStart(5, '0')}`;
+async function nextReference(
+  tx: Prisma.TransactionClient,
+  type: InvoiceType,
+  financialYearId: number,
+) {
+  return nextInvoiceReferenceInTx(tx, type, financialYearId);
 }
 
 export async function listInvoices(
-  filters?: { type?: InvoiceType; status?: InvoiceStatus },
+  filters?: { type?: InvoiceType; status?: InvoiceStatus; financialYearId?: number },
   pagination?: { limit: number; offset: number },
 ): Promise<PaginatedResult<Awaited<ReturnType<typeof fetchInvoiceListPage>>[number]>> {
   const where = {
     ...(filters?.type && { type: filters.type }),
     ...(filters?.status && { status: filters.status }),
+    ...(filters?.financialYearId != null && { financialYearId: filters.financialYearId }),
   };
 
-  const limit = pagination?.limit ?? 200;
+  const limit = pagination?.limit ?? DEFAULT_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
 
   const [items, total] = await Promise.all([
@@ -99,10 +102,18 @@ export async function getInvoiceByReference(reference: string) {
   const trimmed = reference.trim();
   if (!trimmed) throw new AppError(400, 'Reference is required');
 
-  const invoice = await prisma.invoice.findUnique({
-    where: { reference: trimmed },
+  const activeFyId = await getActiveFinancialYearId(prisma);
+  let invoice = await prisma.invoice.findFirst({
+    where: { reference: trimmed, financialYearId: activeFyId },
     include: invoiceDetailInclude,
   });
+  if (!invoice) {
+    invoice = await prisma.invoice.findFirst({
+      where: { reference: trimmed },
+      orderBy: { createdAt: 'desc' },
+      include: invoiceDetailInclude,
+    });
+  }
   if (!invoice) {
     throw new AppError(404, `No invoice found for ${trimmed}.`);
   }
@@ -128,6 +139,7 @@ export async function cancelInvoiceInTx(
   if (invoice.status === InvoiceStatus.CANCELLED) {
     throw new AppError(400, 'Invoice is already cancelled');
   }
+  await assertActiveFinancialYear(tx, invoice.financialYearId);
 
   for (const link of invoice.vouchers) {
     const voucher = await tx.voucher.findFirst({ where: { id: link.voucherId } });
@@ -183,7 +195,7 @@ export async function createInvoiceDraft(data: {
 
   return prisma.$transaction(async (tx) => {
     const financialYearId = await getActiveFinancialYearId(tx);
-    const reference = await nextReference(tx, data.type);
+    const reference = await nextReference(tx, data.type, financialYearId);
     return tx.invoice.create({
       data: {
         type: data.type,

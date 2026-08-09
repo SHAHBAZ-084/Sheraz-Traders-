@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -21,6 +22,33 @@ declare module 'express-session' {
   interface SessionData {
     userId?: number;
   }
+}
+
+function resolveFrontendDistPath(): string {
+  const candidates = [
+    path.resolve(__dirname, '../../frontend/dist'),
+    path.resolve(__dirname, '../../../frontend/dist'),
+    path.resolve(process.cwd(), 'frontend/dist'),
+  ];
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require('electron') as typeof import('electron') | undefined;
+    const appPath = electron?.app?.getAppPath?.();
+    if (appPath) {
+      candidates.unshift(path.join(appPath, 'frontend/dist'));
+    }
+  } catch {
+    // not in Electron
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+
+  return candidates[0]!;
 }
 
 export function createApp(getStartupStatus?: () => StartupStatus | null) {
@@ -72,7 +100,7 @@ export function createApp(getStartupStatus?: () => StartupStatus | null) {
   app.use('/api/system', systemRouter);
 
   if (env.isProduction) {
-    const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+    const frontendDist = resolveFrontendDistPath();
     app.use(express.static(frontendDist));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(frontendDist, 'index.html'));

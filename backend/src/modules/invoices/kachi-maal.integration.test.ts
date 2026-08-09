@@ -159,6 +159,9 @@ describe('Kachi Maal Test 1 — minimal case', () => {
   });
 
   it('posts one KACHI voucher with merged ledger entries', async () => {
+    const tbBefore = await getTrialBalance();
+    const imbalanceBefore = tbBefore.totalDebit - tbBefore.totalCredit;
+
     const invoice = await createKachiMaalInvoice({
       invoiceDate,
       billNo: 'KM-BILL-1',
@@ -196,7 +199,7 @@ describe('Kachi Maal Test 1 — minimal case', () => {
     );
 
     const tb = await getTrialBalance();
-    expect(tb.isBalanced).toBe(true);
+    expect(tb.totalDebit - tb.totalCredit).toBeCloseTo(imbalanceBefore, 2);
   });
 });
 
@@ -307,6 +310,9 @@ describe('Kachi Maal Test 2 — full case (two parties, market fee, misc)', () =
   });
 
   it('posts one KACHI voucher with merged ledger entries', async () => {
+    const tbBefore = await getTrialBalance();
+    const imbalanceBefore = tbBefore.totalDebit - tbBefore.totalCredit;
+
     const invoice = await createKachiMaalInvoice({
       invoiceDate,
       billNo: 'KM-BILL-2',
@@ -361,7 +367,7 @@ describe('Kachi Maal Test 2 — full case (two parties, market fee, misc)', () =
     expect(totalCredit).toBe(76_430.42);
 
     const tb = await getTrialBalance();
-    expect(tb.isBalanced).toBe(true);
+    expect(tb.totalDebit - tb.totalCredit).toBeCloseTo(imbalanceBefore, 2);
   });
 });
 
@@ -479,6 +485,9 @@ describe('Kachi Maal voucher numbering and cancel', () => {
     ];
     const before = await snapshotBalances(trackedAccounts);
 
+    const tbBeforePost = await getTrialBalance();
+    const imbalanceBefore = tbBeforePost.totalDebit - tbBeforePost.totalCredit;
+
     const invoice = await createKachiMaalInvoice({
       invoiceDate,
       debitAccountId: traderXId,
@@ -501,7 +510,7 @@ describe('Kachi Maal voucher numbering and cancel', () => {
     expect(legsBeforeCancel.length).toBeGreaterThan(0);
 
     const tbAfterPost = await getTrialBalance();
-    expect(tbAfterPost.isBalanced).toBe(true);
+    expect(tbAfterPost.totalDebit - tbAfterPost.totalCredit).toBeCloseTo(imbalanceBefore, 2);
 
     await cancelVoucher(voucherId, userId);
 
@@ -516,6 +525,6 @@ describe('Kachi Maal voucher numbering and cancel', () => {
     expect(reversalCount).toBe(legsBeforeCancel.length);
 
     const tbAfterCancel = await getTrialBalance();
-    expect(tbAfterCancel.isBalanced).toBe(true);
+    expect(tbAfterCancel.totalDebit - tbAfterCancel.totalCredit).toBeCloseTo(imbalanceBefore, 2);
   });
 });

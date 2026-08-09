@@ -72,6 +72,7 @@ model User {
   vouchersModified Voucher[]              @relation("VoucherModifiedBy")
   vouchersDeleted  Voucher[]              @relation("VoucherDeletedBy")
   financialYearsClosed FinancialYear[]    @relation("FinancialYearClosedBy")
+  financialYearsChanged FinancialYear[]   @relation("FinancialYearChangedBy")
   trialBalanceApprovals TrialBalanceApproval[]
   invoicesCreated       Invoice[]
 }
@@ -88,6 +89,8 @@ model Supplier {
   updatedAt     DateTime @updatedAt
 
   invoices Invoice[]
+
+  @@index([isActive, name])
 }
 
 model Customer {
@@ -103,6 +106,8 @@ model Customer {
   updatedAt  DateTime @updatedAt
 
   invoices Invoice[]
+
+  @@index([isActive, name])
 }
 
 model AccountCategory {
@@ -112,6 +117,8 @@ model AccountCategory {
   createdAt DateTime @default(now())
 
   accounts Account[]
+
+  @@index([isActive])
 }
 
 model Account {
@@ -123,7 +130,7 @@ model Account {
   isActive   Boolean     @default(true)
   createdAt  DateTime    @default(now())
 
-  category        AccountCategory               @relation(fields: [categoryId], references: [id])
+  category        AccountCategory               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   ledger          Ledger?
   debitVouchers   Voucher[]                     @relation("DebitAccount")
   creditVouchers  Voucher[]                     @relation("CreditAccount")
@@ -133,6 +140,7 @@ model Account {
   kachiMaalDebitInvoices   Invoice[]         @relation("KachiMaalDebitAccount")
 
   @@index([categoryId])
+  @@index([isActive, categoryId])
 }
 
 model Ledger {
@@ -156,14 +164,18 @@ model LedgerEntry {
   isReversal       Boolean         @default(false)
   isOpeningBalance Boolean         @default(false)
   createdAt        DateTime        @default(now())
+  financialYearId  Int?
 
-  ledger  Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
-  voucher Voucher? @relation(fields: [voucherId], references: [id])
+  ledger        Ledger         @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  voucher       Voucher?       @relation(fields: [voucherId], references: [id])
+  financialYear FinancialYear? @relation(fields: [financialYearId], references: [id])
 
   @@index([ledgerId])
   @@index([voucherId])
   @@index([createdAt])
   @@index([ledgerId, createdAt])
+  @@index([ledgerId, id])
+  @@index([financialYearId])
 }
 
 model Voucher {
@@ -186,8 +198,8 @@ model Voucher {
   financialYearId Int?
 
   financialYear FinancialYear? @relation(fields: [financialYearId], references: [id])
-  debitAccount  Account?       @relation("DebitAccount", fields: [debitAccountId], references: [id])
-  creditAccount Account?       @relation("CreditAccount", fields: [creditAccountId], references: [id])
+  debitAccount  Account?       @relation("DebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  creditAccount Account?       @relation("CreditAccount", fields: [creditAccountId], references: [id], onDelete: Restrict)
   createdBy     User           @relation("VoucherCreatedBy", fields: [createdById], references: [id])
   modifiedBy    User?          @relation("VoucherModifiedBy", fields: [modifiedById], references: [id])
   deletedBy     User?          @relation("VoucherDeletedBy", fields: [deletedById], references: [id])
@@ -201,6 +213,7 @@ model Voucher {
   @@index([date])
   @@index([createdAt])
   @@index([status])
+  @@index([financialYearId, type, status, date])
 }
 
 model FinancialYear {
@@ -211,11 +224,15 @@ model FinancialYear {
   status     FinancialYearStatus @default(ACTIVE)
   closedAt   DateTime?
   closedById Int?
+  changedAt  DateTime?
+  changedById Int?
 
   closedBy        User?                         @relation("FinancialYearClosedBy", fields: [closedById], references: [id])
+  changedBy       User?                         @relation("FinancialYearChangedBy", fields: [changedById], references: [id])
   closingBalances FinancialYearClosingBalance[]
   vouchers        Voucher[]
   invoices        Invoice[]
+  ledgerEntries   LedgerEntry[]
 
   @@index([status])
 }
@@ -225,6 +242,7 @@ model FinancialYearClosingBalance {
   financialYearId Int
   accountId       Int
   balance         Decimal
+  computedAt      DateTime @default(now())
 
   financialYear FinancialYear @relation(fields: [financialYearId], references: [id], onDelete: Cascade)
   account       Account       @relation(fields: [accountId], references: [id])
@@ -254,14 +272,15 @@ model Product {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  account         Account           @relation(fields: [accountId], references: [id])
-  category        ProductCategory?  @relation(fields: [categoryId], references: [id])
+  account         Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category        ProductCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   invoiceItems    InvoiceItem[]
   invoices        Invoice[]
   stockMovements  StockMovement[]
   stockRemainders StockRemainder[]
 
   @@index([categoryId])
+  @@index([isActive, name])
 }
 
 model ProductCategory {
@@ -276,7 +295,7 @@ model Invoice {
   id              Int           @id @default(autoincrement())
   type            InvoiceType
   status          InvoiceStatus @default(DRAFT)
-  reference       String        @unique
+  reference       String
   customerId      Int?
   supplierId      Int?
   total           Decimal       @default(0)
@@ -298,12 +317,12 @@ model Invoice {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  customer      Customer?     @relation(fields: [customerId], references: [id])
-  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
-  debitAccount  Account?      @relation("KachiMaalDebitAccount", fields: [debitAccountId], references: [id])
-  product       Product?      @relation(fields: [productId], references: [id])
-  store         Store?        @relation("InvoiceStore", fields: [storeId], references: [id])
-  toStore       Store?        @relation("InvoiceToStore", fields: [toStoreId], references: [id])
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  debitAccount  Account?      @relation("KachiMaalDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  product       Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  store         Store?        @relation("InvoiceStore", fields: [storeId], references: [id], onDelete: SetNull)
+  toStore       Store?        @relation("InvoiceToStore", fields: [toStoreId], references: [id], onDelete: SetNull)
   financialYear FinancialYear? @relation(fields: [financialYearId], references: [id])
   createdBy     User          @relation(fields: [createdById], references: [id])
   items         InvoiceItem[]
@@ -311,11 +330,16 @@ model Invoice {
   kachiMaalLines KachiMaalLine[]
   stockMovements StockMovement[]
 
+  @@unique([financialYearId, reference])
   @@index([financialYearId])
   @@index([financialYearId, type, status])
   @@index([createdAt])
   @@index([status])
   @@index([storeId])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([invoiceDate])
+  @@index([type, status])
 }
 
 model KachiMaalLine {
@@ -335,7 +359,7 @@ model KachiMaalLine {
   sortOrder        Int           @default(0)
 
   invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  partyAccount Account @relation("KachiMaalPartyAccount", fields: [partyAccountId], references: [id])
+  partyAccount Account @relation("KachiMaalPartyAccount", fields: [partyAccountId], references: [id], onDelete: Restrict)
 
   @@index([invoiceId])
   @@index([partyAccountId])
@@ -365,9 +389,10 @@ model InvoiceItem {
   total     Decimal @default(0)
 
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id])
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([invoiceId])
+  @@index([productId])
 }
 
 model InvoiceVoucher {

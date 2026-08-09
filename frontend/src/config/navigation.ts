@@ -67,9 +67,9 @@ export const SIDEBAR_NAV: SidebarSection[] = [
     label: 'Vouchers',
     icon: Receipt,
     items: [
+      { kind: 'link', label: 'Receipt Voucher', to: '/vouchers/receipt' },
       { kind: 'link', label: 'Payment Voucher', to: '/vouchers/payment' },
       { kind: 'link', label: 'Journal Voucher', to: '/vouchers/journal' },
-      { kind: 'link', label: 'Receipt Voucher', to: '/vouchers/receipt' },
       { kind: 'link', label: 'View Voucher', to: '/vouchers/view' },
     ],
   },
@@ -93,6 +93,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
         kind: 'submenu',
         label: 'Account Reports',
         children: [
+          { label: 'Account Ledger', to: '/reports/accounts' },
           { label: 'Account Balance', to: '/reports/account-balance' },
           { label: 'Vouchers', to: '/reports/vouchers' },
         ],

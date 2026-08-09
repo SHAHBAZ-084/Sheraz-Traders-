@@ -3,7 +3,7 @@ import { AccountType, VoucherType } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler, param, validateBody } from '../../utils/helpers';
-import { parsePagination, paginateArray } from '../../utils/pagination';
+import { parsePagination, parseCursorPagination, SELECTOR_PAGINATION, STANDARD_PAGINATION, LEDGER_PAGINATION } from '../../utils/pagination';
 import * as accountingService from './accounting.service';
 
 export const accountingRouter = Router();
@@ -12,8 +12,10 @@ accountingRouter.use(requireAuth);
 
 accountingRouter.get(
   '/categories',
-  asyncHandler(async (_req, res) => {
-    const categories = await accountingService.listAccountCategories();
+  asyncHandler(async (req, res) => {
+    const categories = await accountingService.listAccountCategories(
+      parsePagination(req.query, SELECTOR_PAGINATION),
+    );
     res.json(categories);
   }),
 );
@@ -39,8 +41,12 @@ accountingRouter.delete(
 
 accountingRouter.get(
   '/accounts',
-  asyncHandler(async (_req, res) => {
-    const accounts = await accountingService.listAccounts();
+  asyncHandler(async (req, res) => {
+    const lite = req.query.lite === '1' || req.query.lite === 'true';
+    const accounts = await accountingService.listAccounts(
+      { includeLedger: !lite },
+      parsePagination(req.query, SELECTOR_PAGINATION),
+    );
     res.json(accounts);
   }),
 );
@@ -87,19 +93,28 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/vouchers',
-  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const typeParam = req.query.type as string | undefined;
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
     const type =
       typeParam && Object.values(VoucherType).includes(typeParam as VoucherType)
         ? (typeParam as VoucherType)
         : undefined;
+    const financialYearId =
+      financialYearIdParam && financialYearIdParam.trim() !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : undefined;
 
     const vouchers = await accountingService.listVouchers(
-      { fromDate, toDate, type },
-      parsePagination(req.query, { limit: 500, max: 500 }),
+      {
+        fromDate,
+        toDate,
+        type,
+        financialYearId: Number.isFinite(financialYearId) ? financialYearId : undefined,
+      },
+      parsePagination(req.query, STANDARD_PAGINATION),
     );
     res.json(vouchers);
   }),
@@ -107,7 +122,6 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/reports/account-balance',
-  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const date = req.query.date as string | undefined;
     if (!date?.trim()) {
@@ -127,7 +141,7 @@ accountingRouter.get(
         ? sideParam
         : 'both';
 
-    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
     const report = await accountingService.getAccountBalancesAsOf({
       date,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
@@ -224,10 +238,18 @@ accountingRouter.delete(
 
 accountingRouter.get(
   '/trial-balance',
-  requireReportsAccess,
   asyncHandler(async (req, res) => {
-    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
-    const trialBalance = await accountingService.getTrialBalance({ limit, offset });
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const financialYearId =
+      financialYearIdParam != null && financialYearIdParam !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : undefined;
+    const trialBalance = await accountingService.getTrialBalance({
+      limit,
+      offset,
+      ...(Number.isFinite(financialYearId) ? { financialYearId } : {}),
+    });
     res.json({
       ...trialBalance,
       pagination: {
@@ -241,13 +263,14 @@ accountingRouter.get(
 
 accountingRouter.get(
   '/ledger/:accountId',
-  requireReportsAccess,
   asyncHandler(async (req, res) => {
     const accountId = parseInt(param(req.params.accountId), 10);
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const financialYearIdParam = req.query.financialYearId as string | undefined;
-    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
+    const useCursor = typeof req.query.cursor === 'string';
+    const cursorPagination = parseCursorPagination(req.query, LEDGER_PAGINATION);
+    const offsetPagination = parsePagination(req.query, LEDGER_PAGINATION);
 
     const ledger = financialYearIdParam
       ? await accountingService.getLedgerEntriesForYear(
@@ -255,17 +278,35 @@ accountingRouter.get(
           parseInt(financialYearIdParam, 10),
           fromDate,
           toDate,
-          { limit, offset },
+          useCursor
+            ? { mode: 'cursor', limit: cursorPagination.limit, cursor: cursorPagination.cursor }
+            : { mode: 'offset', limit: offsetPagination.limit, offset: offsetPagination.offset },
         )
-      : await accountingService.getLedgerEntries(accountId, fromDate, toDate, { limit, offset });
+      : await accountingService.getLedgerEntries(
+          accountId,
+          fromDate,
+          toDate,
+          useCursor
+            ? { mode: 'cursor', limit: cursorPagination.limit, cursor: cursorPagination.cursor }
+            : { mode: 'offset', limit: offsetPagination.limit, offset: offsetPagination.offset },
+        );
 
     res.json({
       ...ledger,
-      pagination: {
-        total: ledger.totalCount,
-        limit,
-        offset,
-      },
+      pagination: useCursor
+        ? {
+            limit: cursorPagination.limit,
+            nextCursor: ledger.nextCursor,
+            hasMore: ledger.hasMore,
+            total: ledger.totalCount,
+          }
+        : {
+            total: ledger.totalCount,
+            limit: offsetPagination.limit,
+            offset: offsetPagination.offset,
+            nextCursor: ledger.nextCursor,
+            hasMore: ledger.hasMore,
+          },
     });
   }),
 );
@@ -279,9 +320,18 @@ accountingRouter.get(
 );
 
 accountingRouter.post(
-  '/financial-year/close',
+  '/financial-year/change',
+  requireAdmin,
+  validateBody(z.object({ password: z.string().min(1) })),
   asyncHandler(async (req, res) => {
-    const result = await accountingService.closeFinancialYear(req.session.userId!);
+    const result = await accountingService.changeFinancialYear(
+      req.session.userId!,
+      req.body.password,
+    );
+    if (!result.ok) {
+      res.status(200).json({ ok: false });
+      return;
+    }
     res.status(201).json(result);
   }),
 );

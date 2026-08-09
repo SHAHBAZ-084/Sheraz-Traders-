@@ -16,6 +16,8 @@ export default {
         textAccent: 'var(--text-accent)',
         success: 'var(--text-success)',
         danger: 'var(--text-danger)',
+        ledgerDebit: 'var(--ledger-debit)',
+        ledgerCredit: 'var(--ledger-credit)',
         bgSuccess: 'var(--bg-success)',
         bgDanger: 'var(--bg-danger)',
         surface3: 'var(--surface-3)',

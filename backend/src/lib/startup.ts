@@ -1,5 +1,4 @@
 import { execSync } from 'child_process';
-import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import {
   configureSqlitePragmas,
@@ -10,7 +9,7 @@ import {
   verifyDatabaseIntegrity,
   walCheckpointTruncate,
 } from './database-maintenance';
-import { ensureDatabaseDirectoryExists } from './database-path';
+import { ensureDatabaseDirectoryExists, getBackendRoot } from './database-path';
 import { logger } from './logger';
 import { startAutoBackupScheduler } from './google-drive-backup';
 import { applyMigrationsProgrammatically } from './programmatic-migrations';
@@ -30,7 +29,14 @@ export async function runMigrations(db?: PrismaClient): Promise<void> {
     return;
   }
 
-  const backendRoot = path.resolve(__dirname, '../..');
+  // Packaged Electron has no npx/prisma CLI — apply SQL migrations in-process.
+  if (process.env.NODE_ENV === 'production' && db) {
+    logger.info('Applying database migrations programmatically (production build)…');
+    await applyMigrationsProgrammatically(db);
+    return;
+  }
+
+  const backendRoot = getBackendRoot();
   logger.info('Running prisma migrate deploy…');
   try {
     execSync('npx prisma migrate deploy', {
@@ -40,8 +46,8 @@ export async function runMigrations(db?: PrismaClient): Promise<void> {
     });
     logger.info('Database migrations up to date');
   } catch (err) {
-    if (process.env.NODE_ENV === 'production' && db) {
-      logger.warn('prisma migrate deploy CLI unavailable in packaged app environment — executing programmatic migrations…', {
+    if (db) {
+      logger.warn('prisma migrate deploy failed — executing programmatic migrations…', {
         err: err instanceof Error ? err.message : String(err),
       });
       await applyMigrationsProgrammatically(db);
@@ -54,7 +60,6 @@ export async function runMigrations(db?: PrismaClient): Promise<void> {
       env: process.env,
     });
     logger.info('Database schema pushed successfully');
-    return;
   }
 }
 
@@ -69,6 +74,17 @@ export async function initializeDatabase(db: PrismaClient): Promise<StartupStatu
   };
 
   try {
+    if (status.databaseExists) {
+      try {
+        await createDatabaseBackup();
+        logger.info('Pre-migration safety backup completed');
+      } catch (backupErr) {
+        logger.warn('Pre-migration backup failed — continuing with migrations', {
+          err: backupErr instanceof Error ? backupErr.message : String(backupErr),
+        });
+      }
+    }
+
     await runMigrations(db);
     status.migrationsApplied = true;
 

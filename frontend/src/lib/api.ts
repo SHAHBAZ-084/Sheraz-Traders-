@@ -5,6 +5,13 @@ export type Paginated<T> = {
   offset: number;
 };
 
+const SELECTOR_LIST_QUERY = 'limit=2000';
+
+async function fetchListItems<T>(path: string): Promise<T[]> {
+  const page = await request<Paginated<T>>(path);
+  return page.items;
+}
+
 export type BackupStatus = {
   connected: boolean;
   needsReconnect: boolean;
@@ -19,6 +26,15 @@ export type User = {
   username: string;
   displayName: string;
   role: 'ADMIN' | 'USER';
+};
+
+export type FinancialYear = {
+  id: number;
+  label: string;
+  startDate: string;
+  endDate: string | null;
+  status: 'ACTIVE' | 'CLOSED';
+  isActive: boolean;
 };
 
 export type AccountCategory = {
@@ -262,7 +278,7 @@ export const api = {
   },
 
   listCategories() {
-    return request<AccountCategory[]>('/api/accounting/categories');
+    return fetchListItems<AccountCategory>(`/api/accounting/categories?${SELECTOR_LIST_QUERY}`);
   },
   createCategory(name: string) {
     return request<AccountCategory>('/api/accounting/categories', {
@@ -274,11 +290,13 @@ export const api = {
     return request<AccountCategory>(`/api/accounting/categories/${id}`, { method: 'DELETE' });
   },
 
-  listProducts() {
-    return request<Product[]>('/api/products');
+  listProducts(options?: { lite?: boolean }) {
+    const query = new URLSearchParams({ limit: '2000' });
+    if (options?.lite) query.set('lite', '1');
+    return fetchListItems<Product>(`/api/products?${query.toString()}`);
   },
   listProductCategories() {
-    return request<ProductCategory[]>('/api/products/product-categories');
+    return fetchListItems<ProductCategory>(`/api/products/product-categories?${SELECTOR_LIST_QUERY}`);
   },
   createProductCategory(data: { name: string }) {
     return request<ProductCategory>('/api/products/product-categories', {
@@ -299,10 +317,10 @@ export const api = {
   },
 
   listStores() {
-    return request<Store[]>('/api/stores');
+    return fetchListItems<Store>(`/api/stores?${SELECTOR_LIST_QUERY}`);
   },
   listActiveStores() {
-    return request<Store[]>('/api/stores/active');
+    return fetchListItems<Store>(`/api/stores/active?${SELECTOR_LIST_QUERY}`);
   },
   createStore(data: { name: string }) {
     return request<Store>('/api/stores', { method: 'POST', body: JSON.stringify(data) });
@@ -336,8 +354,7 @@ export const api = {
         productId: number;
         name: string;
         code: string;
-        bori: number;
-        thela: number;
+        totalQty: number;
         saleInvoiceQty: number;
         purchaseInvoiceQty: number;
       }>;
@@ -371,7 +388,7 @@ export const api = {
   },
 
   listSaleParties() {
-    return request<Party[]>('/api/parties/sale-parties');
+    return fetchListItems<Party>(`/api/parties/sale-parties?${SELECTOR_LIST_QUERY}`);
   },
   createSaleParty(data: Record<string, string | undefined>) {
     return request<Party>('/api/parties/sale-parties', { method: 'POST', body: JSON.stringify(data) });
@@ -381,7 +398,7 @@ export const api = {
   },
 
   listPurchaseParties() {
-    return request<Party[]>('/api/parties/purchase-parties');
+    return fetchListItems<Party>(`/api/parties/purchase-parties?${SELECTOR_LIST_QUERY}`);
   },
   createPurchaseParty(data: Record<string, string | undefined>) {
     return request<Party>('/api/parties/purchase-parties', { method: 'POST', body: JSON.stringify(data) });
@@ -485,6 +502,7 @@ export const api = {
     fromDate?: string;
     toDate?: string;
     type?: string;
+    financialYearId?: number;
     limit?: number;
     offset?: number;
   }) {
@@ -492,10 +510,25 @@ export const api = {
     if (params?.fromDate) query.set('fromDate', params.fromDate);
     if (params?.toDate) query.set('toDate', params.toDate);
     if (params?.type) query.set('type', params.type);
+    if (params?.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
     if (params?.limit != null) query.set('limit', String(params.limit));
     if (params?.offset != null) query.set('offset', String(params.offset));
     const suffix = query.toString() ? `?${query}` : '';
     return request<Paginated<Voucher>>(`/api/accounting/vouchers${suffix}`);
+  },
+
+  listFinancialYears() {
+    return request<FinancialYear[]>('/api/accounting/financial-years');
+  },
+
+  changeFinancialYear(password: string) {
+    return request<
+      | { ok: false }
+      | { ok: true; closedYear: FinancialYear; newYear: FinancialYear }
+    >('/api/accounting/financial-year/change', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
   },
 
   verifyDatabaseIntegrity() {
@@ -577,8 +610,10 @@ export const api = {
     return request<InvoiceDetail>(`/api/invoices/${invoiceId}`, { method: 'DELETE' });
   },
 
-  listAccounts() {
-    return request<Account[]>('/api/accounting/accounts');
+  listAccounts(options?: { lite?: boolean }) {
+    const query = new URLSearchParams({ limit: '2000' });
+    if (options?.lite) query.set('lite', '1');
+    return fetchListItems<Account>(`/api/accounting/accounts?${query.toString()}`);
   },
   createAccount(data: {
     categoryId: number;
@@ -597,13 +632,22 @@ export const api = {
     return request<Account>(`/api/accounting/accounts/${id}`, { method: 'DELETE' });
   },
 
-  getLedger(accountId: number, params?: { fromDate?: string; toDate?: string }) {
-    const query = params?.fromDate || params?.toDate
-      ? `?${new URLSearchParams({ ...(params.fromDate ? { fromDate: params.fromDate } : {}), ...(params.toDate ? { toDate: params.toDate } : {}) })}`
-      : '';
+  getLedger(
+    accountId: number,
+    params?: { fromDate?: string; toDate?: string; limit?: number; cursor?: string; financialYearId?: number },
+  ) {
+    const query = new URLSearchParams({ limit: String(params?.limit ?? 2000) });
+    if (params?.fromDate) query.set('fromDate', params.fromDate);
+    if (params?.toDate) query.set('toDate', params.toDate);
+    if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
     return request<{
       account: { id: number; name: string; code: string; type: string };
       balance: number;
+      totalCount: number;
+      nextCursor: string | null;
+      hasMore: boolean;
       rows: {
         date: string;
         voucherNo: string;
@@ -614,18 +658,31 @@ export const api = {
         credit: number;
         balance: number;
         isOpeningRow?: boolean;
+        isClosingRow?: boolean;
       }[];
       summary: { periodOpening: number; totalDebit: number; totalCredit: number; closingBalance: number };
-    }>(`/api/accounting/ledger/${accountId}${query}`);
+      pagination?: {
+        total: number;
+        limit: number;
+        offset?: number;
+        nextCursor?: string | null;
+        hasMore?: boolean;
+      };
+    }>(`/api/accounting/ledger/${accountId}${suffix}`);
   },
 
-  getTrialBalance() {
+  getTrialBalance(params?: { financialYearId?: number }) {
+    const query =
+      params?.financialYearId != null ? `?financialYearId=${params.financialYearId}` : '';
     return request<{
       accounts: { accountName: string; debit: number; credit: number }[];
       totalDebit: number;
       totalCredit: number;
       isBalanced: boolean;
-    }>('/api/accounting/trial-balance');
+      scope?: 'live' | 'closing_snapshot';
+      financialYearId?: number | null;
+      financialYearLabel?: string | null;
+    }>(`/api/accounting/trial-balance${query}`);
   },
 
   getAccountBalanceReport(params: { date: string; categoryId?: number; side?: 'debit' | 'credit' | 'both' }) {
@@ -665,13 +722,10 @@ export const api = {
   },
 
 
-  getStockReport(params: { productId: number; bagType?: 'BORI' | 'THELA'; storeId?: number | null }) {
+  getStockReport(params: { productId: number; storeId?: number | null }) {
     const query = new URLSearchParams({
       productId: String(params.productId),
     });
-    if (params.bagType) {
-      query.set('bagType', params.bagType);
-    }
     if (params.storeId != null && params.storeId > 0) {
       query.set('storeId', String(params.storeId));
     }

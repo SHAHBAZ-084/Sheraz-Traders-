@@ -1,5 +1,4 @@
-import { Info } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatAmount } from '../../lib/format';
 
@@ -13,17 +12,60 @@ type Props = {
 type InsightState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'error'; message: string }
+  | { status: 'error' }
   | { status: 'ready'; averageRate: number | null; storeStock: number; storeName: string };
 
 /**
- * Small (i) info icon + popover shown next to a "Product" field on Sale/Purchase Invoice.
- * Read-only lookup only — never touches quantity/rate/total or ledger posting logic.
+ * Small ⓘ info icon + popover for Sale Invoice product lookup.
+ * Prefetches when product/store selection changes; refreshes live when opened.
  */
 export function ProductInsightPopover({ productId, storeId }: Props) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<InsightState>({ status: 'idle' });
   const containerRef = useRef<HTMLDivElement>(null);
+  const fetchGenRef = useRef(0);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadInsight = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!productId) {
+      setState({ status: 'idle' });
+      return;
+    }
+    if (!storeId) {
+      setState({ status: 'error' });
+      return;
+    }
+
+    const gen = ++fetchGenRef.current;
+    if (!opts?.silent) {
+      setState({ status: 'loading' });
+    }
+
+    try {
+      const insight = await api.getProductInsight(Number(productId), Number(storeId));
+      if (gen !== fetchGenRef.current) return;
+      setState({
+        status: 'ready',
+        averageRate: insight.averageRate,
+        storeStock: insight.storeStock,
+        storeName: insight.storeName,
+      });
+    } catch {
+      if (gen !== fetchGenRef.current) return;
+      setState({ status: 'error' });
+    }
+  }, [productId, storeId]);
+
+  // Prefetch when product or store changes — avoids stale data from prior selection.
+  useEffect(() => {
+    setOpen(false);
+    fetchGenRef.current += 1;
+    if (!productId) {
+      setState({ status: 'idle' });
+      return;
+    }
+    void loadInsight();
+  }, [productId, storeId, loadInsight]);
 
   useEffect(() => {
     if (!open) return;
@@ -36,70 +78,100 @@ export function ProductInsightPopover({ productId, storeId }: Props) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
 
-  // Nothing to look up yet — hide the icon entirely.
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
   if (!productId) return null;
 
-  async function handleToggle() {
-    const next = !open;
-    setOpen(next);
-    if (!next) return;
-
-    if (!storeId) {
-      setState({ status: 'error', message: 'Select a store to see stock' });
-      return;
+  function clearCloseTimer() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
     }
+  }
 
-    setState({ status: 'loading' });
-    try {
-      const insight = await api.getProductInsight(Number(productId), Number(storeId));
-      setState({
-        status: 'ready',
-        averageRate: insight.averageRate,
-        storeStock: insight.storeStock,
-        storeName: insight.storeName,
-      });
-    } catch (err) {
-      setState({
-        status: 'error',
-        message: err instanceof Error ? err.message : 'Failed to load product info',
-      });
+  function scheduleClose() {
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 150);
+  }
+
+  function handleOpen() {
+    clearCloseTimer();
+    setOpen(true);
+    void loadInsight();
+  }
+
+  function handleToggleClick() {
+    if (open) {
+      setOpen(false);
+    } else {
+      handleOpen();
     }
   }
 
   return (
-    <div ref={containerRef} className="relative inline-flex items-center">
+    <div
+      ref={containerRef}
+      className="relative inline-flex shrink-0 items-center"
+      onMouseEnter={handleOpen}
+      onMouseLeave={scheduleClose}
+    >
       <button
         type="button"
-        onClick={handleToggle}
-        className="inline-flex items-center justify-center rounded-full text-textSecondary hover:text-financial hover:bg-financial/10 transition-colors p-0.5"
-        aria-label="Product info"
+        onClick={handleToggleClick}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[13px] leading-none text-textSecondary hover:bg-financial/10 hover:text-financial transition-colors"
+        aria-label="Product stock and average cost"
+        title="Stock & average cost"
       >
-        <Info size={14} />
+        ⓘ
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-border bg-surface p-3 shadow-lg text-sm">
-          {state.status === 'loading' && <p className="text-textSecondary">Loading…</p>}
+        <div
+          className="absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-border bg-surface p-3 shadow-lg text-sm"
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
+          {state.status === 'loading' && (
+            <p className="text-textSecondary text-xs">Loading…</p>
+          )}
 
-          {state.status === 'error' && <p className="text-textSecondary">{state.message}</p>}
-
-          {state.status === 'ready' && (
-            <div className="space-y-1.5">
+          {state.status === 'error' && (
+            <div className="space-y-1 text-xs">
               <p>
-                {state.averageRate == null ? (
-                  <span className="text-textSecondary">No purchase history for this product</span>
-                ) : (
-                  <>
-                    <span className="text-textSecondary">Avg. purchase rate: </span>
-                    <span className="font-semibold">Rs {formatAmount(state.averageRate)}</span>
-                  </>
-                )}
+                <span className="text-textSecondary">Current stock: </span>
+                <span className="text-textMuted">—</span>
               </p>
               <p>
-                <span className="text-textSecondary">In stock ({state.storeName}): </span>
-                <span className="font-semibold">{formatAmount(state.storeStock)}</span>
+                <span className="text-textSecondary">Average price: </span>
+                <span className="text-textMuted">Unable to load</span>
               </p>
             </div>
+          )}
+
+          {state.status === 'ready' && (
+            <div className="space-y-1.5 text-xs">
+              <p>
+                <span className="text-textSecondary">Current stock</span>
+                <span className="text-textMuted"> ({state.storeName}): </span>
+                <span className="font-semibold tabular-nums">{formatAmount(state.storeStock)}</span>
+              </p>
+              <p>
+                <span className="text-textSecondary">Average price: </span>
+                {state.averageRate == null ? (
+                  <span className="text-textMuted">—</span>
+                ) : (
+                  <span className="font-semibold tabular-nums">Rs {formatAmount(state.averageRate)}</span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {state.status === 'idle' && !storeId && (
+            <p className="text-xs text-textSecondary">Select a store to see stock.</p>
           )}
         </div>
       )}

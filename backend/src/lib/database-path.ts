@@ -1,14 +1,43 @@
 import fs from 'fs';
 import path from 'path';
 
+/** Backend package root (contains prisma/, dist/). Works in dev, bundled, and Electron asar. */
+export function getBackendRoot(): string {
+  const candidates = [
+    path.resolve(__dirname, '..'),
+    path.resolve(__dirname, '../..'),
+    path.resolve(process.cwd(), 'backend'),
+    path.resolve(process.cwd()),
+  ];
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require('electron') as typeof import('electron') | undefined;
+    const appPath = electron?.app?.getAppPath?.();
+    if (appPath) {
+      candidates.unshift(path.join(appPath, 'backend'), appPath);
+    }
+  } catch {
+    // not in Electron
+  }
+
+  for (const candidate of candidates) {
+    const prismaDir = path.join(candidate, 'prisma');
+    if (fs.existsSync(prismaDir) && fs.statSync(prismaDir).isDirectory()) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(__dirname, '..');
+}
+
 /** Resolve the on-disk SQLite file from DATABASE_URL (file:…). */
 export function getDatabaseFilePath(): string {
   const url = process.env.DATABASE_URL ?? 'file:./data/sheraztrader.db';
   const raw = url.replace(/^file:/, '');
   if (path.isAbsolute(raw)) return raw;
   // Match Prisma: relative SQLite paths resolve from the prisma/ schema directory.
-  const backendRoot = path.resolve(__dirname, '../..');
-  return path.resolve(backendRoot, 'prisma', raw);
+  return path.resolve(getBackendRoot(), 'prisma', raw);
 }
 
 export function getBackupDirectory(): string {

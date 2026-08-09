@@ -1,7 +1,37 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { FieldLabel, FinancialButton } from '../ui/PageShell';
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react';
+import { FieldLabel, FinancialButton, PageShell, Panel } from '../ui/PageShell';
 import { FormActionFooter } from '../ui/FormActionFooter';
 import { formatLedgerAmount } from '../../lib/format';
+
+/** Centered title band + white invoice/voucher form panel (app theme). */
+export function FormPageShell({
+  title,
+  titleNode,
+  titleRef,
+  children,
+  panelClassName = '',
+}: {
+  title?: string;
+  titleNode?: ReactNode;
+  titleRef?: RefObject<HTMLHeadingElement | null>;
+  children: ReactNode;
+  panelClassName?: string;
+}) {
+  return (
+    <PageShell
+      centerTitle
+      invoiceTitleBand
+      titleRef={titleRef}
+      title={titleNode ?? title}
+    >
+      <Panel
+        className={`inv-form-panel mx-auto w-full overflow-visible bg-white ${panelClassName}`.trim()}
+      >
+        {children}
+      </Panel>
+    </PageShell>
+  );
+}
 
 /** Section block with accent tick header (invoice forms). */
 export function InvoiceFormSection({

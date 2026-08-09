@@ -138,7 +138,7 @@ export function PurchasePartiesPage() {
   return (
     <PartyPage
       title="Purchase Party"
-      subtitle="Ext. Purchase Party ledger accounts — each party gets an account under Ext. Purchase Party"
+      subtitle="Purchase Party ledger accounts — each party gets an account under Purchase Party"
       listFn={api.listPurchaseParties}
       createFn={api.createPurchaseParty}
       removeFn={api.removePurchaseParty}

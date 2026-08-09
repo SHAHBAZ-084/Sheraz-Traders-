@@ -4,6 +4,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { prisma } from './lib/prisma';
 import { initializeDatabase, shutdownDatabase } from './lib/startup';
+import { runAccountingMaintenance } from './modules/accounting/accounting.service';
 import { logger } from './lib/logger';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -15,6 +16,14 @@ async function main() {
   if (!startupStatus.ok) {
     logger.error('Startup aborted — database not ready', startupStatus);
     process.exit(1);
+  }
+
+  try {
+    await runAccountingMaintenance();
+  } catch (err) {
+    logger.warn('Accounting maintenance on startup failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const app = createApp(() => startupStatus);

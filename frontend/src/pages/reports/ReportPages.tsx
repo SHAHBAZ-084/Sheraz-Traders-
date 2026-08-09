@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type Account, type AccountCategory, type Voucher } from '../../lib/api';
-import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
+import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
 import { downloadExcel, downloadPdf } from '../../lib/reportExport';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, FinancialButton, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { BILL_LETTERHEAD } from '../../config/billPrint';
+import { ReportFinancialYearSelect } from '../../components/reports/ReportFinancialYearSelect';
+import { ReportLetterhead } from '../../components/reports/ReportLetterhead';
+import { ReportTable } from '../../components/reports/ReportTable';
+import { useFinancialYear } from '../../contexts/FinancialYearContext';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { VoucherDetailCard } from '../vouchers/VoucherPages';
 
@@ -44,6 +48,7 @@ function voucherToAccount(voucher: Voucher) {
 }
 
 export function AccountReportsPage() {
+  const { selectedYearId } = useFinancialYear();
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categoryId, setCategoryId] = useState('');
@@ -102,6 +107,7 @@ export function AccountReportsPage() {
       const result = await api.getLedger(Number(accountId), {
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
+        ...(selectedYearId != null ? { financialYearId: selectedYearId } : {}),
       });
       setLedger(result);
       setLoaded(true);
@@ -117,7 +123,6 @@ export function AccountReportsPage() {
     if (!ledger) return;
     const accountName = ledger.account.name;
     const period = [fromDate, toDate].filter(Boolean).join(' to ') || 'All dates';
-    const title = `Account Ledger — ${accountName} (${period})`;
     const headers = ['Date', 'Voucher#', 'Ref#', 'Type', 'Description', 'Debit', 'Credit', 'Balance'];
     const rows = ledger.rows.map((r) => [
       formatDate(r.date),
@@ -144,15 +149,19 @@ export function AccountReportsPage() {
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Ledger', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
+      downloadPdf(`${base}.pdf`, 'Account Ledger', headers, rows, {
+        letterhead: BILL_LETTERHEAD,
+        subtitle: `${accountName} · ${period}`,
+      });
     }
   }
 
   return (
     <PageShell title="Account Ledger" subtitle="View ledger entries for any account">
       <Panel className="overflow-visible">
-        <h2 className="mb-4 text-lg font-semibold text-textPrimary">Account Ledger</h2>
-        <div className="mb-4 grid gap-4 overflow-visible sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto] xl:items-end">
+        <h2 className="mb-4 text-lg font-semibold text-textPrimary print:hidden">Account Ledger</h2>
+        <div className="mb-4 grid gap-4 overflow-visible print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] xl:items-end">
+          <ReportFinancialYearSelect />
           <div>
             <FieldLabel>Category</FieldLabel>
             <SearchSelect
@@ -192,60 +201,62 @@ export function AccountReportsPage() {
         ) : ledger && (ledger.rows?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No entries in this period</p>
         ) : ledger ? (
-          <>
-            <div className="mb-4 flex flex-wrap gap-2">
+          <div className="report-print-area">
+            <ReportLetterhead
+              title="Account Ledger"
+              subtitle={`${ledger.account.name} · ${[fromDate, toDate].filter(Boolean).join(' to ') || 'All dates'}`}
+            />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportLedger('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportLedger('excel')}>Download Excel</SecondaryButton>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-left text-sm">
-                <colgroup>
-                  <col className="w-[7.5rem]" />
-                  <col className="w-[5.75rem]" />
-                  <col className="w-[6.5rem]" />
-                  <col className="w-[5.5rem]" />
-                  <col />
-                  <col className="w-[5.5rem]" />
-                  <col className="w-[5.5rem]" />
-                  <col className="w-[6.5rem]" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-border text-textSecondary">
-                    <th className="py-2 pr-2">Date</th>
-                    <th className="py-2 pr-4 text-right">Voucher#</th>
-                    <th className="py-2 pl-3 pr-2">Ref#</th>
-                    <th className="py-2 pr-2">Type</th>
-                    <th className="py-2 pr-2">Description</th>
-                    <th className="py-2 pr-2 text-right">Debit</th>
-                    <th className="py-2 pr-2 text-right">Credit</th>
-                    <th className="py-2 text-right">Balance</th>
+            <ReportTable tableClassName="table-fixed">
+              <colgroup>
+                <col className="w-[7.5rem]" />
+                <col className="w-[5.75rem]" />
+                <col className="w-[6.5rem]" />
+                <col className="w-[5.5rem]" />
+                <col />
+                <col className="w-[5.5rem]" />
+                <col className="w-[5.5rem]" />
+                <col className="w-[6.5rem]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="pr-2">Date</th>
+                  <th className="pr-4 text-right">Voucher#</th>
+                  <th className="pl-3 pr-2">Ref#</th>
+                  <th className="pr-2">Type</th>
+                  <th className="pr-2">Description</th>
+                  <th className="pr-2 text-right">Debit</th>
+                  <th className="pr-2 text-right">Credit</th>
+                  <th className="text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(ledger.rows ?? []).map((r, i) => (
+                  <tr key={i} className={r.isOpeningRow ? 'report-table-row--emphasis' : ''}>
+                    <td className="pr-2 whitespace-nowrap">{formatDate(r.date)}</td>
+                    <td className="pr-4 text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
+                    <td className="pl-3 pr-2 truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
+                    <td className={`pr-2 font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
+                    <td className="pr-2 whitespace-normal break-words text-textSecondary">{r.description}</td>
+                    <td className={`pr-2 text-right tabular-nums ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
+                    <td className={`pr-2 text-right tabular-nums ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
+                    <td className="text-right font-medium tabular-nums text-accent">{formatLedgerBalance(r.balance)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(ledger.rows ?? []).map((r, i) => (
-                    <tr key={i} className={`border-b border-border ${r.isOpeningRow ? 'bg-surface1 font-medium' : ''}`}>
-                      <td className="py-2 pr-2 align-top whitespace-nowrap">{formatDate(r.date)}</td>
-                      <td className="py-2 pr-4 align-top text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
-                      <td className="py-2 pl-3 pr-2 align-top truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
-                      <td className={`py-2 pr-2 align-top font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
-                      <td className="py-2 pr-2 align-top whitespace-normal break-words text-textSecondary">{r.description}</td>
-                      <td className={`py-2 pr-2 align-top text-right tabular-nums ${r.type.toUpperCase().startsWith('PAYMENT') ? 'text-danger font-semibold' : r.type.toUpperCase().startsWith('RECEIPT') ? 'text-success font-semibold' : ''}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
-                      <td className={`py-2 pr-2 align-top text-right tabular-nums ${r.type.toUpperCase().startsWith('PAYMENT') ? 'text-danger font-semibold' : r.type.toUpperCase().startsWith('RECEIPT') ? 'text-success font-semibold' : ''}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
-                      <td className="py-2 align-top text-right font-medium tabular-nums text-accent">{formatLedgerBalance(r.balance)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border font-semibold">
-                    <td className="py-2" colSpan={5}>Total / Closing</td>
-                    <td className="py-2 text-right">{formatLedgerAmount(ledger.summary.totalDebit)}</td>
-                    <td className="py-2 text-right">{formatLedgerAmount(ledger.summary.totalCredit)}</td>
-                    <td className="py-2 text-right text-accent">{formatLedgerBalance(ledger.summary.closingBalance)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={5}>Total / Closing</td>
+                  <td className="text-right">{formatLedgerAmount(ledger.summary.totalDebit)}</td>
+                  <td className="text-right">{formatLedgerAmount(ledger.summary.totalCredit)}</td>
+                  <td className="text-right text-accent">{formatLedgerBalance(ledger.summary.closingBalance)}</td>
+                </tr>
+              </tfoot>
+            </ReportTable>
+          </div>
         ) : null}
       </Panel>
       <PageCloseBar />
@@ -254,11 +265,33 @@ export function AccountReportsPage() {
 }
 
 export function TrialBalancePage() {
+  const { selectedYearId } = useFinancialYear();
   const [data, setData] = useState<Awaited<ReturnType<typeof api.getTrialBalance>> | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.getTrialBalance().then(setData).catch(() => setData(null));
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    api
+      .getTrialBalance(selectedYearId != null ? { financialYearId: selectedYearId } : undefined)
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedYearId]);
+
+  const scopeLabel =
+    data?.scope === 'closing_snapshot' && data.financialYearLabel
+      ? `Closing snapshot — ${data.financialYearLabel}`
+      : 'Live cumulative balances';
 
   function exportTrialBalance(format: 'pdf' | 'excel') {
     if (!data) return;
@@ -269,46 +302,58 @@ export function TrialBalancePage() {
       row.credit.toFixed(2),
     ]);
     rows.push(['Total', data.totalDebit.toFixed(2), data.totalCredit.toFixed(2)]);
-    const title = `Detail Trial Balance${data.isBalanced ? '' : ' (Out of balance)'}`;
+    const balanceNote = data.isBalanced ? 'Balanced' : 'Out of balance';
     if (format === 'excel') {
       downloadExcel('trial-balance.xlsx', 'Trial Balance', headers, rows);
     } else {
-      downloadPdf('trial-balance.pdf', title, headers, rows, { letterhead: BILL_LETTERHEAD });
+      downloadPdf('trial-balance.pdf', 'Detail Trial Balance', headers, rows, {
+        letterhead: BILL_LETTERHEAD,
+        subtitle: `${scopeLabel} · ${balanceNote}`,
+      });
     }
   }
 
   return (
     <PageShell title="Detail Trial Balance" subtitle="Debit and credit totals by account">
       <Panel>
-        {data ? (
-          <>
-            <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 print:hidden">
+          <ReportFinancialYearSelect />
+        </div>
+        {loading ? (
+          <p className="text-sm text-textSecondary">Loading…</p>
+        ) : data ? (
+          <div className="report-print-area">
+            <ReportLetterhead
+              title="Detail Trial Balance"
+              subtitle={`${scopeLabel} · ${data.isBalanced ? 'Balanced' : 'Out of balance'}`}
+            />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportTrialBalance('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportTrialBalance('excel')}>Download Excel</SecondaryButton>
             </div>
-            <table className="w-full text-left text-sm">
+            <ReportTable>
               <thead>
-                <tr className="border-b border-border text-textSecondary">
-                  <th className="py-2">Account</th>
-                  <th className="py-2 text-right">Debit</th>
-                  <th className="py-2 text-right">Credit</th>
+                <tr>
+                  <th>Account</th>
+                  <th className="text-right">Debit</th>
+                  <th className="text-right">Credit</th>
                 </tr>
               </thead>
               <tbody>
                 {data.accounts.map((row, i) => (
-                  <tr key={i} className="border-b border-border">
-                    <td className="py-2">{row.accountName}</td>
-                    <td className="py-2 text-right">{row.debit.toFixed(2)}</td>
-                    <td className="py-2 text-right">{row.credit.toFixed(2)}</td>
+                  <tr key={i}>
+                    <td>{row.accountName}</td>
+                    <td className="text-right">{row.debit.toFixed(2)}</td>
+                    <td className="text-right">{row.credit.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </ReportTable>
             <p className="mt-4 text-sm text-textSecondary">
               Total debit {data.totalDebit.toFixed(2)} · Total credit {data.totalCredit.toFixed(2)} ·{' '}
               {data.isBalanced ? 'Balanced' : 'Out of balance'}
             </p>
-          </>
+          </div>
         ) : (
           <p className="text-sm text-textSecondary">Loading…</p>
         )}
@@ -389,7 +434,7 @@ export function StockReportPage() {
   return (
     <PageShell title="Stock Report" subtitle="Stock movements by product name and date — Sale Invoice / Purchase Invoice breakdown">
       <Panel>
-        <div className="grid gap-3 md:grid-cols-4 md:items-end">
+        <div className="grid gap-3 print:hidden md:grid-cols-4 md:items-end">
           <div>
             <FieldLabel>Store</FieldLabel>
             <SearchSelect
@@ -419,7 +464,14 @@ export function StockReportPage() {
         {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
         {report ? (
-          <div className="mt-6 space-y-4">
+          <div className="report-print-area mt-6 space-y-4">
+            <ReportLetterhead
+              title="Stock Report"
+              subtitle={(() => {
+                const product = products.find((p) => String(p.id) === productId);
+                return product ? `${product.code} — ${product.name}` : undefined;
+              })()}
+            />
             <p className="text-sm text-textSecondary">
               Tracking from {formatDate(report.trackingStartedAt)} onward.
               {!report.historicalBackfill
@@ -431,53 +483,51 @@ export function StockReportPage() {
                 : null}
             </p>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border text-textSecondary">
-                    <th className="py-2 pr-3">Date</th>
-                    <th className="py-2 pr-3">Description</th>
-                    <th className="py-2 pr-3">Status</th>
-                    <th className="py-2 pr-3 text-right">Quantity</th>
-                    <th className="py-2 text-right">Running Balance</th>
+            <ReportTable>
+              <thead>
+                <tr>
+                  <th className="pr-3">Date</th>
+                  <th className="pr-3">Description</th>
+                  <th className="pr-3">Status</th>
+                  <th className="pr-3 text-right">Quantity</th>
+                  <th className="text-right">Running Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(report.rows?.length ?? 0) === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-textSecondary">
+                      No stock movements for this product yet.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(report.rows?.length ?? 0) === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-textSecondary">
-                        No stock movements for this product yet.
+                ) : (
+                  (report.rows ?? []).map((row) => (
+                    <tr key={row.id}>
+                      <td className="pr-3 whitespace-nowrap">{formatDate(row.date)}</td>
+                      <td className="pr-3">{row.description}</td>
+                      <td className={`pr-3 font-medium ${row.status === 'IN' ? 'text-success' : 'text-danger'}`}>
+                        {row.status}
                       </td>
+                      <td className="pr-3 text-right tabular-nums">{row.bags}</td>
+                      <td className="text-right font-medium tabular-nums">{row.runningBalance}</td>
                     </tr>
-                  ) : (
-                    (report.rows ?? []).map((row) => (
-                      <tr key={row.id} className="border-b border-border">
-                        <td className="py-2 pr-3 whitespace-nowrap">{formatDate(row.date)}</td>
-                        <td className="py-2 pr-3">{row.description}</td>
-                        <td className={`py-2 pr-3 font-medium ${row.status === 'IN' ? 'text-success' : 'text-danger'}`}>
-                          {row.status}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{row.bags}</td>
-                        <td className="py-2 text-right font-medium tabular-nums">{row.runningBalance}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border font-semibold">
-                    <td className="py-2 pr-3" colSpan={3}>
-                      Total In {report.totals.totalIn} · Total Out {report.totals.totalOut}
-                      {' · '}Sold (Sale Invoice) {report.totals.saleInvoiceQty}
-                      {' · '}Purchased (Purchase Invoice) {report.totals.purchaseInvoiceQty}
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums" />
-                    <td className="py-2 text-right tabular-nums">
-                      Net {report.totals.netBalance}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="pr-3" colSpan={3}>
+                    Total In {report.totals.totalIn} · Total Out {report.totals.totalOut}
+                    {' · '}Sold (Sale Invoice) {report.totals.saleInvoiceQty}
+                    {' · '}Purchased (Purchase Invoice) {report.totals.purchaseInvoiceQty}
+                  </td>
+                  <td className="pr-3 text-right tabular-nums" />
+                  <td className="text-right tabular-nums">
+                    Net {report.totals.netBalance}
+                  </td>
+                </tr>
+              </tfoot>
+            </ReportTable>
           </div>
         ) : null}
       </Panel>
@@ -499,42 +549,42 @@ function BalanceTable({
   totalCredit: number;
 }) {
   return (
-    <table className="w-full text-left text-sm">
+    <ReportTable>
       <thead>
-        <tr className="border-b border-border text-textSecondary">
-          <th className="py-2 pr-3">Account Code</th>
-          <th className="py-2 pr-3">Account Name</th>
-          <th className="py-2 pr-3 text-right">Debit</th>
-          <th className="py-2 pr-3 text-right">Credit</th>
-          <th className="py-2 text-right">Balance</th>
+        <tr>
+          <th className="pr-3">Account Code</th>
+          <th className="pr-3">Account Name</th>
+          <th className="pr-3 text-right">Debit</th>
+          <th className="pr-3 text-right">Credit</th>
+          <th className="text-right">Balance</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.accountId} className="border-b border-border">
-            <td className="py-2 pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
-            <td className="py-2 pr-3">{row.accountName}</td>
-            <td className="py-2 pr-3 text-right tabular-nums">
+          <tr key={row.accountId}>
+            <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
+            <td className="pr-3">{row.accountName}</td>
+            <td className="pr-3 text-right tabular-nums">
               {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
             </td>
-            <td className="py-2 pr-3 text-right tabular-nums">
+            <td className="pr-3 text-right tabular-nums">
               {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
             </td>
-            <td className="py-2 text-right font-medium tabular-nums text-accent">
+            <td className="text-right font-medium tabular-nums text-accent">
               {formatLedgerBalance(row.balance)}
             </td>
           </tr>
         ))}
       </tbody>
       <tfoot>
-        <tr className="border-t-2 border-border font-semibold">
-          <td className="py-2" colSpan={2}>Total</td>
-          <td className="py-2 text-right tabular-nums">{formatLedgerAmount(totalDebit)}</td>
-          <td className="py-2 text-right tabular-nums">{formatLedgerAmount(totalCredit)}</td>
-          <td className="py-2" />
+        <tr>
+          <td colSpan={2}>Total</td>
+          <td className="text-right tabular-nums">{formatLedgerAmount(totalDebit)}</td>
+          <td className="text-right tabular-nums">{formatLedgerAmount(totalCredit)}</td>
+          <td />
         </tr>
       </tfoot>
-    </table>
+    </ReportTable>
   );
 }
 
@@ -594,13 +644,15 @@ export function AccountBalancePage() {
       formatLedgerAmount(report.totalCredit),
       '',
     ]);
-    const title = `Account Balance as of ${formatDate(datedOn)}`;
     const safeDate = datedOn.replace(/[^\d-]/g, '');
     const base = `account-balance-${safeDate}`;
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Account Balance', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
+      downloadPdf(`${base}.pdf`, 'Account Balance', headers, rows, {
+        letterhead: BILL_LETTERHEAD,
+        subtitle: `As of ${formatDate(datedOn)}`,
+      });
     }
   }
 
@@ -609,7 +661,7 @@ export function AccountBalancePage() {
   return (
     <PageShell title="Account Balance" subtitle="Balances as of a selected date">
       <Panel className="overflow-visible">
-        <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
+        <div className="mb-4 grid gap-4 print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
           <div>
             <FieldLabel>Dated On</FieldLabel>
             <TextInput type="date" value={datedOn} onChange={(e) => setDatedOn(e.target.value)} />
@@ -652,48 +704,56 @@ export function AccountBalancePage() {
         ) : report && (report.accounts?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No accounts match these filters</p>
         ) : report ? (
-          <>
-            <div className="mb-4 flex flex-wrap gap-2">
+          <div className="report-print-area">
+            <ReportLetterhead title="Account Balance" subtitle={`As of ${formatDate(datedOn)}`} />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
             </div>
-            <div className="overflow-x-auto">
-              {showGrouped ? (
-                <div className="space-y-6">
-                  {(report.groups ?? []).map((group) => (
-                    <div key={group.categoryId}>
-                      <div className="mb-2 border-b border-border pb-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
-                          {group.categoryName}
-                        </p>
-                      </div>
-                      <BalanceTable
-                        rows={group.accounts}
-                        totalDebit={group.accounts.reduce((s, r) => s + r.debit, 0)}
-                        totalCredit={group.accounts.reduce((s, r) => s + r.credit, 0)}
-                      />
+            {showGrouped ? (
+              <div className="space-y-6">
+                {(report.groups ?? []).map((group) => (
+                  <div key={group.categoryId}>
+                    <div className="mb-2 border-b border-border pb-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
+                        {group.categoryName}
+                      </p>
                     </div>
-                  ))}
-                  <table className="w-full text-left text-sm">
-                    <tfoot>
-                      <tr className="border-t-2 border-border font-semibold">
-                        <td className="py-2" colSpan={2}>Grand Total</td>
-                        <td className="py-2 text-right tabular-nums">{formatLedgerAmount(report.totalDebit)}</td>
-                        <td className="py-2 text-right tabular-nums">{formatLedgerAmount(report.totalCredit)}</td>
-                        <td className="py-2" />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              ) : (
-                <BalanceTable
-                  rows={report.accounts}
-                  totalDebit={report.totalDebit}
-                  totalCredit={report.totalCredit}
-                />
-              )}
-            </div>
-          </>
+                    <BalanceTable
+                      rows={group.accounts}
+                      totalDebit={group.accounts.reduce((s, r) => s + r.debit, 0)}
+                      totalCredit={group.accounts.reduce((s, r) => s + r.credit, 0)}
+                    />
+                  </div>
+                ))}
+                <ReportTable>
+                  <thead>
+                    <tr>
+                      <th className="pr-3">Account Code</th>
+                      <th className="pr-3">Account Name</th>
+                      <th className="pr-3 text-right">Debit</th>
+                      <th className="pr-3 text-right">Credit</th>
+                      <th className="text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}>Grand Total</td>
+                      <td className="text-right tabular-nums">{formatLedgerAmount(report.totalDebit)}</td>
+                      <td className="text-right tabular-nums">{formatLedgerAmount(report.totalCredit)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </ReportTable>
+              </div>
+            ) : (
+              <BalanceTable
+                rows={report.accounts}
+                totalDebit={report.totalDebit}
+                totalCredit={report.totalCredit}
+              />
+            )}
+          </div>
         ) : null}
       </Panel>
       <PageCloseBar />
@@ -702,6 +762,7 @@ export function AccountBalancePage() {
 }
 
 export function VouchersReportPage() {
+  const { selectedYearId, isReadOnly } = useFinancialYear();
   const [fromDate, setFromDate] = useState(monthStartInputValue);
   const [toDate, setToDate] = useState(monthEndInputValue);
   const [voucherType, setVoucherType] = useState<VoucherTypeFilter>('all');
@@ -743,6 +804,7 @@ export function VouchersReportPage() {
         fromDate,
         toDate,
         type: voucherType === 'all' ? undefined : voucherType,
+        ...(selectedYearId != null ? { financialYearId: selectedYearId } : {}),
         limit: 500,
         offset: 0,
       });
@@ -800,19 +862,22 @@ export function VouchersReportPage() {
       v.status === 'CANCELLED' ? 'Cancelled' : 'Active',
     ]);
     rows.push(['Total', '', '', '', '', formatLedgerAmount(totals.totalAmount), '', '']);
-    const title = `Vouchers ${fromDate} to ${toDate}`;
     const base = `vouchers-${fromDate}-to-${toDate}`;
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Vouchers', headers, rows);
     } else {
-      downloadPdf(`${base}.pdf`, title, headers, rows, { letterhead: BILL_LETTERHEAD });
+      downloadPdf(`${base}.pdf`, 'Vouchers Report', headers, rows, {
+        letterhead: BILL_LETTERHEAD,
+        subtitle: `${fromDate} to ${toDate}`,
+      });
     }
   }
 
   return (
     <PageShell title="Vouchers Report" subtitle="Filter and review posted vouchers">
       <Panel>
-        <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+        <div className="mb-4 grid gap-4 print:hidden lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
+          <ReportFinancialYearSelect />
           <div>
             <FieldLabel>From Date</FieldLabel>
             <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
@@ -829,8 +894,8 @@ export function VouchersReportPage() {
               onChange={setVoucherType}
               options={[
                 { value: 'all', label: 'All' },
-                { value: 'PAYMENT', label: 'Payment' },
                 { value: 'RECEIPT', label: 'Receipt' },
+                { value: 'PAYMENT', label: 'Payment' },
                 { value: 'JOURNAL', label: 'Journal' },
                 { value: 'KACHI', label: 'Kachi' },
               ]}
@@ -854,90 +919,92 @@ export function VouchersReportPage() {
         ) : (vouchers?.length ?? 0) === 0 ? (
           <p className="text-sm text-textSecondary">No vouchers in this period</p>
         ) : (
-          <>
-            <div className="mb-4 flex flex-wrap gap-2">
+          <div className="report-print-area">
+            <ReportLetterhead title="Vouchers Report" subtitle={`${fromDate} to ${toDate}`} />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border text-textSecondary">
-                    <th className="py-2 pr-2 text-right">Voucher #</th>
-                    <th className="py-2 pr-2">Date</th>
-                    <th className="py-2 pr-2">Type</th>
-                    <th className="py-2 pr-2">From/Debit Account</th>
-                    <th className="py-2 pr-2">To/Credit Account</th>
-                    <th className="py-2 pr-2 text-right">Amount</th>
-                    <th className="py-2 pr-2">Ref#</th>
-                    <th className="py-2">Status</th>
+            <ReportTable minWidth="960px">
+              <thead>
+                <tr>
+                  <th className="pr-2 text-right">Voucher #</th>
+                  <th className="pr-2">Date</th>
+                  <th className="pr-2">Type</th>
+                  <th className="pr-2">From/Debit Account</th>
+                  <th className="pr-2">To/Credit Account</th>
+                  <th className="pr-2 text-right">Amount</th>
+                  <th className="pr-2">Ref#</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(vouchers ?? []).map((v) => (
+                  <tr
+                    key={v.id}
+                    onClick={() => setSelected(v)}
+                    className={`report-table-row--interactive ${
+                      selected?.id === v.id ? 'report-table-row--selected' : ''
+                    }`}
+                  >
+                    <td className="pr-2 text-right font-mono text-xs font-semibold text-financial">
+                      {formatVoucherNumber(v.number, v.type)}
+                    </td>
+                    <td className="pr-2 whitespace-nowrap">{formatDate(v.date)}</td>
+                    <td className={`pr-2 font-medium ${voucherTypeColorClass(v.type)}`}>
+                      {formatVoucherTypeLabel(v.type)}
+                    </td>
+                    <td className="pr-2 text-textSecondary">{voucherFromAccount(v)}</td>
+                    <td className="pr-2 text-textSecondary">{voucherToAccount(v)}</td>
+                    <td className="pr-2 text-right tabular-nums">{formatLedgerAmount(v.amount)}</td>
+                    <td className="pr-2 text-textSecondary">{v.reference ?? ''}</td>
+                    <td>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                          v.status === 'CANCELLED'
+                            ? 'bg-bgDanger text-danger'
+                            : 'bg-bgSuccess text-success'
+                        }`}
+                      >
+                        {v.status === 'CANCELLED' ? 'Cancelled' : 'Active'}
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(vouchers ?? []).map((v) => (
-                    <tr
-                      key={v.id}
-                      onClick={() => setSelected(v)}
-                      className={`cursor-pointer border-b border-border transition hover:bg-surface1 ${
-                        selected?.id === v.id ? 'bg-surface1' : ''
-                      }`}
-                    >
-                      <td className="py-2 pr-2 text-right font-mono text-xs font-semibold text-financial">
-                        {formatVoucherNumber(v.number, v.type)}
-                      </td>
-                      <td className="py-2 pr-2 whitespace-nowrap">{formatDate(v.date)}</td>
-                      <td className={`py-2 pr-2 font-medium ${voucherTypeColorClass(v.type)}`}>
-                        {formatVoucherTypeLabel(v.type)}
-                      </td>
-                      <td className="py-2 pr-2 text-textSecondary">{voucherFromAccount(v)}</td>
-                      <td className="py-2 pr-2 text-textSecondary">{voucherToAccount(v)}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{formatLedgerAmount(v.amount)}</td>
-                      <td className="py-2 pr-2 text-textSecondary">{v.reference ?? ''}</td>
-                      <td className="py-2">
-                        <span
-                          className={`rounded-md px-2 py-0.5 text-xs font-medium ${
-                            v.status === 'CANCELLED'
-                              ? 'bg-bgDanger text-danger'
-                              : 'bg-bgSuccess text-success'
-                          }`}
-                        >
-                          {v.status === 'CANCELLED' ? 'Cancelled' : 'Active'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border font-semibold">
-                    <td className="py-2" colSpan={5}>Total</td>
-                    <td className="py-2 text-right tabular-nums">{formatLedgerAmount(totals.totalAmount)}</td>
-                    <td className="py-2" colSpan={2} />
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={5}>Total</td>
+                  <td className="text-right tabular-nums">{formatLedgerAmount(totals.totalAmount)}</td>
+                  <td colSpan={2} />
+                </tr>
+                {voucherType === 'all' ? (
+                  <tr className="text-sm text-textSecondary">
+                    <td colSpan={8}>
+                      Payments: {formatLedgerAmount(totals.byType.PAYMENT)} · Receipts:{' '}
+                      {formatLedgerAmount(totals.byType.RECEIPT)} · Journal:{' '}
+                      {formatLedgerAmount(totals.byType.JOURNAL)} · Kachi:{' '}
+                      {formatLedgerAmount(totals.byType.KACHI)}
+                    </td>
                   </tr>
-                  {voucherType === 'all' ? (
-                    <tr className="border-t border-border text-sm text-textSecondary">
-                      <td className="py-2" colSpan={8}>
-                        Payments: {formatLedgerAmount(totals.byType.PAYMENT)} · Receipts:{' '}
-                        {formatLedgerAmount(totals.byType.RECEIPT)} · Journal:{' '}
-                        {formatLedgerAmount(totals.byType.JOURNAL)} · Kachi:{' '}
-                        {formatLedgerAmount(totals.byType.KACHI)}
-                      </td>
-                    </tr>
-                  ) : null}
-                </tfoot>
-              </table>
-            </div>
-          </>
+                ) : null}
+              </tfoot>
+            </ReportTable>
+          </div>
         )}
       </Panel>
 
       {selected ? (
-        <VoucherDetailCard
-          voucher={selected}
-          onCancel={handleCancel}
-          onUpdateAmount={handleUpdateAmount}
-          cancelling={cancelling}
-          updating={updating}
-        />
+        <div className="print:hidden">
+          <VoucherDetailCard
+            voucher={selected}
+            onCancel={handleCancel}
+            onUpdateAmount={handleUpdateAmount}
+            cancelling={cancelling}
+            updating={updating}
+            readOnly={isReadOnly}
+          />
+        </div>
       ) : null}
       <PageCloseBar />
     </PageShell>

@@ -23,6 +23,8 @@
   /* Teal-green success — distinct from forest primary */
   --text-success: #0D7377;
   --text-danger: #B33A2B;
+  --ledger-debit: #FF0000;
+  --ledger-credit: #228B22;
   --bg-success: #E6F5F3;
   --bg-danger: #FBF0EE;
 

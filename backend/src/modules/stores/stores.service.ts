@@ -1,19 +1,41 @@
 import { InvoiceStatus, InvoiceType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
+import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { cancelInvoiceInTx } from '../invoices/invoices.service';
 
-export async function listStores() {
-  return prisma.store.findMany({
-    orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
-  });
+export async function listStores(pagination?: { limit: number; offset: number }) {
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+
+  const [items, total] = await Promise.all([
+    prisma.store.findMany({
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      take: limit,
+      skip: offset,
+    }),
+    prisma.store.count(),
+  ]);
+
+  return { items, total, limit, offset } satisfies PaginatedResult<(typeof items)[number]>;
 }
 
-export async function listActiveStores() {
-  return prisma.store.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-  });
+export async function listActiveStores(pagination?: { limit: number; offset: number }) {
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+  const where = { isActive: true };
+
+  const [items, total] = await Promise.all([
+    prisma.store.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.store.count({ where }),
+  ]);
+
+  return { items, total, limit, offset } satisfies PaginatedResult<(typeof items)[number]>;
 }
 
 export async function createStore(nameInput: string) {

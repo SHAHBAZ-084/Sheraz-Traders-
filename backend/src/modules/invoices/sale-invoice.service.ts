@@ -8,15 +8,18 @@ import {
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import {
+  assertPartyAccount,
+  assertActiveFinancialYear,
   createMultiLegVoucherInTx,
   getActiveFinancialYearId,
-  KACHI_MAAL_CATEGORY_NAMES,
+  WRITE_TRANSACTION_OPTIONS,
   type VoucherLeg,
 } from '../accounting/accounting.service';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { getCurrentStockBalance, postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo } from './invoice-voucher-descriptions';
+import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
   computeSaleInvoiceTotals,
   roundMoney,
@@ -25,13 +28,11 @@ import {
 
 const TYPE_PREFIX = 'SI';
 
-async function nextReference(tx: Prisma.TransactionClient) {
-  const count = await tx.invoice.count({ where: { type: InvoiceType.SALE_INVOICE } });
-  return `${TYPE_PREFIX}-${String(count + 1).padStart(5, '0')}`;
-}
-
 export async function getNextSaleInvoiceReference() {
-  return prisma.$transaction(async (tx) => nextReference(tx));
+  return prisma.$transaction(async (tx) => {
+    const financialYearId = await getActiveFinancialYearId(tx);
+    return nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
+  });
 }
 
 export type CreateSaleInvoiceInput = {
@@ -54,15 +55,7 @@ type ResolvedSaleLine = {
 };
 
 async function assertSalePartyAccount(tx: Prisma.TransactionClient, accountId: number) {
-  const account = await tx.account.findFirst({
-    where: { id: accountId, isActive: true },
-    include: { category: true },
-  });
-  if (!account) throw new AppError(400, 'Customer account not found');
-  if (account.category.name !== KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY) {
-    throw new AppError(400, 'Customer must be a Sale Party account');
-  }
-  return account;
+  return assertPartyAccount(tx, accountId, 'Customer');
 }
 
 function buildSaleInvoiceLegs(
@@ -207,9 +200,9 @@ export async function createSaleInvoice(
 
     buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
-    const reference = await nextReference(tx);
-    const invoiceDate = new Date(data.invoiceDate);
     const financialYearId = await getActiveFinancialYearId(tx);
+    const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
+    const invoiceDate = new Date(data.invoiceDate);
 
     const invoice = await tx.invoice.create({
       data: {
@@ -255,7 +248,7 @@ export async function createSaleInvoice(
     }
 
     return invoice;
-  });
+  }, WRITE_TRANSACTION_OPTIONS);
 }
 
 export async function approveSaleInvoice(invoiceId: number) {
@@ -269,6 +262,7 @@ export async function approveSaleInvoice(invoiceId: number) {
       include: { items: { include: { product: true } } },
     });
     if (!invoice) throw new AppError(404, 'Pending sale invoice not found');
+    await assertActiveFinancialYear(tx, invoice.financialYearId);
     if (invoice.storeId == null) throw new AppError(400, 'Sale invoice missing store');
     if (invoice.debitAccountId == null) throw new AppError(400, 'Sale invoice missing customer');
 
@@ -311,7 +305,7 @@ export async function approveSaleInvoice(invoiceId: number) {
       data: { status: InvoiceStatus.POSTED },
       include: { items: { include: { product: true } } },
     });
-  });
+  }, WRITE_TRANSACTION_OPTIONS);
 }
 
 export function previewSaleInvoiceTotals(lines: SaleInvoiceLineInput[]) {

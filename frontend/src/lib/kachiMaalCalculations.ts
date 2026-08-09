@@ -1,10 +1,16 @@
 export const DHARAN_KG = 5;
 export const MAUND_KG = 40;
 
-export const PURCHASE_PARTY_CATEGORIES = ['Purchase Party'] as const;
-export const DEBIT_ACCOUNT_CATEGORIES = [
+export const PURCHASE_PARTY_CATEGORIES = [
   'Purchase Party',
+  'Int. Purchase Party',
+  'Ext. Purchase Party',
+] as const;
+export const DEBIT_ACCOUNT_CATEGORIES = [
   'Sale Party',
+  'Purchase Party',
+  'Int. Purchase Party',
+  'Ext. Purchase Party',
 ] as const;
 
 export type KachiMaalPreferenceRates = {

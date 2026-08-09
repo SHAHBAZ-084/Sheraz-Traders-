@@ -14,6 +14,20 @@ function findMigrationsDirectory(): string | null {
     path.resolve(process.cwd(), 'prisma/migrations'),
   ];
 
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require('electron') as typeof import('electron') | undefined;
+    const appPath = electron?.app?.getAppPath?.();
+    if (appPath) {
+      candidates.unshift(
+        path.join(appPath, 'backend/prisma/migrations'),
+        path.join(appPath, 'prisma/migrations'),
+      );
+    }
+  } catch {
+    // not in Electron
+  }
+
   for (const candidate of candidates) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
       return candidate;

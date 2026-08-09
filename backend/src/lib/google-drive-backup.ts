@@ -171,15 +171,35 @@ export function isInvalidGrantError(err: unknown): boolean {
   return false;
 }
 
-/** Perform loopback consent flow */
+/** Perform loopback consent flow (127.0.0.1 — valid for installed desktop apps, not localhost dev server). */
 export async function connectGoogleDrive(): Promise<{ success: boolean; message: string }> {
+  const isOnline = await checkInternetConnection();
+  if (!isOnline) {
+    throw new Error('No internet connection. Connect to the internet and try again.');
+  }
+
   return new Promise((resolve, reject) => {
+    const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+    let settled = false;
+
+    const finish = (handler: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      handler();
+    };
+
     const server = http.createServer();
+    const timeoutHandle = setTimeout(() => {
+      server.close();
+      finish(() => reject(new Error('Google sign-in timed out. Please try again.')));
+    }, OAUTH_TIMEOUT_MS);
+
     server.listen(0, '127.0.0.1', async () => {
       const address = server.address();
       if (!address || typeof address === 'string') {
         server.close();
-        reject(new Error('Failed to obtain loopback address for OAuth authentication'));
+        finish(() => reject(new Error('Failed to obtain loopback address for OAuth authentication')));
         return;
       }
       const port = address.port;
@@ -196,6 +216,15 @@ export async function connectGoogleDrive(): Promise<{ success: boolean; message:
         try {
           const reqUrl = new URL(req.url ?? '', `http://127.0.0.1:${port}`);
           if (reqUrl.pathname === '/oauth2callback') {
+            const error = reqUrl.searchParams.get('error');
+            if (error) {
+              res.writeHead(400, { 'Content-Type': 'text/plain' });
+              res.end('Authentication was cancelled or denied');
+              server.close();
+              finish(() => reject(new Error('Google sign-in was cancelled or denied')));
+              return;
+            }
+
             const code = reqUrl.searchParams.get('code');
             if (code) {
               res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -207,23 +236,33 @@ export async function connectGoogleDrive(): Promise<{ success: boolean; message:
               `);
               server.close();
 
-              const { tokens } = await oauth2Client.getToken(code);
-              if (tokens.refresh_token) {
-                saveRefreshToken(tokens.refresh_token);
-                saveState({ connected: true, needsReconnect: false, lastError: null });
-                resolve({ success: true, message: 'Google Drive connected successfully' });
-              } else {
-                reject(new Error('No refresh token received from Google OAuth'));
+              try {
+                const { tokens } = await oauth2Client.getToken(code);
+                if (tokens.refresh_token) {
+                  saveRefreshToken(tokens.refresh_token);
+                  saveState({ connected: true, needsReconnect: false, lastError: null });
+                  finish(() => resolve({ success: true, message: 'Google Drive connected successfully' }));
+                } else {
+                  finish(() => reject(new Error('No refresh token received from Google OAuth')));
+                }
+              } catch (tokenErr) {
+                finish(() => reject(tokenErr instanceof Error ? tokenErr : new Error(String(tokenErr))));
               }
             } else {
               res.writeHead(400, { 'Content-Type': 'text/plain' });
               res.end('Authentication code missing');
+              server.close();
+              finish(() => reject(new Error('Authentication code missing')));
             }
           }
         } catch (err) {
           server.close();
-          reject(err);
+          finish(() => reject(err instanceof Error ? err : new Error(String(err))));
         }
+      });
+
+      server.on('error', (err) => {
+        finish(() => reject(err));
       });
 
       // Open URL in external browser
@@ -248,8 +287,17 @@ export async function connectGoogleDrive(): Promise<{ success: boolean; message:
           exec(startCmd);
         }
       } catch (err) {
-        logger.warn('Could not auto-open browser for Google Drive OAuth, manual URL printed', { authUrl, err: String(err) });
+        server.close();
+        finish(() =>
+          reject(
+            new Error('Could not open your browser for Google sign-in. Check your default browser settings.'),
+          ),
+        );
       }
+    });
+
+    server.on('error', (err) => {
+      finish(() => reject(err));
     });
   });
 }
@@ -310,20 +358,20 @@ async function getOrCreateBackupFolder(drive: ReturnType<typeof google.drive>): 
   return createResponse.data.id!;
 }
 
-export async function runAutoBackupCycle(): Promise<boolean> {
+export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: string }> {
   const state = loadState();
   if (!isGoogleDriveConnected()) {
-    return false;
+    return { ok: false, error: 'Google Drive is not connected' };
   }
   if (state.needsReconnect) {
     logger.info('Auto-backup skipped — Google Drive needs reconnect (invalid_grant)');
-    return false;
+    return { ok: false, error: 'Google Drive needs reconnect' };
   }
 
   const isOnline = await checkInternetConnection();
   if (!isOnline) {
     logger.info('Auto-backup delayed — no internet connection available');
-    return false;
+    return { ok: false, error: 'No internet connection' };
   }
 
   const backupDir = getBackupDirectory();
@@ -338,7 +386,7 @@ export async function runAutoBackupCycle(): Promise<boolean> {
     const dbPath = getDatabaseFilePath();
     if (!fs.existsSync(dbPath)) {
       logger.info('Auto-backup skipped — database file does not exist yet');
-      return false;
+      return { ok: false, error: 'Database file not found' };
     }
 
     try {
@@ -377,17 +425,22 @@ export async function runAutoBackupCycle(): Promise<boolean> {
       needsReconnect: false,
     });
     logger.info('Database backed up to Google Drive successfully', { fileName, folder: BACKUP_FOLDER_NAME });
-    return true;
+    return { ok: true };
   } catch (err) {
     const isRevoked = isInvalidGrantError(err);
+    const message = isRevoked
+      ? 'Google Drive access token expired or revoked. Please reconnect.'
+      : err instanceof Error
+        ? err.message
+        : String(err);
     if (isRevoked) {
-      saveState({ needsReconnect: true, lastError: 'Google Drive access token expired or revoked. Please reconnect.' });
+      saveState({ needsReconnect: true, lastError: message });
       logger.error('Google Drive refresh token invalid_grant — setting needsReconnect', { err: String(err) });
     } else {
-      saveState({ lastError: String(err) });
+      saveState({ lastError: message });
       logger.error('Google Drive backup upload failed', { err: String(err) });
     }
-    return false;
+    return { ok: false, error: message };
   }
 }
 

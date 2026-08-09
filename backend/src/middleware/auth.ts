@@ -50,5 +50,5 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   next();
 }
 
-/** USER role is blocked from reports; same gate as admin for now. */
+/** USER role is blocked from report mutations; read endpoints use requireAuth only. */
 export const requireReportsAccess = requireAdmin;

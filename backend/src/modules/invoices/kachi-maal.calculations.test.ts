@@ -15,7 +15,7 @@ const prefs = {
 
 describe('Kachi Maal calculations', () => {
   it('computes row weight and amount', () => {
-    // 10 bori × 40 kg + 2 dharan × 5 kg + 10 loose = 420 kg
+    // 10 bags × 40 kg + 2 dharan × 5 kg + 10 loose = 420 kg
     // rate 4000/maund → 100/kg → amount 42000
     const row = computeKachiMaalRow(
       {

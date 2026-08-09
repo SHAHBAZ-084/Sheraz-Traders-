@@ -23,7 +23,6 @@ const VOUCHER_TYPE_LABELS: Record<string, string> = {
   KACHI: 'Kachi',
   SALE_INVOICE: 'Sale Invoice',
   PURCHASE_INVOICE: 'Purchase Invoice',
-  BARDANA: 'Bardana',
 };
 
 export function formatVoucherTypeLabel(type: string) {
@@ -41,6 +40,15 @@ export function formatVoucherNumber(number: number | string | null | undefined, 
 /** Voucher register number only — type is shown in its own column/label. */
 export function formatVoucherLabel(type: string, number: number | string) {
   return formatVoucherNumber(number, type);
+}
+
+/** Ledger view: debit column always red, credit column always green (independent of voucher type). */
+export function ledgerDebitAmountClass(hasAmount: boolean) {
+  return hasAmount ? 'text-ledgerDebit font-semibold' : '';
+}
+
+export function ledgerCreditAmountClass(hasAmount: boolean) {
+  return hasAmount ? 'text-ledgerCredit font-semibold' : '';
 }
 
 export function voucherTypeColorClass(type: string) {

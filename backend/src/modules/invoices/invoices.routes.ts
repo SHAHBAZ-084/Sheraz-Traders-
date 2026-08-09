@@ -31,9 +31,20 @@ invoicesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const type = req.query.type as InvoiceType | undefined;
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const financialYearId =
+      financialYearIdParam && financialYearIdParam.trim() !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : undefined;
     const pagination = parsePagination(req.query);
     res.json(
-      await invoicesService.listInvoices(type ? { type } : undefined, pagination),
+      await invoicesService.listInvoices(
+        {
+          ...(type ? { type } : {}),
+          ...(Number.isFinite(financialYearId) ? { financialYearId } : {}),
+        },
+        pagination,
+      ),
     );
   }),
 );

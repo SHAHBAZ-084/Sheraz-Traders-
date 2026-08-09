@@ -10,7 +10,7 @@ import {
 } from './accounting.service';
 
 async function accountByName(name: string) {
-  const accounts = await listAccounts();
+  const { items: accounts } = await listAccounts();
   const account = accounts.find((a) => a.name === name);
   if (!account?.ledger) throw new Error(`Account not found: ${name}`);
   return account;
@@ -48,7 +48,7 @@ describe('per-type voucher numbering', () => {
 
     cashId = (await accountByName('Cash in Hand')).id;
 
-    const accounts = await listAccounts();
+    const { items: accounts } = await listAccounts();
     let expense = accounts.find((a) => a.name.toLowerCase().includes('electricity'));
     if (!expense) {
       const expenseCat = await prisma.accountCategory.findFirst({ where: { name: 'Expenses' } });

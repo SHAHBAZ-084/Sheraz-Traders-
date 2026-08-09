@@ -1,5 +1,6 @@
 import { AccountType, InvoiceStatus, InvoiceType, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { AppError } from '../../utils/helpers';
 import { getCurrentStockBalance } from '../stock/stock.service';
 import {
@@ -10,11 +11,23 @@ import {
 
 export { MAAL_KHATA_CATEGORY_NAME, maalKhataAccountName } from './maal-khata';
 
-export async function listProductCategories() {
-  return prisma.productCategory.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-  });
+export async function listProductCategories(pagination?: { limit: number; offset: number }) {
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+  const where = { isActive: true };
+
+  const [items, total] = await Promise.all([
+    prisma.productCategory.findMany({
+      where,
+      select: { id: true, name: true, isActive: true, createdAt: true },
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.productCategory.count({ where }),
+  ]);
+
+  return { items, total, limit, offset };
 }
 
 export async function createProductCategory(nameInput: string) {
@@ -45,15 +58,89 @@ export async function createProductCategory(nameInput: string) {
   }
 }
 
-export async function listProducts() {
-  return prisma.product.findMany({
-    where: { isActive: true },
-    include: {
-      account: { include: { ledger: true } },
-      category: true,
+export async function listProducts(
+  options?: { includeLedger?: boolean },
+  pagination?: { limit: number; offset: number },
+): Promise<PaginatedResult<Awaited<ReturnType<typeof mapListedProduct>>>> {
+  const includeLedger = options?.includeLedger !== false;
+  const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
+  const offset = pagination?.offset ?? 0;
+  const where = { isActive: true };
+
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        unit: true,
+        accountId: true,
+        categoryId: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        category: { select: { id: true, name: true, isActive: true } },
+        account: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            type: true,
+            categoryId: true,
+            isActive: true,
+            ...(includeLedger
+              ? { ledger: { select: { id: true, accountId: true, balance: true, updatedAt: true } } }
+              : {}),
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return {
+    items: products.map(mapListedProduct),
+    total,
+    limit,
+    offset,
+  };
+}
+
+function mapListedProduct(product: {
+  id: number;
+  name: string;
+  code: string;
+  unit: string | null;
+  accountId: number;
+  categoryId: number | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  category: { id: number; name: string; isActive: boolean } | null;
+  account: {
+    id: number;
+    name: string;
+    code: string;
+    type: AccountType;
+    categoryId: number;
+    isActive: boolean;
+    ledger?: { id: number; accountId: number; balance: unknown; updatedAt: Date } | null;
+  };
+}) {
+  const { account, ...rest } = product;
+  return {
+    ...rest,
+    account: {
+      ...account,
+      ledger: account.ledger
+        ? { ...account.ledger, balance: Number(account.ledger.balance) }
+        : null,
     },
-    orderBy: { name: 'asc' },
-  });
+  };
 }
 
 export async function createProduct(data: {

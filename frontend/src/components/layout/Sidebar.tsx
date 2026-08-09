@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, LayoutDashboard, Users } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { SIDEBAR_NAV, type NavItem } from '../../config/navigation';
 import type { LucideIcon } from 'lucide-react';
 
@@ -110,11 +109,9 @@ function SidebarSectionBlock({
 
 export function Sidebar() {
   const location = useLocation();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
   const dashboardActive = location.pathname === '/';
 
-  const sections = SIDEBAR_NAV.filter((section) => isAdmin || section.id !== 'reports');
+  const sections = SIDEBAR_NAV;
 
   return (
     <aside className="app-sidebar">

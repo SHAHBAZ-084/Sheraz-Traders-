@@ -3,14 +3,22 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
-
+import { FormActionFooter } from '../../components/ui/FormActionFooter';
+import {
+  FormPageShell,
+  InvoiceAddRowAction,
+  InvoiceField,
+  InvoiceFieldRow,
+  InvoiceFormSection,
+  InvoiceHeaderRow,
+} from '../../components/invoices/InvoiceFormLayout';
+import { InvoicePreviewGridShell } from '../invoices/InvoicePreviewGrid';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import type { MinimizedFormKind } from '../../stores/minimizedFormsStore';
-
-import { FormActionFooter } from '../../components/ui/FormActionFooter';
+import { useOpenFormsStore } from '../../stores/openFormsStore';
 
 type VoucherDraft = {
   debitCategoryId: string;
@@ -26,15 +34,15 @@ type VoucherDraft = {
 };
 
 const VOUCHER_TYPES: Record<string, string> = {
+  receipt: 'RECEIPT',
   payment: 'PAYMENT',
   journal: 'JOURNAL',
-  receipt: 'RECEIPT',
 };
 
 const VOUCHER_PAGE_TITLES: Record<string, string> = {
+  receipt: 'Receipt Voucher',
   payment: 'Payment Voucher',
   journal: 'Journal Voucher',
-  receipt: 'Receipt Voucher',
 };
 
 function todayInputValue() {
@@ -58,8 +66,6 @@ function AccountSideFields({
   categoryInputRef,
   accountInputRef,
   accountNextFocusRef,
-  panelClassName = '',
-  labelClassName = 'text-textPrimary',
 }: {
   label: string;
   categoryId: string;
@@ -73,18 +79,15 @@ function AccountSideFields({
   categoryInputRef: RefObject<HTMLInputElement | null>;
   accountInputRef: RefObject<HTMLInputElement | null>;
   accountNextFocusRef?: RefObject<HTMLElement | null>;
-  panelClassName?: string;
-  labelClassName?: string;
 }) {
   const safeAccs = Array.isArray(accounts) ? accounts : [];
   const filteredAccounts = safeAccs.filter((a) => categoryId && String(a.categoryId) === categoryId);
   const selected = safeAccs.find((a) => String(a.id) === accountId);
 
   return (
-    <div className={`min-w-0 overflow-visible ${panelClassName}`.trim()}>
-      <p className={`mb-3 text-xs font-bold uppercase tracking-wider ${labelClassName}`}>{label}</p>
+    <InvoiceFormSection label={label}>
       <div className="space-y-3">
-        <div>
+        <InvoiceField>
           <FieldLabel>Category</FieldLabel>
           <SearchSelect
             inputRef={categoryInputRef}
@@ -98,8 +101,8 @@ function AccountSideFields({
               requestAnimationFrame(() => accountInputRef.current?.focus());
             }}
           />
-        </div>
-        <div>
+        </InvoiceField>
+        <InvoiceField>
           <FieldLabel>Account</FieldLabel>
           <SearchSelect
             inputRef={accountInputRef}
@@ -111,14 +114,14 @@ function AccountSideFields({
             disabled={!categoryId}
             nextFocusRef={accountNextFocusRef}
           />
-        </div>
+        </InvoiceField>
         {selected?.ledger ? (
           <p className="text-xs text-textSecondary">
             Current balance: {formatLedgerBalance(selected.ledger.balance)}
           </p>
         ) : null}
       </div>
-    </div>
+    </InvoiceFormSection>
   );
 }
 
@@ -157,6 +160,9 @@ type QueuedVoucherItem = {
 
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const location = useLocation();
+  const registerOpenForm = useOpenFormsStore((s) => s.registerOpenForm);
+
+  useEffect(() => registerOpenForm(), [registerOpenForm]);
   // Captured ONCE at first render — see matching comment in
   // frontend/src/pages/invoices/InvoiceFormPage.tsx for why this can't be
   // derived from location.state on every render. useMinimizableForm clears
@@ -168,10 +174,287 @@ export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) 
     () => (location.state as { minimizedFormId?: string } | null)?.minimizedFormId,
   );
   const formKey = stableRestoreId ? `restore-${stableRestoreId}` : `${kind}-${location.key}`;
-  return <VoucherFormContent key={formKey} kind={kind} />;
+  if (kind === 'journal') {
+    return <JournalVoucherFormContent key={formKey} />;
+  }
+  return <BatchVoucherFormContent key={formKey} kind={kind as 'payment' | 'receipt'} />;
 }
 
-function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
+function JournalVoucherFormContent() {
+  const navigate = useNavigate();
+  const { restoredState, minimize } = useMinimizableForm<VoucherDraft>('journal');
+  const keepRestoredPredictedNumber = useRef(restoredState?.predictedNumber != null);
+  const trapRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const debitCategoryRef = useRef<HTMLInputElement>(null);
+  const debitAccountRef = useRef<HTMLInputElement>(null);
+  const creditCategoryRef = useRef<HTMLInputElement>(null);
+  const creditAccountRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const referenceRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLInputElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+
+  useFocusTrap(trapRef, {
+    initialFocusRef: dateRef,
+    escapeFocusRef: titleRef,
+  });
+
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<AccountCategory[]>([]);
+  const [debitCategoryId, setDebitCategoryId] = useState(restoredState?.debitCategoryId ?? '');
+  const [creditCategoryId, setCreditCategoryId] = useState(restoredState?.creditCategoryId ?? '');
+  const [debitAccountId, setDebitAccountId] = useState(restoredState?.debitAccountId ?? '');
+  const [creditAccountId, setCreditAccountId] = useState(restoredState?.creditAccountId ?? '');
+  const [amount, setAmount] = useState(restoredState?.amount ?? '');
+  const [voucherDate, setVoucherDate] = useState(restoredState?.voucherDate ?? todayInputValue);
+  const [predictedNumber, setPredictedNumber] = useState<number | null>(restoredState?.predictedNumber ?? null);
+  const [reference, setReference] = useState(restoredState?.reference ?? '');
+  const [description, setDescription] = useState(restoredState?.description ?? '');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const reload = useCallback(async () => {
+    try {
+      const [accountRows, categoryRows] = await Promise.all([
+        api.listAccounts(),
+        api.listCategories(),
+      ]);
+      setAccounts(accountRows);
+      setCategories(categoryRows);
+    } catch {
+      setAccounts([]);
+      setCategories([]);
+    }
+  }, []);
+
+  const refreshPredictedNumber = useCallback(async () => {
+    try {
+      const { number } = await api.getNextVoucherNumber('JOURNAL');
+      if (keepRestoredPredictedNumber.current) {
+        keepRestoredPredictedNumber.current = false;
+      } else {
+        setPredictedNumber(number);
+      }
+    } catch {
+      if (!keepRestoredPredictedNumber.current) setPredictedNumber(null);
+      keepRestoredPredictedNumber.current = false;
+    }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { refreshPredictedNumber(); }, [refreshPredictedNumber]);
+
+  const debitCategories = categoriesForSide(categories, 'journal', 'debit');
+  const creditCategories = categoriesForSide(categories, 'journal', 'credit');
+
+  useEffect(() => {
+    if (categories.length === 0) return;
+    if (debitCategoryId && !debitCategories.some((c) => String(c.id) === debitCategoryId)) {
+      setDebitCategoryId('');
+      setDebitAccountId('');
+    }
+    if (creditCategoryId && !creditCategories.some((c) => String(c.id) === creditCategoryId)) {
+      setCreditCategoryId('');
+      setCreditAccountId('');
+    }
+  }, [debitCategoryId, creditCategoryId, debitCategories, creditCategories, categories.length]);
+
+  function handleMinimize() {
+    const label = `Journal Voucher ${predictedNumber ? `#${predictedNumber}` : ''}`.trim();
+    minimize(
+      {
+        debitCategoryId,
+        creditCategoryId,
+        debitAccountId,
+        creditAccountId,
+        amount,
+        voucherDate,
+        reference,
+        description,
+        predictedNumber,
+      },
+      label,
+    );
+  }
+
+  async function handleSave() {
+    setError('');
+    setMessage('');
+
+    if (!debitAccountId || !creditAccountId) {
+      setError('Select both accounts');
+      return;
+    }
+    if (debitAccountId === creditAccountId) {
+      setError('Debit and credit accounts must be different');
+      return;
+    }
+    const parsedAmount = Number(amount);
+    if (!(parsedAmount > 0)) {
+      setError('Amount must be greater than zero');
+      amountRef.current?.focus();
+      return;
+    }
+    if (!reference.trim()) {
+      setError('Reference is required');
+      referenceRef.current?.focus();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.createVoucher({
+        type: 'JOURNAL',
+        debitAccountId: Number(debitAccountId),
+        creditAccountId: Number(creditAccountId),
+        amount: parsedAmount,
+        date: voucherDate,
+        description: description.trim() || undefined,
+        reference: reference.trim(),
+      });
+      setMessage('Journal voucher posted to ledger.');
+      setAmount('');
+      setReference('');
+      setDescription('');
+      await Promise.all([reload(), refreshPredictedNumber()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save journal voucher');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormPageShell titleRef={titleRef} title="Journal Voucher" panelClassName="max-w-3xl">
+      <div ref={trapRef} className="overflow-visible">
+        <InvoiceFormSection label="Header">
+          <InvoiceHeaderRow>
+            <InvoiceField>
+              <FieldLabel>Date</FieldLabel>
+              <TextInput
+                ref={dateRef}
+                tabIndex={1}
+                type="date"
+                required
+                value={voucherDate}
+                onChange={(e) => setVoucherDate(e.target.value)}
+              />
+            </InvoiceField>
+            <InvoiceField>
+              <FieldLabel>Voucher #</FieldLabel>
+              <TextInput
+                readOnly
+                tabIndex={-1}
+                value={predictedNumber != null ? formatVoucherNumber(predictedNumber) : '…'}
+                className="font-bold tabular-nums text-financial"
+              />
+            </InvoiceField>
+          </InvoiceHeaderRow>
+        </InvoiceFormSection>
+
+        <AccountSideFields
+          label="Debit"
+          categoryId={debitCategoryId}
+          accountId={debitAccountId}
+          categories={debitCategories}
+          accounts={accounts}
+          onCategoryChange={(id) => {
+            setDebitCategoryId(id);
+            setDebitAccountId('');
+          }}
+          onAccountChange={setDebitAccountId}
+          categoryTabIndex={2}
+          accountTabIndex={3}
+          categoryInputRef={debitCategoryRef}
+          accountInputRef={debitAccountRef}
+          accountNextFocusRef={creditCategoryRef}
+        />
+        <AccountSideFields
+          label="Credit"
+          categoryId={creditCategoryId}
+          accountId={creditAccountId}
+          categories={creditCategories}
+          accounts={accounts}
+          onCategoryChange={(id) => {
+            setCreditCategoryId(id);
+            setCreditAccountId('');
+          }}
+          onAccountChange={setCreditAccountId}
+          categoryTabIndex={4}
+          accountTabIndex={5}
+          categoryInputRef={creditCategoryRef}
+          accountInputRef={creditAccountRef}
+          accountNextFocusRef={amountRef}
+        />
+
+        <InvoiceFormSection label="Amount & reference">
+          <InvoiceFieldRow cols={2}>
+            <InvoiceField>
+              <FieldLabel>Amount</FieldLabel>
+              <TextInput
+                ref={amountRef}
+                tabIndex={6}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
+                placeholder="0.00"
+              />
+            </InvoiceField>
+            <InvoiceField>
+              <FieldLabel>Reference</FieldLabel>
+              <TextInput
+                ref={referenceRef}
+                tabIndex={7}
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Cheque, bill, or slip reference"
+              />
+            </InvoiceField>
+          </InvoiceFieldRow>
+          <InvoiceField>
+            <FieldLabel>Description</FieldLabel>
+            <TextInput
+              ref={descriptionRef}
+              tabIndex={8}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Notes / description"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleSave();
+                }
+              }}
+            />
+          </InvoiceField>
+        </InvoiceFormSection>
+
+        <FormActionFooter
+          error={error}
+          message={message}
+          primaryLabel="Save"
+          savingLabel="Saving…"
+          saving={saving}
+          primaryType="button"
+          primaryRef={saveRef}
+          primaryTabIndex={9}
+          onPrimaryClick={() => void handleSave()}
+          onMinimize={handleMinimize}
+          onClose={() => navigate('/')}
+          className="border-t border-border pt-4"
+        />
+      </div>
+    </FormPageShell>
+  );
+}
+
+function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
   const navigate = useNavigate();
   const formKind = kind as MinimizedFormKind;
   const { restoredState, minimize } = useMinimizableForm<VoucherDraft>(formKind);
@@ -267,28 +550,27 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
     }
   }, [debitCategoryId, creditCategoryId, debitCategories, creditCategories, categories.length]);
 
-  const variant = kind;
-  const leftLabel = variant === 'journal' ? 'Debit' : 'From';
-  const rightLabel = variant === 'journal' ? 'Credit' : 'To';
+  const leftLabel = 'From';
+  const rightLabel = 'To';
 
-  const leftCategoryId = variant === 'journal' ? debitCategoryId : creditCategoryId;
-  const rightCategoryId = variant === 'journal' ? creditCategoryId : debitCategoryId;
-  const leftAccountId = variant === 'journal' ? debitAccountId : creditAccountId;
-  const rightAccountId = variant === 'journal' ? creditAccountId : debitAccountId;
+  const leftCategoryId = creditCategoryId;
+  const rightCategoryId = debitCategoryId;
+  const leftAccountId = creditAccountId;
+  const rightAccountId = debitAccountId;
 
   function setLeftCategory(id: string) {
-    if (variant === 'journal') { setDebitCategoryId(id); setDebitAccountId(''); }
-    else { setCreditCategoryId(id); setCreditAccountId(''); }
+    setCreditCategoryId(id);
+    setCreditAccountId('');
   }
   function setRightCategory(id: string) {
-    if (variant === 'journal') { setCreditCategoryId(id); setCreditAccountId(''); }
-    else { setDebitCategoryId(id); setDebitAccountId(''); }
+    setDebitCategoryId(id);
+    setDebitAccountId('');
   }
   function setLeftAccount(id: string) {
-    if (variant === 'journal') setDebitAccountId(id); else setCreditAccountId(id);
+    setCreditAccountId(id);
   }
   function setRightAccount(id: string) {
-    if (variant === 'journal') setCreditAccountId(id); else setDebitAccountId(id);
+    setDebitAccountId(id);
   }
 
   function handleAddToGrid() {
@@ -409,22 +691,16 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const totalGridAmount = queuedItems.reduce((sum, item) => sum + Number(item.amount), 0);
 
   return (
-    <PageShell
-      centerTitle
-      invoiceTitleBand
+    <FormPageShell
       titleRef={titleRef}
-      title={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
+      titleNode={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
     >
-      <div className="mx-auto w-full max-w-[1400px] overflow-visible px-2">
-        <div ref={trapRef} className="overflow-visible">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Form Panel */}
-            <div className="lg:col-span-5 bg-surface rounded-xl border border-border p-5 space-y-5">
-              <h3 className="text-sm font-semibold text-textPrimary uppercase tracking-wider border-b border-border pb-2">
-                New Voucher Details
-              </h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
+      <div ref={trapRef} className="overflow-visible">
+        <div className="inv-split">
+          <div className="inv-split-form">
+            <InvoiceFormSection label="New voucher details">
+              <InvoiceHeaderRow>
+                <InvoiceField>
                   <FieldLabel>Date</FieldLabel>
                   <TextInput
                     ref={dateRef}
@@ -434,51 +710,49 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                     value={voucherDate}
                     onChange={(e) => setVoucherDate(e.target.value)}
                   />
-                </div>
-                <div>
-                  <FieldLabel>Next Voucher #</FieldLabel>
+                </InvoiceField>
+                <InvoiceField>
+                  <FieldLabel>Voucher #</FieldLabel>
                   <TextInput
                     readOnly
                     tabIndex={-1}
                     value={predictedNumber != null ? formatVoucherNumber(predictedNumber) : '…'}
                     className="font-bold tabular-nums text-financial"
                   />
-                </div>
-              </div>
+                </InvoiceField>
+              </InvoiceHeaderRow>
 
-              <div className="space-y-4">
-                <AccountSideFields
-                  label={leftLabel}
-                  categoryId={leftCategoryId}
-                  accountId={leftAccountId}
-                  categories={variant === 'journal' ? debitCategories : creditCategories}
-                  accounts={accounts}
-                  onCategoryChange={setLeftCategory}
-                  onAccountChange={setLeftAccount}
-                  categoryTabIndex={2}
-                  accountTabIndex={3}
-                  categoryInputRef={leftCategoryRef}
-                  accountInputRef={leftAccountRef}
-                  accountNextFocusRef={rightCategoryRef}
-                />
-                <AccountSideFields
-                  label={rightLabel}
-                  categoryId={rightCategoryId}
-                  accountId={rightAccountId}
-                  categories={variant === 'journal' ? creditCategories : debitCategories}
-                  accounts={accounts}
-                  onCategoryChange={setRightCategory}
-                  onAccountChange={setRightAccount}
-                  categoryTabIndex={4}
-                  accountTabIndex={5}
-                  categoryInputRef={rightCategoryRef}
-                  accountInputRef={rightAccountRef}
-                  accountNextFocusRef={amountRef}
-                />
-              </div>
+              <AccountSideFields
+                label={leftLabel}
+                categoryId={leftCategoryId}
+                accountId={leftAccountId}
+                categories={creditCategories}
+                accounts={accounts}
+                onCategoryChange={setLeftCategory}
+                onAccountChange={setLeftAccount}
+                categoryTabIndex={2}
+                accountTabIndex={3}
+                categoryInputRef={leftCategoryRef}
+                accountInputRef={leftAccountRef}
+                accountNextFocusRef={rightCategoryRef}
+              />
+              <AccountSideFields
+                label={rightLabel}
+                categoryId={rightCategoryId}
+                accountId={rightAccountId}
+                categories={debitCategories}
+                accounts={accounts}
+                onCategoryChange={setRightCategory}
+                onAccountChange={setRightAccount}
+                categoryTabIndex={4}
+                accountTabIndex={5}
+                categoryInputRef={rightCategoryRef}
+                accountInputRef={rightAccountRef}
+                accountNextFocusRef={amountRef}
+              />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
+              <InvoiceFieldRow cols={2}>
+                <InvoiceField>
                   <FieldLabel>Amount</FieldLabel>
                   <TextInput
                     ref={amountRef}
@@ -491,20 +765,19 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                     onFocus={(e) => e.currentTarget.select()}
                     placeholder="0.00"
                   />
-                </div>
-                <div>
+                </InvoiceField>
+                <InvoiceField>
                   <FieldLabel>Reference</FieldLabel>
                   <TextInput
                     ref={referenceRef}
                     tabIndex={7}
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    placeholder="Cheque / Ref"
+                    placeholder="Cheque, bill, or slip reference"
                   />
-                </div>
-              </div>
-
-              <div>
+                </InvoiceField>
+              </InvoiceFieldRow>
+              <InvoiceField>
                 <FieldLabel>Description</FieldLabel>
                 <TextInput
                   ref={descriptionRef}
@@ -519,102 +792,85 @@ function VoucherFormContent({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
                     }
                   }}
                 />
-              </div>
-
+              </InvoiceField>
               {error ? <p className="text-xs text-danger font-medium">{error}</p> : null}
+            </InvoiceFormSection>
 
-              <button
-                type="button"
-                tabIndex={9}
-                onClick={handleAddToGrid}
-                className="w-full py-2.5 px-4 bg-accent/10 hover:bg-accent/20 text-accent font-semibold text-sm rounded-lg border border-accent/30 transition-colors flex items-center justify-center gap-2"
-              >
-                + Add to Grid Queue
-              </button>
-            </div>
+            <InvoiceAddRowAction tabIndex={9} onClick={handleAddToGrid}>
+              Add to grid queue
+            </InvoiceAddRowAction>
+          </div>
 
-            {/* Right Preview Grid Panel */}
-            <div className="lg:col-span-7 bg-surface rounded-xl border border-border p-5 space-y-4 flex flex-col min-h-[500px]">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <h3 className="text-sm font-semibold text-textPrimary uppercase tracking-wider">
-                  Queued Vouchers Batch ({queuedItems.length})
-                </h3>
-                <span className="text-xs font-semibold text-textSecondary">
-                  Total: <span className="font-mono text-financial text-textPrimary">{formatLedgerAmount(totalGridAmount)}</span>
-                </span>
-              </div>
-
-              {message ? <p className="text-xs text-success font-medium bg-success/10 p-2 rounded">{message}</p> : null}
-
-              <div className="flex-1 overflow-x-auto">
-                {queuedItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-textMuted border-2 border-dashed border-border/50 rounded-lg p-6 text-center">
-                    <p className="text-sm font-medium">No vouchers in batch queue.</p>
-                    <p className="text-xs mt-1">Fill the details on the left and click &quot;+ Add to Grid Queue&quot; to queue up multiple vouchers.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border text-textSecondary bg-surface2/50">
-                        <th className="py-2 px-2">Voucher #</th>
-                        <th className="py-2 px-2">Date</th>
-                        <th className="py-2 px-2">{leftLabel} Account</th>
-                        <th className="py-2 px-2">{rightLabel} Account</th>
-                        <th className="py-2 px-2 text-right">Amount</th>
-                        <th className="py-2 px-2">Reference</th>
-                        <th className="py-2 px-2">Description</th>
-                        <th className="py-2 px-2 text-center">Action</th>
+          <div className="inv-split-preview">
+            <InvoiceFormSection label={`Queued vouchers batch (${queuedItems.length})`}>
+              <InvoicePreviewGridShell isEmpty={queuedItems.length === 0}>
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-surface2">
+                    <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
+                      <th className="px-3 py-2.5">Voucher #</th>
+                      <th className="px-3 py-2.5">Date</th>
+                      <th className="px-3 py-2.5">{leftLabel}</th>
+                      <th className="px-3 py-2.5">{rightLabel}</th>
+                      <th className="px-3 py-2.5 text-right">Amount</th>
+                      <th className="px-3 py-2.5">Reference</th>
+                      <th className="px-3 py-2.5">Description</th>
+                      <th className="px-3 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queuedItems.map((item) => (
+                      <tr key={item.id} className="border-b border-border/50">
+                        <td className="px-3 py-2 font-mono text-xs font-semibold tabular-nums text-financial">
+                          {formatVoucherNumber(item.voucherNumber)}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.date)}</td>
+                        <td className="px-3 py-2">{item.creditAccountName}</td>
+                        <td className="px-3 py-2">{item.debitAccountName}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(Number(item.amount))}</td>
+                        <td className="px-3 py-2 text-textSecondary">{item.reference}</td>
+                        <td className="px-3 py-2 text-textSecondary truncate max-w-[120px]">{item.description || '—'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFromGrid(item.id)}
+                            className="text-xs text-danger hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {queuedItems.map((item) => (
-                        <tr key={item.id} className="border-b border-border hover:bg-surface2/30">
-                          <td className="py-2 px-2 font-mono font-semibold tabular-nums text-textPrimary">
-                            {formatVoucherNumber(item.voucherNumber)}
-                          </td>
-                          <td className="py-2 px-2 whitespace-nowrap">{formatDate(item.date)}</td>
-                          <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.debitAccountName : item.creditAccountName}</td>
-                          <td className="py-2 px-2 font-medium text-textPrimary">{variant === 'journal' ? item.creditAccountName : item.debitAccountName}</td>
-                          <td className="py-2 px-2 text-right font-mono font-semibold tabular-nums text-textPrimary">
-                            {formatLedgerAmount(Number(item.amount))}
-                          </td>
-                          <td className="py-2 px-2 text-textSecondary font-mono">{item.reference}</td>
-                          <td className="py-2 px-2 text-textSecondary truncate max-w-[120px]">{item.description || '—'}</td>
-                          <td className="py-2 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFromGrid(item.id)}
-                              className="text-danger hover:text-danger/80 font-bold px-2 py-0.5 rounded hover:bg-danger/10 text-xs"
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                    ))}
+                  </tbody>
+                </table>
+              </InvoicePreviewGridShell>
+            </InvoiceFormSection>
 
-              <FormActionFooter
-                error={error}
-                message={message}
-                primaryLabel={`Save & Post Batch (${queuedItems.length})`}
-                savingLabel="Posting Batch…"
-                saving={saving}
-                disabled={queuedItems.length === 0}
-                primaryType="button"
-                primaryRef={saveRef}
-                onPrimaryClick={() => void handleSaveAll()}
-                onMinimize={handleMinimize}
-                onClose={() => navigate('/')}
-                className="pt-4 border-t border-border"
-              />
-            </div>
+            <FormActionFooter
+              leading={
+                <div className="app-form-footer-total">
+                  <span className="app-form-footer-total-label">Batch total</span>
+                  <span className="app-form-footer-total-value tabular-nums">
+                    {formatLedgerAmount(totalGridAmount)}
+                  </span>
+                </div>
+              }
+              error={error}
+              message={message}
+              primaryLabel={`Save & post batch (${queuedItems.length})`}
+              savingLabel="Posting batch…"
+              saving={saving}
+              disabled={queuedItems.length === 0}
+              primaryType="button"
+              primaryRef={saveRef}
+              onPrimaryClick={() => void handleSaveAll()}
+              onMinimize={handleMinimize}
+              onClose={() => navigate('/')}
+              className="border-t border-border pt-4"
+            />
           </div>
         </div>
       </div>
-    </PageShell>
+    </FormPageShell>
   );
 }
 
@@ -640,12 +896,14 @@ export function VoucherDetailCard({
   onUpdateAmount,
   cancelling,
   updating,
+  readOnly = false,
 }: {
   voucher: Voucher;
   onCancel: () => void;
   onUpdateAmount: (amount: number) => void | Promise<void>;
   cancelling: boolean;
   updating: boolean;
+  readOnly?: boolean;
 }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
@@ -721,7 +979,7 @@ export function VoucherDetailCard({
           </div>
           <p className="mt-1 text-sm text-textSecondary">{formatDate(voucher.date)}</p>
         </div>
-        {!isCancelled && isAdmin ? (
+        {!isCancelled && isAdmin && !readOnly ? (
           <div className="flex gap-2">
             {!isMultiLeg && !editingAmount && (
               <SecondaryButton onClick={() => setEditingAmount(true)}>Update Amount</SecondaryButton>

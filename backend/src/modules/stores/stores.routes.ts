@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { asyncHandler, AppError, param, validateBody } from '../../utils/helpers';
 import { verifyUserPassword } from '../auth/auth.service';
+import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
 import * as storesService from './stores.service';
 
 export const storesRouter = Router();
@@ -10,15 +11,15 @@ storesRouter.use(requireAuth);
 
 storesRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    res.json(await storesService.listStores());
+  asyncHandler(async (req, res) => {
+    res.json(await storesService.listStores(parsePagination(req.query, SELECTOR_PAGINATION)));
   }),
 );
 
 storesRouter.get(
   '/active',
-  asyncHandler(async (_req, res) => {
-    res.json(await storesService.listActiveStores());
+  asyncHandler(async (req, res) => {
+    res.json(await storesService.listActiveStores(parsePagination(req.query, SELECTOR_PAGINATION)));
   }),
 );
 

@@ -13,7 +13,7 @@ export async function loadInvoiceFormBase(options?: {
 }): Promise<InvoiceFormBaseData> {
   if (options?.includeProducts) {
     const [accounts, categories, prefs, products] = await Promise.all([
-      api.listAccounts(),
+      api.listAccounts({ lite: true }),
       api.listCategories(),
       api.getSystemPreferences(),
       api.listProducts(),
@@ -22,7 +22,7 @@ export async function loadInvoiceFormBase(options?: {
   }
 
   const [accounts, categories, prefs] = await Promise.all([
-    api.listAccounts(),
+    api.listAccounts({ lite: true }),
     api.listCategories(),
     api.getSystemPreferences(),
   ]);
