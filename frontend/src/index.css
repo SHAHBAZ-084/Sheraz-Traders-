@@ -60,6 +60,21 @@
 
   }
 
+  /* Electron: never treat form controls as window drag handles. */
+  input,
+  textarea,
+  select,
+  button,
+  a,
+  label,
+  [role='combobox'],
+  [role='listbox'],
+  [role='option'] {
+
+    -webkit-app-region: no-drag;
+
+  }
+
 
 
   h1,
@@ -1321,6 +1336,78 @@
     cursor: not-allowed;
 
     background-color: var(--surface-1);
+
+  }
+
+
+
+  .password-input-wrap {
+
+    position: relative;
+
+    width: 100%;
+
+  }
+
+
+
+  .password-input-field {
+
+    padding-right: 2.25rem;
+
+  }
+
+
+
+  .password-input-toggle {
+
+    position: absolute;
+
+    top: 50%;
+
+    right: 0.375rem;
+
+    display: inline-flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 1.75rem;
+
+    height: 1.75rem;
+
+    transform: translateY(-50%);
+
+    border: none;
+
+    border-radius: 2px;
+
+    background: transparent;
+
+    color: var(--text-muted);
+
+    cursor: pointer;
+
+  }
+
+
+
+  .password-input-toggle:hover {
+
+    color: var(--text-secondary);
+
+    background-color: rgb(0 0 0 / 0.04);
+
+  }
+
+
+
+  .password-input-toggle:focus-visible {
+
+    outline: 2px solid var(--border-strong);
+
+    outline-offset: 1px;
 
   }
 

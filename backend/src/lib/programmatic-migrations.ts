@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { FinancialYearStatus, PrismaClient, Role } from '@prisma/client';
 import { logger } from './logger';
-import { bootstrapChartOfAccounts, fiscalYearLabelForDate } from '../modules/accounting/accounting.service';
+import { bootstrapChartOfAccounts, INITIAL_FINANCIAL_YEAR } from '../modules/accounting/accounting.service';
 
 function findMigrationsDirectory(): string | null {
   const candidates = [
@@ -156,16 +156,14 @@ export async function ensureDefaultSeedData(db: PrismaClient): Promise<void> {
       where: { status: FinancialYearStatus.ACTIVE },
     });
     if (!activeYear) {
-      const now = new Date();
-      const { label, startDate } = fiscalYearLabelForDate(now);
       await db.financialYear.create({
         data: {
-          label,
-          startDate,
+          label: INITIAL_FINANCIAL_YEAR.label,
+          startDate: INITIAL_FINANCIAL_YEAR.startDate,
           status: FinancialYearStatus.ACTIVE,
         },
       });
-      logger.info(`Created active financial year "${label}".`);
+      logger.info(`Created active financial year "${INITIAL_FINANCIAL_YEAR.label}".`);
     }
 
     await bootstrapChartOfAccounts();

@@ -4,7 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFinancialYear } from '../../contexts/FinancialYearContext';
 import { api } from '../../lib/api';
 import { hasBlockingOpenForms } from '../../stores/openFormsStore';
-import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, PageShell, Panel, PrimaryButton } from '../../components/ui/PageShell';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 const FY_CHANGE_PASSWORD = 'CUIVHR';
@@ -97,8 +98,7 @@ export function FinancialYearManagementPage() {
         <form className="space-y-3 border-t border-border pt-4" onSubmit={onSubmit}>
           <div>
             <FieldLabel>Password</FieldLabel>
-            <TextInput
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="off"

@@ -13,6 +13,7 @@ import { DecimalInput } from '../../components/ui/DecimalInput';
 import { AmountInput } from '../../components/ui/AmountInput';
 import { FieldLabel, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
+import { useAuth } from '../../contexts/AuthContext';
 import { api, type Account, type AccountCategory, type JamaNaamEntry, type Product, type ProductCategory } from '../../lib/api';
 import { formatDate, formatLedgerAmount, ledgerCreditAmountClass, ledgerDebitAmountClass } from '../../lib/format';
 import { flatPartyAccountOptions } from '../../lib/partyAccounts';
@@ -39,6 +40,8 @@ function gridCell(value: string | number | null | undefined) {
 }
 
 export function JamaNaamRegisterPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
@@ -287,7 +290,7 @@ export function JamaNaamRegisterPage() {
                       <th className="px-3 py-2.5 text-right">Amount</th>
                       <th className="px-3 py-2.5">Jama/Naam</th>
                       <th className="px-3 py-2.5">Notes</th>
-                      <th className="px-3 py-2.5" />
+                      {isAdmin ? <th className="px-3 py-2.5" /> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -302,11 +305,13 @@ export function JamaNaamRegisterPage() {
                         </td>
                         <td className={`px-3 py-2 ${directionClass(entry.direction)}`}>{directionLabel(entry.direction)}</td>
                         <td className="px-3 py-2 text-textSecondary">{entry.notes ?? ''}</td>
-                        <td className="px-3 py-2 text-right">
-                          <SecondaryButton type="button" onClick={() => void handleSettle(entry)}>
-                            Settle
-                          </SecondaryButton>
-                        </td>
+                        {isAdmin ? (
+                          <td className="px-3 py-2 text-right">
+                            <SecondaryButton type="button" onClick={() => void handleSettle(entry)}>
+                              Settle
+                            </SecondaryButton>
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>

@@ -81,8 +81,18 @@ export function SearchSelect({
         setQuery('');
       }
     }
+    function closeDropdown() {
+      setOpen(false);
+      setQuery('');
+    }
     document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    window.addEventListener('blur', closeDropdown);
+    document.addEventListener('scroll', closeDropdown, true);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      window.removeEventListener('blur', closeDropdown);
+      document.removeEventListener('scroll', closeDropdown, true);
+    };
   }, []);
 
   function assignInputRef(el: HTMLInputElement | null) {
@@ -174,7 +184,7 @@ export function SearchSelect({
     open && filtered.length > 0 ? `${listboxId}-option-${highlightIndex}` : undefined;
 
   return (
-    <div data-search-select-root className={`relative ${open ? 'z-[200]' : 'z-0'}`}>
+    <div data-search-select-root className={`relative ${open ? 'z-[50]' : 'z-0'}`}>
       <input
         ref={assignInputRef}
         id={inputId}
@@ -192,6 +202,14 @@ export function SearchSelect({
           setOpen(true);
           setQuery('');
         }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            if (internalInputRef.current !== document.activeElement) {
+              setOpen(false);
+              setQuery('');
+            }
+          }, 0);
+        }}
         onChange={(e) => {
           setQuery(e.target.value);
           if (!open) setOpen(true);
@@ -205,7 +223,7 @@ export function SearchSelect({
           ref={listRef}
           id={listboxId}
           role="listbox"
-          className="app-combobox-dropdown absolute left-0 top-full z-[201] mt-1 max-h-60 w-full overflow-y-auto"
+          className="app-combobox-dropdown absolute left-0 top-full z-[51] mt-1 max-h-60 w-full overflow-y-auto"
         >
           {filtered.length === 0 ? (
             <p className="bg-white px-3 py-2 text-sm text-textMuted" role="status">

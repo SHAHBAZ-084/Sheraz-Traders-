@@ -12,7 +12,6 @@ import {
 import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { SearchSelect } from '../../components/ui/SearchSelect';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import {
   api,
@@ -105,8 +104,6 @@ export function SaleInvoicePage() {
   const navigate = useNavigate();
   const { restoredState, minimize } = useMinimizableForm<SaleInvoiceDraft>('sale-invoice');
   const keepRestoredPredictedRef = useRef(Boolean(restoredState?.predictedRef));
-  const trapRef = useRef<HTMLFormElement>(null);
-  useFocusTrap(trapRef);
 
   const [predictedRef, setPredictedRef] = useState(() => restoredState?.predictedRef ?? 'SI-…');
   const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
@@ -328,7 +325,7 @@ export function SaleInvoicePage() {
   return (
     <PageShell centerTitle invoiceTitleBand title="Sale Invoice">
       <Panel className="inv-form-panel inv-sp-invoice-panel mx-auto w-full overflow-visible bg-white">
-        <form ref={trapRef} onSubmit={onSubmit}>
+        <form onSubmit={onSubmit}>
           <div className="inv-sp-invoice-form">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>

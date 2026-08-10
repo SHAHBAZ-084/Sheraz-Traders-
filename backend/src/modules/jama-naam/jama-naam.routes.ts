@@ -1,7 +1,7 @@
 import { JamaNaamDirection } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { asyncHandler, param } from '../../utils/helpers';
 import * as jamaNaamService from './jama-naam.service';
 
@@ -37,6 +37,7 @@ jamaNaamRouter.post(
 
 jamaNaamRouter.delete(
   '/:id',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     await jamaNaamService.settleJamaNaamEntry(parseInt(param(req.params.id), 10));
     res.json({ ok: true });

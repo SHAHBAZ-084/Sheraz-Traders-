@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -35,10 +35,8 @@ function findFocusableIndex(active: HTMLElement | null, focusables: HTMLElement[
   return focusables.findIndex((el) => el.contains(active));
 }
 
-function isModalActive(container: HTMLElement): boolean {
-  const modal = document.querySelector<HTMLElement>('[role="dialog"], [aria-modal="true"]');
-  if (!modal) return false;
-  return !modal.contains(container) && modal !== container;
+function isModalContainer(container: HTMLElement): boolean {
+  return container.getAttribute('role') === 'dialog' || container.getAttribute('aria-modal') === 'true';
 }
 
 type UseFocusTrapOptions = {
@@ -52,20 +50,35 @@ export function useFocusTrap(
   options: UseFocusTrapOptions = {},
 ) {
   const { initialFocusRef, disabled = false } = options;
+  const didInitialFocusRef = useRef(false);
 
   useEffect(() => {
-    if (disabled || !containerRef.current) return;
+    if (disabled) {
+      didInitialFocusRef.current = false;
+      return;
+    }
+    if (!containerRef.current || didInitialFocusRef.current) return;
+
     const container = containerRef.current;
+    if (!isModalContainer(container)) return;
 
     const timer = requestAnimationFrame(() => {
+      const liveContainer = containerRef.current;
+      if (!liveContainer || !liveContainer.isConnected || didInitialFocusRef.current) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (active && liveContainer.contains(active) && isFocusableCandidate(active, liveContainer)) {
+        didInitialFocusRef.current = true;
+        return;
+      }
+
       if (initialFocusRef?.current) {
         initialFocusRef.current.focus();
       } else {
-        const focusables = getFocusableElements(container);
-        if (focusables.length > 0 && (!document.activeElement || !container.contains(document.activeElement))) {
-          focusables[0].focus();
-        }
+        const focusables = getFocusableElements(liveContainer);
+        focusables[0]?.focus();
       }
+      didInitialFocusRef.current = true;
     });
 
     return () => cancelAnimationFrame(timer);
@@ -76,37 +89,27 @@ export function useFocusTrap(
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Tab') return;
-      if (!containerRef.current) return;
-
       const container = containerRef.current;
+      if (!container || !container.isConnected || !isModalContainer(container)) return;
 
-      if (isModalActive(container)) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !container.contains(active)) return;
 
       const focusables = getFocusableElements(container);
       if (focusables.length === 0) return;
 
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-
       const currentIndex = findFocusableIndex(active, focusables);
 
       if (e.shiftKey) {
         if (currentIndex <= 0) {
           e.preventDefault();
           last.focus();
-        } else {
-          e.preventDefault();
-          focusables[currentIndex - 1].focus();
         }
-      } else {
-        if (currentIndex === -1 || currentIndex >= focusables.length - 1) {
-          e.preventDefault();
-          first.focus();
-        } else {
-          e.preventDefault();
-          focusables[currentIndex + 1].focus();
-        }
+      } else if (currentIndex === -1 || currentIndex >= focusables.length - 1) {
+        e.preventDefault();
+        first.focus();
       }
     }
 

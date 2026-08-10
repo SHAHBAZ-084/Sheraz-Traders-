@@ -32,6 +32,13 @@ function resolveFrontendDistPath(): string {
     path.resolve(process.cwd(), 'frontend/dist'),
   ];
 
+  if (typeof process.resourcesPath === 'string') {
+    candidates.unshift(
+      path.join(process.resourcesPath, 'app.asar.unpacked/frontend/dist'),
+      path.join(process.resourcesPath, 'app/frontend/dist'),
+    );
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const electron = require('electron') as typeof import('electron') | undefined;
@@ -103,8 +110,14 @@ export function createApp(getStartupStatus?: () => StartupStatus | null) {
 
   if (env.isProduction) {
     const frontendDist = resolveFrontendDistPath();
-    app.use(express.static(frontendDist));
-    app.get('*', (_req, res) => {
+    app.use(express.static(frontendDist, { index: false, fallthrough: true }));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) {
+        return next();
+      }
+      if (path.extname(req.path)) {
+        return next();
+      }
       res.sendFile(path.join(frontendDist, 'index.html'));
     });
   }

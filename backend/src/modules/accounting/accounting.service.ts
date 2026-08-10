@@ -33,6 +33,12 @@ export function fiscalYearLabelForDate(date: Date): { label: string; startDate: 
   return { label: `${year - 1}-${year}`, startDate: new Date(year - 1, 6, 1) };
 }
 
+/** First financial year created on a fresh install (July 2026 – June 2027). */
+export const INITIAL_FINANCIAL_YEAR = {
+  label: '2026-2027',
+  startDate: new Date(2026, 6, 1),
+} as const;
+
 function nextFiscalYearLabel(label: string): string {
   const startYear = parseInt(label.split('-')[0] ?? '', 10);
   if (!Number.isFinite(startYear)) {

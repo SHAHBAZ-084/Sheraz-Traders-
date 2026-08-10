@@ -1,40 +1,27 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, type User } from '../../lib/api';
+import {
+  clearFyAdminShortcutKeys,
+  isFyAdminShortcutActive,
+  trackFyAdminShortcutKey,
+  untrackFyAdminShortcutKey,
+} from '../../lib/fyAdminShortcut';
 
 const FY_GATE_PASSWORD = 'CUIVHR';
 const FY_GATE_KEY = 'fyAdminGate';
 
-function isAdminShortcutActive(event: KeyboardEvent, keys: Set<string>) {
-  return (
-    event.ctrlKey &&
-    event.altKey &&
-    event.shiftKey &&
-    keys.has('a') &&
-    keys.has('s')
-  );
-}
-
-function trackShortcutKey(keys: Set<string>, event: KeyboardEvent) {
-  const code = event.code.toLowerCase();
-  if (code === 'keya') keys.add('a');
-  if (code === 'keys') keys.add('s');
-  if (event.key.length === 1) keys.add(event.key.toLowerCase());
-  if (event.ctrlKey) keys.add('Control');
-  if (event.altKey) keys.add('Alt');
-  if (event.shiftKey) keys.add('Shift');
-}
-
-function untrackShortcutKey(keys: Set<string>, event: KeyboardEvent) {
-  const code = event.code.toLowerCase();
-  if (code === 'keya' || event.key.toLowerCase() === 'a') keys.delete('a');
-  if (code === 'keys' || event.key.toLowerCase() === 's') keys.delete('s');
-  if (!event.ctrlKey) keys.delete('Control');
-  if (!event.altKey) keys.delete('Alt');
-  if (!event.shiftKey) keys.delete('Shift');
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return Boolean(target.closest('[role="combobox"]'));
 }
 
 export function UserInfoPage() {
@@ -42,6 +29,8 @@ export function UserInfoPage() {
   const navigate = useNavigate();
   const isAdmin = user?.role === 'ADMIN';
   const pressedKeysRef = useRef(new Set<string>());
+  const gateModalRef = useRef<HTMLDivElement>(null);
+  const gatePasswordRef = useRef<HTMLInputElement>(null);
 
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = useState('');
@@ -59,29 +48,49 @@ export function UserInfoPage() {
   const [gateOpen, setGateOpen] = useState(false);
   const [gatePassword, setGatePassword] = useState('');
 
+  useFocusTrap(gateModalRef, {
+    disabled: !gateOpen,
+    initialFocusRef: gatePasswordRef,
+  });
+
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || gateOpen) return;
+
+    function resetShortcutKeys() {
+      clearFyAdminShortcutKeys(pressedKeysRef.current);
+    }
 
     function onKeyDown(event: KeyboardEvent) {
-      trackShortcutKey(pressedKeysRef.current, event);
-      if (isAdminShortcutActive(event, pressedKeysRef.current)) {
+      if (isEditableShortcutTarget(event.target)) {
+        clearFyAdminShortcutKeys(pressedKeysRef.current);
+        return;
+      }
+
+      trackFyAdminShortcutKey(pressedKeysRef.current, event);
+      if (isFyAdminShortcutActive(event, pressedKeysRef.current)) {
         event.preventDefault();
+        clearFyAdminShortcutKeys(pressedKeysRef.current);
         setGateOpen(true);
         setGatePassword('');
       }
     }
 
     function onKeyUp(event: KeyboardEvent) {
-      untrackShortcutKey(pressedKeysRef.current, event);
+      untrackFyAdminShortcutKey(pressedKeysRef.current, event);
     }
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', resetShortcutKeys);
+    document.addEventListener('visibilitychange', resetShortcutKeys);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', resetShortcutKeys);
+      document.removeEventListener('visibilitychange', resetShortcutKeys);
+      resetShortcutKeys();
     };
-  }, [isAdmin]);
+  }, [isAdmin, gateOpen]);
 
   function submitGate(event: FormEvent) {
     event.preventDefault();
@@ -209,8 +218,7 @@ export function UserInfoPage() {
         <form className="grid gap-3 sm:grid-cols-2" onSubmit={onChangePassword}>
           <div className="sm:col-span-2">
             <FieldLabel>Current password</FieldLabel>
-            <TextInput
-              type="password"
+            <PasswordInput
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               autoComplete="current-password"
@@ -219,8 +227,7 @@ export function UserInfoPage() {
           </div>
           <div>
             <FieldLabel>New password</FieldLabel>
-            <TextInput
-              type="password"
+            <PasswordInput
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
@@ -229,8 +236,7 @@ export function UserInfoPage() {
           </div>
           <div>
             <FieldLabel>Confirm new password</FieldLabel>
-            <TextInput
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
@@ -259,8 +265,7 @@ export function UserInfoPage() {
               </div>
               <div>
                 <FieldLabel>Password</FieldLabel>
-                <TextInput
-                  type="password"
+                <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -327,15 +332,34 @@ export function UserInfoPage() {
       <PageCloseBar />
 
       {gateOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div
+          ref={gateModalRef}
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setGateOpen(false);
+              setGatePassword('');
+            }
+          }}
+        >
           <Panel className="w-full max-w-sm space-y-3">
-            <form onSubmit={submitGate}>
+            <form
+              onSubmit={submitGate}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setGateOpen(false);
+                  setGatePassword('');
+                }
+              }}
+            >
               <FieldLabel>Password</FieldLabel>
-              <TextInput
-                type="password"
+              <PasswordInput
+                ref={gatePasswordRef}
                 value={gatePassword}
                 onChange={(e) => setGatePassword(e.target.value)}
-                autoFocus
                 autoComplete="off"
               />
               <div className="mt-4 flex justify-end gap-2">

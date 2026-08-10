@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { FinancialYearStatus, PrismaClient, Role } from '@prisma/client';
 import {
   bootstrapChartOfAccounts,
-  fiscalYearLabelForDate,
+  INITIAL_FINANCIAL_YEAR,
 } from '../src/modules/accounting/accounting.service';
 
 const prisma = new PrismaClient();
@@ -69,16 +69,14 @@ async function main() {
   });
 
   if (!activeYear) {
-    const now = new Date();
-    const { label, startDate } = fiscalYearLabelForDate(now);
     await prisma.financialYear.create({
       data: {
-        label,
-        startDate,
+        label: INITIAL_FINANCIAL_YEAR.label,
+        startDate: INITIAL_FINANCIAL_YEAR.startDate,
         status: FinancialYearStatus.ACTIVE,
       },
     });
-    console.log(`Created active financial year "${label}".`);
+    console.log(`Created active financial year "${INITIAL_FINANCIAL_YEAR.label}".`);
   }
 
   await bootstrapChartOfAccounts();

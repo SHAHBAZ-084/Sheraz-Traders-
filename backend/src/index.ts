@@ -28,8 +28,13 @@ async function main() {
 
   const app = createApp(() => startupStatus);
 
-  const server = app.listen(env.port, '127.0.0.1', () => {
-    logger.info(`Grain Market POS API listening on http://127.0.0.1:${env.port}`);
+  const server = app.listen(env.port, '127.0.0.1');
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', () => {
+      logger.info(`Grain Market POS API listening on http://127.0.0.1:${env.port}`);
+      resolve();
+    });
+    server.once('error', reject);
   });
 
   const shutdown = async (signal: string) => {
@@ -43,7 +48,7 @@ async function main() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-main().catch((err) => {
+export const backendReady = main().catch((err) => {
   logger.error('Fatal startup error', { err: String(err) });
   process.exit(1);
 });

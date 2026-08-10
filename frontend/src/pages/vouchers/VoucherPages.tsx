@@ -16,7 +16,6 @@ import {
 import { InvoicePreviewGridShell } from '../invoices/InvoicePreviewGrid';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useAuth } from '../../contexts/AuthContext';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import type { MinimizedFormKind } from '../../stores/minimizedFormsStore';
 import { useOpenFormsStore } from '../../stores/openFormsStore';
@@ -195,7 +194,6 @@ function JournalVoucherFormContent() {
   const navigate = useNavigate();
   const { restoredState, minimize } = useMinimizableForm<VoucherDraft>('journal');
   const keepRestoredPredictedNumber = useRef(restoredState?.predictedNumber != null);
-  const trapRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   const debitCategoryRef = useRef<HTMLInputElement>(null);
@@ -206,11 +204,6 @@ function JournalVoucherFormContent() {
   const referenceRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
-
-  useFocusTrap(trapRef, {
-    initialFocusRef: dateRef,
-    escapeFocusRef: titleRef,
-  });
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
@@ -340,7 +333,7 @@ function JournalVoucherFormContent() {
 
   return (
     <FormPageShell titleRef={titleRef} title="Journal Voucher" panelClassName="max-w-4xl">
-      <div ref={trapRef} className="jv-form overflow-visible">
+      <div className="jv-form overflow-visible">
         <InvoiceFormSection label="Header">
           <InvoiceHeaderRow>
             <InvoiceField>
@@ -471,7 +464,6 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
   const formKind = kind as MinimizedFormKind;
   const { restoredState, minimize } = useMinimizableForm<VoucherDraft>(formKind);
   const keepRestoredPredictedNumber = useRef(restoredState?.predictedNumber != null);
-  const trapRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   const leftCategoryRef = useRef<HTMLInputElement>(null);
@@ -482,11 +474,6 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
   const referenceRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
-
-  useFocusTrap(trapRef, {
-    initialFocusRef: dateRef,
-    escapeFocusRef: titleRef,
-  });
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
@@ -708,7 +695,7 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
       titleNode={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
       panelClassName="voucher-batch-panel"
     >
-      <div ref={trapRef} className="overflow-visible">
+      <div className="overflow-visible">
         <div className="voucher-batch-form voucher-batch-split">
           <div className="voucher-batch-split-form">
             <InvoiceFormSection label="New voucher details">

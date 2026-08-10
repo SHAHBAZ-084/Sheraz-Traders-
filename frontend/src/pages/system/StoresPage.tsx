@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput, Tile } from '../../components/ui/PageShell';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, type Store } from '../../lib/api';
 
@@ -172,8 +173,7 @@ export function StoresPage() {
 
             <div>
               <FieldLabel>Admin Password Confirmation</FieldLabel>
-              <TextInput
-                type="password"
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Enter your password"

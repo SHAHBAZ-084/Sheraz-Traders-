@@ -7,12 +7,34 @@ const BACKEND_PORT = process.env.PORT ?? '3847';
 const APP_NAME = 'Sheeraz Traders';
 const PREVIOUS_APP_NAME = 'Sheraz Traders';
 const LEGACY_APP_NAME = 'Grain Market POS';
-const APP_ICON =
-  process.platform === 'win32'
-    ? path.join(__dirname, '../build/icon.ico')
-    : path.join(__dirname, '../build/icon.png');
+const APP_ID = 'com.sheraztraders.pos';
+
+function resolveAppIcon(): string {
+  const winIcon = process.platform === 'win32';
+  const fileName = winIcon ? 'icon.ico' : 'icon.png';
+  const candidates = [
+    path.join(__dirname, `../build/${fileName}`),
+    path.join(app.getAppPath(), `build/${fileName}`),
+    path.join(process.resourcesPath, `app.asar.unpacked/build/${fileName}`),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0]!;
+}
 
 let mainWindow: BrowserWindow | null = null;
+let loadingWindow: BrowserWindow | null = null;
+
+/** Windows 10/11: prevent occluded-window bugs that block mouse/keyboard in the renderer. */
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  app.setAppUserModelId(APP_ID);
+}
 
 /** Keep DB in userData — migrate legacy folder name after rebrand. Must run before app.ready. */
 function configureStableUserDataPath(): void {
@@ -82,23 +104,90 @@ async function startBackend(): Promise<void> {
     process.env.GOOGLE_DRIVE_CLIENT_SECRET || decodeConfig(['R09DU1BY', 'LU5aczJ4d05fRnYzMDRoQU5xT25kNHA1cnBneG8=']);
 
   const backendEntry = path.join(__dirname, '../backend/dist/index.js');
-  await import(backendEntry);
+  const backend = await import(backendEntry);
+  if (typeof backend.backendReady?.then === 'function') {
+    await backend.backendReady;
+  }
 }
 
-function createWindow(): void {
+function showLoadingWindow(): void {
+  if (isDev) return;
+
+  loadingWindow = new BrowserWindow({
+    width: 420,
+    height: 160,
+    frame: false,
+    resizable: false,
+    movable: true,
+    center: true,
+    show: false,
+    backgroundColor: '#f4f5f7',
+    icon: resolveAppIcon(),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #f4f5f7;
+      color: #1b4332;
+      user-select: none;
+    }
+    .wrap { text-align: center; padding: 1rem; }
+    .title { font-size: 1rem; font-weight: 600; margin-bottom: 0.35rem; }
+    .sub { font-size: 0.8125rem; color: #4a4a40; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">${APP_NAME}</div>
+    <div class="sub">Starting local services…</div>
+  </div>
+</body>
+</html>`;
+
+  void loadingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  loadingWindow.once('ready-to-show', () => {
+    loadingWindow?.show();
+  });
+}
+
+function closeLoadingWindow(): void {
+  if (loadingWindow && !loadingWindow.isDestroyed()) {
+    loadingWindow.close();
+  }
+  loadingWindow = null;
+}
+
+async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 700,
     title: APP_NAME,
-    icon: APP_ICON,
+    icon: resolveAppIcon(),
     show: false,
     backgroundColor: '#f4f5f7',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -118,25 +207,37 @@ function createWindow(): void {
     }
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-    console.error('Window failed to load:', errorCode, errorDescription);
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('Window failed to load:', errorCode, errorDescription, validatedURL);
   });
 
-  if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:5173');
-    mainWindow.once('ready-to-show', () => {
-      mainWindow?.show();
-      mainWindow?.focus();
+  const targetUrl = isDev ? 'http://127.0.0.1:5173' : `http://127.0.0.1:${BACKEND_PORT}`;
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Application UI failed to load in time.'));
+    }, 60_000);
+
+    mainWindow!.webContents.once('did-finish-load', () => {
+      clearTimeout(timeout);
+      resolve();
     });
-    if (process.env.ELECTRON_DEVTOOLS === '1') {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-  } else {
-    mainWindow.loadURL(`http://127.0.0.1:${BACKEND_PORT}`);
-    mainWindow.once('ready-to-show', () => {
-      mainWindow?.show();
-      mainWindow?.focus();
+
+    mainWindow!.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
+      clearTimeout(timeout);
+      reject(new Error(`UI load failed (${errorCode}): ${errorDescription}`));
     });
+
+    void mainWindow!.loadURL(targetUrl);
+  });
+
+  closeLoadingWindow();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+
+  if (process.env.ELECTRON_DEVTOOLS === '1') {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   mainWindow.on('closed', () => {
@@ -145,6 +246,7 @@ function createWindow(): void {
 }
 
 async function showStartupError(message: string): Promise<void> {
+  closeLoadingWindow();
   await dialog.showMessageBox({
     type: 'error',
     title: `${APP_NAME} — Startup failed`,
@@ -158,6 +260,10 @@ configureStableUserDataPath();
 
 app.whenReady().then(async () => {
   try {
+    if (!isDev) {
+      showLoadingWindow();
+    }
+
     await startBackend();
 
     if (!isDev) {
@@ -173,16 +279,21 @@ app.whenReady().then(async () => {
       }
     }
 
-    createWindow();
+    await createWindow();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await showStartupError(message);
     return;
   }
 
-  app.on('activate', () => {
+  app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      try {
+        await createWindow();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await showStartupError(message);
+      }
     }
   });
 });
@@ -221,4 +332,3 @@ async function waitForBackendHealth(maxAttempts = 40): Promise<HealthResponse> {
 
   throw new Error('Backend failed to start');
 }
-
