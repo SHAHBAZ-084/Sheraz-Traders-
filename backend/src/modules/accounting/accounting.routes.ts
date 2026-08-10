@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, requireReportsAccess } from '../../middlewar
 import { asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination, parseCursorPagination, SELECTOR_PAGINATION, STANDARD_PAGINATION, LEDGER_PAGINATION } from '../../utils/pagination';
 import * as accountingService from './accounting.service';
+import { getProfitLossReport } from './profit-loss-report.service';
 
 export const accountingRouter = Router();
 
@@ -121,6 +122,32 @@ accountingRouter.get(
 );
 
 accountingRouter.get(
+  '/reports/profit-loss',
+  requireReportsAccess,
+  asyncHandler(async (req, res) => {
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const financialYearId =
+      financialYearIdParam && financialYearIdParam.trim() !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : NaN;
+    if (!Number.isFinite(financialYearId)) {
+      res.status(400).json({ error: 'financialYearId is required' });
+      return;
+    }
+
+    const fromDate = req.query.fromDate as string | undefined;
+    const toDate = req.query.toDate as string | undefined;
+
+    const report = await getProfitLossReport({
+      financialYearId,
+      fromDate: fromDate?.trim() || undefined,
+      toDate: toDate?.trim() || undefined,
+    });
+    res.json(report);
+  }),
+);
+
+accountingRouter.get(
   '/reports/account-balance',
   asyncHandler(async (req, res) => {
     const date = req.query.date as string | undefined;
@@ -142,12 +169,18 @@ accountingRouter.get(
         : 'both';
 
     const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const financialYearId =
+      financialYearIdParam && financialYearIdParam.trim() !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : undefined;
     const report = await accountingService.getAccountBalancesAsOf({
       date,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
       side,
       limit,
       offset,
+      financialYearId: Number.isFinite(financialYearId) ? financialYearId : undefined,
     });
     res.json({
       ...report,

@@ -11,6 +11,8 @@
   --border-strong: #2D6A4F;
 
   --fill-accent: #1B4332;
+  --brand-green: var(--fill-accent);
+  --brand-gold: var(--fill-financial);
   --on-accent: #FFFFFF;
   --bg-accent: #EEF2EC;
   --text-accent: #1B4332;
@@ -23,8 +25,9 @@
   /* Teal-green success — distinct from forest primary */
   --text-success: #0D7377;
   --text-danger: #B33A2B;
+  --color-credit-green: #1BB255;
   --ledger-debit: #FF0000;
-  --ledger-credit: #228B22;
+  --ledger-credit: var(--color-credit-green);
   --bg-success: #E6F5F3;
   --bg-danger: #FBF0EE;
 

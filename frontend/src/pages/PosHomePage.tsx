@@ -44,7 +44,7 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
 
 function StatBox({ label, value }: { label: string; value: string }) {
   return (
-    <Tile className="min-h-[4.5rem]">
+    <Tile className="flex min-h-[4.5rem] min-w-0 flex-col justify-center">
       <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-textMuted">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums text-financial">{value}</p>
     </Tile>
@@ -104,12 +104,12 @@ export function PosHomePage() {
           label="Cash Balance"
           value={summary ? formatLedgerAmount(summary.cashBalance) : '—'}
         />
-        <Tile className="min-h-[4.5rem] sm:col-span-2">
+        <Tile className="flex min-h-[4.5rem] min-w-0 flex-col sm:col-span-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-textMuted">
               Stock bags
             </p>
-            <Link to="/reports/stock" className="text-xs font-medium text-financial hover:underline">
+            <Link to="/reports/stock" className="shrink-0 text-xs font-medium text-financial hover:underline">
               Stock Report
             </Link>
           </div>
@@ -118,33 +118,39 @@ export function PosHomePage() {
           ) : (summary.productStock?.length ?? 0) === 0 ? (
             <p className="mt-2 text-sm text-textMuted">No bag stock yet.</p>
           ) : (
-            <div className="mt-2 max-h-36 overflow-y-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="text-textSecondary">
-                    <th className="pb-1 pr-2 font-medium">Product</th>
-                    <th className="pb-1 pr-2 text-right font-medium">Stock Qty</th>
-                    <th className="pb-1 pr-2 text-right font-medium">Sold (SI)</th>
-                    <th className="pb-1 text-right font-medium">Purchased (PI)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(summary.productStock ?? []).map((row) => (
-                    <tr key={row.productId} className="border-t border-border">
-                      <td className="py-1 pr-2 text-textPrimary">{row.name}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums font-medium text-financial">
-                        {row.totalQty ?? 0}
-                      </td>
-                      <td className="py-1 pr-2 text-right tabular-nums text-textSecondary">
-                        {row.saleInvoiceQty}
-                      </td>
-                      <td className="py-1 text-right tabular-nums text-textSecondary">
-                        {row.purchaseInvoiceQty}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-2 max-h-36 min-w-0 overflow-y-auto pr-1">
+              <div
+                className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-baseline gap-x-2 pb-1 text-xs font-medium text-textSecondary"
+              >
+                <span>Product</span>
+                <span className="min-w-[2.5rem] text-center" title="Total bags on hand">
+                  Bags
+                </span>
+                <span aria-hidden="true" />
+              </div>
+              <ul className="divide-y divide-border text-sm">
+                {(summary.productStock ?? []).map((row) => {
+                  const bags = row.totalQty ?? 0;
+                  return (
+                    <li
+                      key={row.productId}
+                      className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-baseline gap-x-2 py-1.5"
+                    >
+                      <span className="min-w-0 truncate text-left text-textPrimary" title={row.name}>
+                        {row.name}
+                      </span>
+                      <span
+                        className={`min-w-[2.5rem] text-center tabular-nums font-semibold ${
+                          bags < 0 ? 'text-danger' : bags > 0 ? 'text-financial' : 'text-textSecondary'
+                        }`}
+                      >
+                        {bags}
+                      </span>
+                      <span aria-hidden="true" />
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
         </Tile>

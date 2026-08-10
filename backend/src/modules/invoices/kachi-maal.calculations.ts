@@ -30,6 +30,22 @@ export function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+/** Display total weight as maund + remaining kg (1 maund = MAUND_KG). Raw kg unchanged in data. */
+export function formatWeightMaundKg(totalKg: number): string {
+  const kg = Number(totalKg);
+  if (!Number.isFinite(kg) || kg <= 0) return '0 Kg';
+
+  const maund = Math.floor(kg / MAUND_KG);
+  const remainingKg = Math.round((kg - maund * MAUND_KG) * 100) / 100;
+
+  const formatKg = (value: number) =>
+    Number.isInteger(value) ? String(value) : value.toLocaleString('en-PK', { maximumFractionDigits: 2 });
+
+  if (maund === 0) return `${formatKg(remainingKg)} Kg`;
+  if (remainingKg === 0) return `${maund} Maund`;
+  return `${maund} Maund ${formatKg(remainingKg)} Kg`;
+}
+
 export function computeKachiMaalRow(
   input: KachiMaalRowInput,
   prefs: Pick<KachiMaalPreferenceRates, 'paleDariPercent' | 'brokeryPercent'>,

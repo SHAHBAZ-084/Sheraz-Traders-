@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { api, type Product, type ProductCategory, type Store } from '../../lib/api';
@@ -186,12 +187,9 @@ export function StockTransferPage() {
             </div>
             <div>
               <FieldLabel>Quantity</FieldLabel>
-              <TextInput
-                type="number"
-                min="0.01"
-                step="any"
+              <DecimalInput
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={setQuantity}
                 required
               />
               {availableBalance != null ? (

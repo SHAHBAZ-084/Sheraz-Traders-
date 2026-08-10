@@ -17,8 +17,8 @@ import {
 } from '../accounting/accounting.service';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
-import { getCurrentStockBalance, postSaleInvoiceStockOut } from '../stock/stock.service';
-import { voucherReferenceFromBillNo } from './invoice-voucher-descriptions';
+import { postSaleInvoiceStockOut } from '../stock/stock.service';
+import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
   computeSaleInvoiceTotals,
@@ -62,19 +62,27 @@ function buildSaleInvoiceLegs(
   customerAccountId: number,
   resolvedLines: ResolvedSaleLine[],
   invoiceTotal: number,
-): VoucherLeg[] {
+): { legs: VoucherLeg[]; productDescription: string } {
+  const productDescription = formatInvoiceProductLinesDescription(
+    resolvedLines.map((line) => ({
+      productName: line.productName,
+      quantity: line.quantity,
+      rate: line.rate,
+    })),
+  );
+
   const legs: VoucherLeg[] = [
     {
       accountId: customerAccountId,
       type: LedgerEntryType.DEBIT,
       amount: invoiceTotal,
-      description: 'Sale Invoice customer',
+      description: productDescription,
     },
     ...resolvedLines.map((line) => ({
       accountId: line.maalKhataAccountId,
       type: LedgerEntryType.CREDIT,
       amount: line.lineTotal,
-      description: `Sale Invoice ${line.productName}`,
+      description: productDescription,
     })),
   ];
 
@@ -87,35 +95,7 @@ function buildSaleInvoiceLegs(
   if (Math.abs(totalDebits - totalCredits) > 0.01) {
     throw new AppError(500, 'Sale Invoice voucher debits and credits do not balance');
   }
-  return legs;
-}
-
-async function assertSaleStockAvailable(
-  tx: Prisma.TransactionClient,
-  storeId: number,
-  resolvedLines: Array<{ productId: number; productName: string; quantity: number }>,
-) {
-  const requestedByProduct = new Map<number, { name: string; quantity: number }>();
-  for (const line of resolvedLines) {
-    const prev = requestedByProduct.get(line.productId);
-    if (prev) {
-      prev.quantity += line.quantity;
-    } else {
-      requestedByProduct.set(line.productId, {
-        name: line.productName,
-        quantity: line.quantity,
-      });
-    }
-  }
-  for (const [productId, req] of requestedByProduct) {
-    const available = await getCurrentStockBalance(productId, storeId, tx);
-    if (req.quantity > available) {
-      throw new AppError(
-        400,
-        `Insufficient stock for ${req.name} at selected store: available ${available}, requested ${req.quantity}`,
-      );
-    }
-  }
+  return { legs, productDescription };
 }
 
 async function postSaleInvoiceAccounting(
@@ -132,7 +112,7 @@ async function postSaleInvoiceAccounting(
   },
   resolvedLines: ResolvedSaleLine[],
 ) {
-  const legs = buildSaleInvoiceLegs(
+  const { legs, productDescription } = buildSaleInvoiceLegs(
     invoice.debitAccountId,
     resolvedLines,
     Number(invoice.total),
@@ -143,7 +123,7 @@ async function postSaleInvoiceAccounting(
     legs,
     amount: Number(invoice.total),
     date: invoice.invoiceDate,
-    description: `Sale Invoice ${invoice.reference}`,
+    description: productDescription,
     reference: voucherReferenceFromBillNo(invoice.billNo ?? undefined),
     createdById: invoice.createdById,
   });
@@ -194,9 +174,6 @@ export async function createSaleInvoice(
         lineTotal: line.lineTotal,
       });
     }
-
-    // Strict per-store stock check — never use another store's balance.
-    await assertSaleStockAvailable(tx, data.storeId, resolvedLines);
 
     buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
@@ -282,8 +259,6 @@ export async function approveSaleInvoice(invoiceId: number) {
         lineTotal: Number(item.total),
       });
     }
-
-    await assertSaleStockAvailable(tx, invoice.storeId, resolvedLines);
 
     await postSaleInvoiceAccounting(
       tx,

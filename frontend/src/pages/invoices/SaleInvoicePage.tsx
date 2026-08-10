@@ -10,6 +10,7 @@ import {
   InvoiceHeaderRow,
 } from '../../components/invoices/InvoiceFormLayout';
 import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
@@ -22,10 +23,13 @@ import {
   type Store,
 } from '../../lib/api';
 import { formatLedgerAmount } from '../../lib/format';
-import { flatPartyAccountOptions } from '../../lib/partyAccounts';
+import {
+  partyAccountOptionsForCategory,
+  partyCategoryIdForAccount,
+  partyCategorySelectOptions,
+} from '../../lib/partyAccounts';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 
-import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
 import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
 
 type GridRow = {
@@ -47,6 +51,7 @@ type SaleInvoiceDraft = {
   productId: string;
   quantity: string;
   rate: string;
+  partyCategoryId: string;
   customerAccountId: string;
 };
 
@@ -117,11 +122,11 @@ export function SaleInvoicePage() {
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
   const [quantity, setQuantity] = useState(() => restoredState?.quantity ?? '1');
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
+  const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [customerAccountId, setCustomerAccountId] = useState(() => restoredState?.customerAccountId ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
-  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
 
   useEffect(() => {
     if (restoredState) {
@@ -134,9 +139,33 @@ export function SaleInvoicePage() {
       if (restoredState.productId) setProductId(restoredState.productId);
       if (restoredState.quantity) setQuantity(restoredState.quantity);
       if (restoredState.rate) setRate(restoredState.rate);
+      if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.customerAccountId) setCustomerAccountId(restoredState.customerAccountId);
     }
   }, [restoredState]);
+
+  useEffect(() => {
+    if (!customerAccountId || partyCategoryId || accounts.length === 0) return;
+    const derived = partyCategoryIdForAccount(accounts, customerAccountId);
+    if (derived) setPartyCategoryId(derived);
+  }, [accounts, customerAccountId, partyCategoryId]);
+
+  useEffect(() => {
+    if (!partyCategoryId || categories.length === 0) return;
+    const valid = partyCategorySelectOptions(categories).some((o) => o.value === partyCategoryId);
+    if (!valid) {
+      setPartyCategoryId('');
+      setCustomerAccountId('');
+    }
+  }, [partyCategoryId, categories]);
+
+  useEffect(() => {
+    if (!partyCategoryId || !customerAccountId) return;
+    const acct = accounts.find((a) => String(a.id) === customerAccountId);
+    if (acct && String(acct.categoryId) !== partyCategoryId) {
+      setCustomerAccountId('');
+    }
+  }, [partyCategoryId, customerAccountId, accounts]);
 
   useEffect(() => {
     Promise.all([
@@ -177,9 +206,13 @@ export function SaleInvoicePage() {
     () => (Array.isArray(stores) ? stores : []).map((s) => ({ value: String(s.id), label: s.name })),
     [stores],
   );
+  const partyCategoryOptions = useMemo(
+    () => partyCategorySelectOptions(categories),
+    [categories],
+  );
   const customerOptions = useMemo(
-    () => flatPartyAccountOptions(categories, accounts),
-    [categories, accounts],
+    () => partyAccountOptionsForCategory(accounts, partyCategoryId),
+    [accounts, partyCategoryId],
   );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
@@ -189,6 +222,11 @@ export function SaleInvoicePage() {
   function onProductCategoryChange(value: string) {
     setProductCategoryId(value);
     setProductId('');
+  }
+
+  function onPartyCategoryChange(value: string) {
+    setPartyCategoryId(value);
+    setCustomerAccountId('');
   }
 
   async function addRow() {
@@ -289,9 +327,9 @@ export function SaleInvoicePage() {
 
   return (
     <PageShell centerTitle invoiceTitleBand title="Sale Invoice">
-      <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
+      <Panel className="inv-form-panel inv-sp-invoice-panel mx-auto w-full overflow-visible bg-white">
         <form ref={trapRef} onSubmit={onSubmit}>
-          <div className="flex flex-col gap-6">
+          <div className="inv-sp-invoice-form">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>
                   <InvoiceField>
@@ -346,49 +384,39 @@ export function SaleInvoicePage() {
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Qty</FieldLabel>
-                      <TextInput value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                      <DecimalInput value={quantity} onChange={setQuantity} />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Rate</FieldLabel>
-                      <TextInput value={rate} onChange={(e) => setRate(e.target.value)} />
+                      <DecimalInput value={rate} onChange={setRate} />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Customer">
-                <InvoiceField wide>
-                  <div className="mb-2 flex items-center justify-between gap-3">
+                <InvoiceFieldRow cols={2}>
+                  <InvoiceField>
+                    <FieldLabel>Sale party category</FieldLabel>
+                    <SearchSelect
+                      options={partyCategoryOptions}
+                      value={partyCategoryId}
+                      onChange={onPartyCategoryChange}
+                      placeholder="Select category…"
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
                     <FieldLabel>Party</FieldLabel>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-financial hover:underline px-2 py-0.5 rounded hover:bg-financial/10 transition-colors"
-                      onClick={() => setShowQuickAddParty(true)}
-                    >
-                      + New Customer
-                    </button>
-                  </div>
-                  <SearchSelect
-                    options={customerOptions}
-                    value={customerAccountId}
-                    onChange={setCustomerAccountId}
-                    placeholder="Select party"
-                  />
-                </InvoiceField>
+                    <SearchSelect
+                      options={customerOptions}
+                      value={customerAccountId}
+                      onChange={setCustomerAccountId}
+                      placeholder={partyCategoryId ? 'Select party' : 'Select a category first'}
+                      disabled={!partyCategoryId}
+                    />
+                  </InvoiceField>
+                </InvoiceFieldRow>
               </InvoiceFormSection>
-
-              <QuickAddPartyModal
-                kind="customer"
-                isOpen={showQuickAddParty}
-                onClose={() => setShowQuickAddParty(false)}
-                onCreated={async (party) => {
-                  const updatedAccounts = await api.listAccounts({ lite: true });
-                  setAccounts(updatedAccounts);
-                  if (party.accountId) {
-                    setCustomerAccountId(String(party.accountId));
-                  }
-                }}
-              />
 
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
                 {addingRow ? 'Checking stock…' : 'Add to grid'}
@@ -419,6 +447,7 @@ export function SaleInvoicePage() {
                       productId,
                       quantity,
                       rate,
+                      partyCategoryId,
                       customerAccountId,
                     },
                     predictedRef || 'Sale Invoice',

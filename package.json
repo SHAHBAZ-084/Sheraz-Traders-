@@ -2,9 +2,9 @@
   "name": "sheraz-traders",
   "version": "0.1.0",
   "private": true,
-  "description": "Sheraz Traders — offline desktop POS for grain market (Electron + React + Express + SQLite)",
+  "description": "Sheeraz Traders — offline desktop POS for grain market (Electron + React + Express + SQLite)",
   "main": "dist-electron/main.js",
-  "author": "Sheraz Traders",
+  "author": "Sheeraz Traders",
   "scripts": {
     "dev": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\" \"npm run electron:dev\"",
     "dev:web": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
@@ -22,8 +22,8 @@
   ],
   "build": {
     "appId": "com.sheraztraders.pos",
-    "productName": "Sheraz Traders",
-    "copyright": "Copyright © Sheraz Traders",
+    "productName": "Sheeraz Traders",
+    "copyright": "Copyright © Sheeraz Traders",
     "icon": "build/icon.png",
     "directories": {
       "output": "release",
@@ -32,13 +32,17 @@
     "files": [
       "dist-electron/**/*",
       "backend/dist/**/*",
-      "backend/prisma/**/*",
+      "backend/prisma/schema.prisma",
+      "backend/prisma/migrations/**/*",
+      "backend/prisma/seed.ts",
       "backend/package.json",
       "frontend/dist/**/*",
-      "package.json"
+      "package.json",
+      "!backend/prisma/data/**"
     ],
     "asarUnpack": [
-      "backend/prisma/**/*",
+      "backend/prisma/schema.prisma",
+      "backend/prisma/migrations/**/*",
       "node_modules/.prisma/**/*"
     ],
     "extraResources": [
@@ -56,8 +60,9 @@
       "target": [
         "nsis"
       ],
-      "publisherName": "Sheraz Traders",
-      "legalTrademarks": "Sheraz Traders"
+      "signAndEditExecutable": false,
+      "publisherName": "Sheeraz Traders",
+      "legalTrademarks": "Sheeraz Traders"
     },
     "nsis": {
       "oneClick": false,
@@ -66,8 +71,8 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Sheraz Traders",
-      "uninstallDisplayName": "Sheraz Traders",
+      "shortcutName": "Sheeraz Traders",
+      "uninstallDisplayName": "Sheeraz Traders",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",

@@ -99,6 +99,8 @@ export const SIDEBAR_NAV: SidebarSection[] = [
         ],
       },
       { kind: 'link', label: 'Detail Trial Balance', to: '/reports/trial-balance' },
+      { kind: 'link', label: 'Profit & Loss Statement', to: '/reports/profit-loss' },
+      { kind: 'link', label: 'Financial Year Reports', to: '/reports/financial-year' },
       { kind: 'link', label: 'Stock Report', to: '/reports/stock' },
     ],
   },

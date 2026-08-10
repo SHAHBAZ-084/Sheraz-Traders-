@@ -14,6 +14,7 @@ import {
 } from '../../components/invoices/InvoiceFormLayout';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 import { FieldLabel, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
 import {
@@ -28,6 +29,7 @@ import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
   DEBIT_ACCOUNT_CATEGORIES,
+  formatWeightMaundKg,
   parseNum,
 } from '../../lib/kachiMaalCalculations';
 import { PARTY_ACCOUNT_CATEGORIES } from '../../lib/partyAccounts';
@@ -38,7 +40,6 @@ type GridRow = {
   partyAccountId: number;
   partyName: string;
   jins: string;
-  qism: string;
   bagCount: number;
   bhartii: number;
   dharanCount: number;
@@ -56,7 +57,6 @@ type KachiMaalDraft = {
   invoiceDate: string;
   productId: string;
   jins: string;
-  qism: string;
   billNo: string;
   gariNo: string;
   tafseel: string;
@@ -115,7 +115,6 @@ export function KachiMaalInvoicePage() {
   const [invoiceDate, setInvoiceDate] = useState(() => restoredState?.invoiceDate ?? todayInputValue());
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
   const [jins, setJins] = useState(() => restoredState?.jins ?? '');
-  const [qism, setQism] = useState(() => restoredState?.qism ?? '');
   const [billNo, setBillNo] = useState(() => restoredState?.billNo ?? '');
   const [gariNo, setGariNo] = useState(() => restoredState?.gariNo ?? '');
   const [tafseel, setTafseel] = useState(() => restoredState?.tafseel ?? '');
@@ -156,7 +155,6 @@ export function KachiMaalInvoicePage() {
       if (restoredState.gariNo !== undefined) setGariNo(restoredState.gariNo);
       if (restoredState.productId) setProductId(restoredState.productId);
       if (restoredState.jins) setJins(restoredState.jins);
-      if (restoredState.qism) setQism(restoredState.qism);
       if (restoredState.tafseel) setTafseel(restoredState.tafseel);
       if (restoredState.debitAccountId) setDebitAccountId(restoredState.debitAccountId);
       if (restoredState.gridRows) setGridRows(restoredState.gridRows);
@@ -188,9 +186,7 @@ export function KachiMaalInvoicePage() {
   function handleProductSelect(idStr: string) {
     setProductId(idStr);
     const p = products.find((x) => String(x.id) === idStr);
-    if (p) {
-      setJins(p.name);
-    }
+    setJins(p?.name ?? '');
   }
 
   const entryPreview = useMemo(() => {
@@ -229,6 +225,10 @@ export function KachiMaalInvoicePage() {
 
   function addRow() {
     setError('');
+    if (!productId || !jins.trim()) {
+      setError('Select a product before adding a row');
+      return;
+    }
     if (!partyAccountId) {
       setError('Select a purchase party before adding a row');
       return;
@@ -254,7 +254,6 @@ export function KachiMaalInvoicePage() {
       partyAccountId: Number(partyAccountId),
       partyName: party?.name ?? '',
       jins: jins.trim(),
-      qism: qism.trim(),
       bagCount: parseNum(bagCount),
       bhartii: bh,
       dharanCount: parseNum(dharanCount),
@@ -292,14 +291,12 @@ export function KachiMaalInvoicePage() {
         billNo: billNo.trim() || undefined,
         gariNo: gariNo.trim() || undefined,
         jins: jins.trim() || undefined,
-        qism: qism.trim() || undefined,
         tafseel: tafseel.trim() || undefined,
         debitAccountId: Number(debitAccountId),
         miscAmount: parseNum(miscAmount),
         lines: gridRows.map((row) => ({
           partyAccountId: row.partyAccountId,
           jins: row.jins || undefined,
-          qism: row.qism || undefined,
           bagCount: row.bagCount,
           bhartii: row.bhartii,
           dharanCount: row.dharanCount,
@@ -320,9 +317,9 @@ export function KachiMaalInvoicePage() {
   }
 
   return (
-    <FormPageShell title="Kachi Maal Invoice">
+    <FormPageShell title="Kachi Maal Invoice" panelClassName="inv-km-invoice-panel">
       <form onSubmit={onSave}>
-        <div className="flex flex-col gap-6">
+        <div className="inv-km-invoice-form">
             <InvoiceFormSection label="Header">
               <InvoiceHeaderRow>
                 <InvoiceField>
@@ -347,29 +344,21 @@ export function KachiMaalInvoicePage() {
                 </InvoiceField>
               </InvoiceHeaderRow>
 
-              <InvoiceHeaderRow>
+              <InvoiceFieldRow cols={2}>
                 <InvoiceField wide>
-                  <FieldLabel>Item (Jins)</FieldLabel>
+                  <FieldLabel>Product</FieldLabel>
                   <SearchSelect
                     options={productOptions}
                     value={productId}
                     onChange={handleProductSelect}
-                    placeholder="Select product (optional)…"
+                    placeholder="Select product…"
                   />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Jins (free text)</FieldLabel>
-                  <TextInput value={jins} onChange={(e) => setJins(e.target.value)} />
-                </InvoiceField>
-                <InvoiceField>
-                  <FieldLabel>Qism / Variety</FieldLabel>
-                  <TextInput value={qism} onChange={(e) => setQism(e.target.value)} />
                 </InvoiceField>
                 <InvoiceField>
                   <FieldLabel>Tafseel</FieldLabel>
                   <TextInput value={tafseel} onChange={(e) => setTafseel(e.target.value)} />
                 </InvoiceField>
-              </InvoiceHeaderRow>
+              </InvoiceFieldRow>
             </InvoiceFormSection>
 
             <InvoiceFormSection label="Add dheri row">
@@ -387,29 +376,34 @@ export function KachiMaalInvoicePage() {
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Bags count</FieldLabel>
-                      <TextInput value={bagCount} onChange={(e) => setBagCount(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={bagCount} onChange={setBagCount} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Dharan</FieldLabel>
-                      <TextInput value={dharanCount} onChange={(e) => setDharanCount(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={dharanCount} onChange={setDharanCount} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Kilo</FieldLabel>
-                      <TextInput value={looseKg} onChange={(e) => setLooseKg(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={looseKg} onChange={setLooseKg} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Bhartii</FieldLabel>
-                      <TextInput value={bhartii} onChange={(e) => setBhartii(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={bhartii} onChange={setBhartii} inputMode="decimal" />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
                 <InvoiceFieldGroup label="Pricing">
-                  <InvoiceFieldRow cols={3}>
+                  <InvoiceFieldRow cols={4}>
                     <InvoiceField>
                       <FieldLabel>Rate / Maund</FieldLabel>
-                      <TextInput value={ratePerMaund} onChange={(e) => setRatePerMaund(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={ratePerMaund} onChange={setRatePerMaund} />
                     </InvoiceField>
+                    <InvoiceReadOnlyField
+                      label="Total Weight"
+                      value={entryPreview.totalWeightKg}
+                      displayText={formatWeightMaundKg(entryPreview.totalWeightKg)}
+                    />
                     <InvoiceReadOnlyField label="Amount" value={entryPreview.amount} />
                     <InvoiceReadOnlyField label="Net to party" value={entryPreview.netCreditToParty} />
                   </InvoiceFieldRow>
@@ -427,7 +421,7 @@ export function KachiMaalInvoicePage() {
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
                       <th className="px-3 py-2.5">Party</th>
                       <th className="px-3 py-2.5">Dheri</th>
-                      <th className="px-3 py-2.5">Variety</th>
+                      <th className="px-3 py-2.5">Product</th>
                       <th className="px-3 py-2.5 text-right">Weight</th>
                       <th className="px-3 py-2.5 text-right">Rate</th>
                       <th className="px-3 py-2.5 text-right">Amount</th>
@@ -440,7 +434,7 @@ export function KachiMaalInvoicePage() {
                       <tr key={row.clientId} className="border-b border-border/50">
                         <td className="px-3 py-2">{row.partyName}</td>
                         <td className="px-3 py-2 tabular-nums">{row.bagCount}</td>
-                        <td className="px-3 py-2">{row.qism || row.jins || '—'}</td>
+                        <td className="px-3 py-2">{row.jins || '—'}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.totalWeightKg)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.ratePerMaund)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
@@ -464,7 +458,7 @@ export function KachiMaalInvoicePage() {
             <InvoiceFormSection label="Settlement (debit side)">
               <InvoiceFieldStack>
                 <InvoiceFieldGroup label="Debit account & totals">
-                  <InvoiceFieldRow cols={6}>
+                  <InvoiceFieldRow cols={4}>
                     <InvoiceField wide>
                       <FieldLabel>Debit account</FieldLabel>
                       <SearchSelect
@@ -477,6 +471,11 @@ export function KachiMaalInvoicePage() {
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
                     <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
+                  </InvoiceFieldRow>
+                </InvoiceFieldGroup>
+
+                <InvoiceFieldGroup label="Misc">
+                  <InvoiceFieldRow cols={3}>
                     <InvoiceField>
                       <div className="mb-1 flex items-center justify-between gap-1">
                         <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-textPrimary">
@@ -504,14 +503,9 @@ export function KachiMaalInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceReadOnlyField label={`Daami (${prefRates.daamiPercent}%)`} value={invoiceTotals.profitAmount} />
-                  </InvoiceFieldRow>
-                </InvoiceFieldGroup>
-
-                <InvoiceFieldGroup label="Misc">
-                  <InvoiceFieldRow cols={2}>
                     <InvoiceField>
                       <FieldLabel>Misc (optional)</FieldLabel>
-                      <TextInput value={miscAmount} onChange={(e) => setMiscAmount(e.target.value)} inputMode="decimal" />
+                      <DecimalInput value={miscAmount} onChange={setMiscAmount} />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
@@ -533,7 +527,6 @@ export function KachiMaalInvoicePage() {
                     invoiceDate,
                     productId,
                     jins,
-                    qism,
                     billNo,
                     gariNo,
                     tafseel,

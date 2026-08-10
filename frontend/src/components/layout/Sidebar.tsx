@@ -116,8 +116,8 @@ export function Sidebar() {
   return (
     <aside className="app-sidebar">
       <div className="app-sidebar-brand">
-        <Link to="/" className="app-sidebar-brand-link" aria-label="Sheraz Traders — Dashboard">
-          <img src="/sheraz-traders-logo.png" alt="Sheraz Traders" className="app-sidebar-brand-logo" />
+        <Link to="/" className="app-sidebar-brand-link" aria-label="Sheeraz Traders — Dashboard">
+          <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="app-sidebar-brand-logo" />
         </Link>
         <p className="app-sidebar-brand-sub">Grain Market POS</p>
       </div>

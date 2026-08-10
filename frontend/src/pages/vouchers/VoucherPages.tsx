@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { AmountInput } from '../../components/ui/AmountInput';
 import { FormActionFooter } from '../../components/ui/FormActionFooter';
 import {
   FormPageShell,
@@ -338,7 +339,7 @@ function JournalVoucherFormContent() {
   }
 
   return (
-    <FormPageShell titleRef={titleRef} title="Journal Voucher" panelClassName="max-w-3xl">
+    <FormPageShell titleRef={titleRef} title="Journal Voucher" panelClassName="max-w-4xl">
       <div ref={trapRef} className="jv-form overflow-visible">
         <InvoiceFormSection label="Header">
           <InvoiceHeaderRow>
@@ -410,15 +411,11 @@ function JournalVoucherFormContent() {
           <InvoiceFieldRow cols={2}>
             <InvoiceField>
               <FieldLabel>Amount</FieldLabel>
-              <TextInput
+              <AmountInput
                 ref={amountRef}
                 tabIndex={6}
-                type="number"
-                min="0.01"
-                step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onFocus={(e) => e.currentTarget.select()}
+                onChange={setAmount}
                 placeholder="0.00"
               />
             </InvoiceField>
@@ -709,9 +706,11 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
     <FormPageShell
       titleRef={titleRef}
       titleNode={titleColorClass ? <span className={titleColorClass}>{titleText}</span> : titleText}
+      panelClassName="voucher-batch-panel"
     >
       <div ref={trapRef} className="overflow-visible">
-        <div className="flex flex-col gap-6">
+        <div className="voucher-batch-form voucher-batch-split">
+          <div className="voucher-batch-split-form">
             <InvoiceFormSection label="New voucher details">
               <InvoiceHeaderRow>
                 <InvoiceField>
@@ -768,15 +767,11 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
               <InvoiceFieldRow cols={2}>
                 <InvoiceField>
                   <FieldLabel>Amount</FieldLabel>
-                  <TextInput
+                  <AmountInput
                     ref={amountRef}
                     tabIndex={6}
-                    type="number"
-                    min="0.01"
-                    step="0.01"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={setAmount}
                     placeholder="0.00"
                   />
                 </InvoiceField>
@@ -813,7 +808,9 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
             <InvoiceAddRowAction tabIndex={9} onClick={handleAddToGrid}>
               Add to grid queue
             </InvoiceAddRowAction>
+          </div>
 
+          <div className="voucher-batch-split-queue">
             <InvoiceFormSection label={`Queued vouchers batch (${queuedItems.length})`}>
               <InvoicePreviewGridShell isEmpty={queuedItems.length === 0}>
                 <table className="w-full min-w-[720px] text-left text-sm">
@@ -879,6 +876,7 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
               onClose={() => navigate('/')}
               className="border-t border-border pt-4"
             />
+          </div>
         </div>
       </div>
     </FormPageShell>
@@ -1063,13 +1061,10 @@ export function VoucherDetailCard({
           <dd className="text-sm font-semibold text-textPrimary">
             {!isMultiLeg && editingAmount ? (
               <form onSubmit={submitAmount} className="flex flex-wrap items-center gap-2">
-                <TextInput
-                  type="number"
-                  step="0.01"
-                  min="0.01"
+                <AmountInput
                   required
                   value={amountDraft}
-                  onChange={(e) => setAmountDraft(e.target.value)}
+                  onChange={setAmountDraft}
                   className="max-w-[180px]"
                 />
                 <PrimaryButton type="submit" disabled={updating}>
@@ -1086,7 +1081,7 @@ export function VoucherDetailCard({
                 </SecondaryButton>
               </form>
             ) : (
-              Number(voucher.amount).toFixed(2)
+              formatLedgerAmount(voucher.amount, 2)
             )}
           </dd>
         </div>

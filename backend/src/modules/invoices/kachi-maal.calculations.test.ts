@@ -3,6 +3,7 @@ import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
   DHARAN_KG,
+  formatWeightMaundKg,
   MAUND_KG,
 } from './kachi-maal.calculations';
 
@@ -14,6 +15,13 @@ const prefs = {
 };
 
 describe('Kachi Maal calculations', () => {
+  it('formats total kg as maund and remaining kg', () => {
+    expect(formatWeightMaundKg(1250)).toBe('31 Maund 10 Kg');
+    expect(formatWeightMaundKg(420)).toBe('10 Maund 20 Kg');
+    expect(formatWeightMaundKg(10)).toBe('10 Kg');
+    expect(formatWeightMaundKg(40)).toBe('1 Maund');
+  });
+
   it('computes row weight and amount', () => {
     // 10 bags × 40 kg + 2 dharan × 5 kg + 10 loose = 420 kg
     // rate 4000/maund → 100/kg → amount 42000

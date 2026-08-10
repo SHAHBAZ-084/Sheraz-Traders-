@@ -14,7 +14,7 @@ import {
   connectGoogleDrive,
   disconnectGoogleDrive,
   getBackupStatus,
-  runAutoBackupCycle,
+  runGoogleDriveBackup,
 } from '../../lib/google-drive-backup';
 
 export const systemRouter = Router();
@@ -59,11 +59,11 @@ systemRouter.post(
 systemRouter.post(
   '/google-drive/backup-now',
   asyncHandler(async (_req, res) => {
-    const result = await runAutoBackupCycle();
+    const result = await runGoogleDriveBackup();
     if (!result.ok) {
       throw new AppError(400, result.error ?? 'Backup failed');
     }
-    res.json({ ok: true });
+    res.json({ ok: true, uploadedAt: result.uploadedAt ?? new Date().toISOString() });
   }),
 );
 

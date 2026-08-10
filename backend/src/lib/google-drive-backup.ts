@@ -10,10 +10,8 @@ import { walCheckpointTruncate } from './database-maintenance';
 import { prisma } from './prisma';
 import { logger } from './logger';
 
-const BACKUP_FOLDER_NAME = 'Sheraz Traders Backups';
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes check loop
-const TARGET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours target
-const OVERDUE_GRACE_MS = 26 * 60 * 60 * 1000; // 26 hours overdue threshold
+const BACKUP_FOLDER_NAME = 'Sheeraz Traders Backups';
+const LEGACY_BACKUP_FOLDER_NAMES = ['Sheraz Traders Backups'] as const;
 
 type BackupState = {
   lastSuccessAt: string | null;
@@ -231,7 +229,7 @@ export async function connectGoogleDrive(): Promise<{ success: boolean; message:
               res.end(`
                 <div style="font-family: system-ui, sans-serif; text-align: center; padding: 40px;">
                   <h2 style="color: #10b981;">Google Drive Connected Successfully!</h2>
-                  <p style="color: #4b5563;">You can now close this browser window and return to Sheraz Traders.</p>
+                  <p style="color: #4b5563;">You can now close this browser window and return to Sheeraz Traders.</p>
                 </div>
               `);
               server.close();
@@ -338,13 +336,17 @@ async function getAuthenticatedDriveClient() {
 }
 
 async function getOrCreateBackupFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
-  const response = await drive.files.list({
-    q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id, name)',
-  });
+  const folderNames = [BACKUP_FOLDER_NAME, ...LEGACY_BACKUP_FOLDER_NAMES];
 
-  if (response.data.files && response.data.files.length > 0) {
-    return response.data.files[0].id!;
+  for (const folderName of folderNames) {
+    const response = await drive.files.list({
+      q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name)',
+    });
+
+    if (response.data.files && response.data.files.length > 0) {
+      return response.data.files[0].id!;
+    }
   }
 
   const createResponse = await drive.files.create({
@@ -358,20 +360,18 @@ async function getOrCreateBackupFolder(drive: ReturnType<typeof google.drive>): 
   return createResponse.data.id!;
 }
 
-export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: string }> {
+export async function runGoogleDriveBackup(): Promise<{ ok: boolean; uploadedAt?: string; error?: string }> {
   const state = loadState();
   if (!isGoogleDriveConnected()) {
     return { ok: false, error: 'Google Drive is not connected' };
   }
   if (state.needsReconnect) {
-    logger.info('Auto-backup skipped — Google Drive needs reconnect (invalid_grant)');
     return { ok: false, error: 'Google Drive needs reconnect' };
   }
 
   const isOnline = await checkInternetConnection();
   if (!isOnline) {
-    logger.info('Auto-backup delayed — no internet connection available');
-    return { ok: false, error: 'No internet connection' };
+    return { ok: false, error: 'No internet connection — please connect and try again' };
   }
 
   const backupDir = getBackupDirectory();
@@ -385,7 +385,7 @@ export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: strin
   try {
     const dbPath = getDatabaseFilePath();
     if (!fs.existsSync(dbPath)) {
-      logger.info('Auto-backup skipped — database file does not exist yet');
+      logger.info('Google Drive backup skipped — database file does not exist yet');
       return { ok: false, error: 'Database file not found' };
     }
 
@@ -401,7 +401,7 @@ export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: strin
     const folderId = await getOrCreateBackupFolder(drive);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `sheraz-traders-backup-${timestamp}.db`;
+    const fileName = `sheeraz-traders-backup-${timestamp}.db`;
 
     await drive.files.create({
       requestBody: {
@@ -425,7 +425,7 @@ export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: strin
       needsReconnect: false,
     });
     logger.info('Database backed up to Google Drive successfully', { fileName, folder: BACKUP_FOLDER_NAME });
-    return { ok: true };
+    return { ok: true, uploadedAt: successTime };
   } catch (err) {
     const isRevoked = isInvalidGrantError(err);
     const message = isRevoked
@@ -444,39 +444,9 @@ export async function runAutoBackupCycle(): Promise<{ ok: boolean; error?: strin
   }
 }
 
-let schedulerTimer: NodeJS.Timeout | null = null;
-
-export function startAutoBackupScheduler(): void {
-  if (schedulerTimer) return;
-
-  const checkAndRun = async () => {
-    const state = loadState();
-    if (!isGoogleDriveConnected() || state.needsReconnect) return;
-
-    const lastSuccess = state.lastSuccessAt ? Date.parse(state.lastSuccessAt) : 0;
-    const elapsed = Date.now() - lastSuccess;
-
-    if (elapsed >= TARGET_INTERVAL_MS) {
-      await runAutoBackupCycle();
-    }
-  };
-
-  // Immediate check on startup
-  checkAndRun().catch((err) => logger.error('Startup auto-backup check failed', { err: String(err) }));
-
-  schedulerTimer = setInterval(() => {
-    checkAndRun().catch((err) => logger.error('Scheduled auto-backup check failed', { err: String(err) }));
-  }, CHECK_INTERVAL_MS);
-
-  logger.info('Google Drive auto-backup scheduler initialized (target: 24h, check interval: 5m)');
-}
-
 export function getBackupStatus() {
   const connected = isGoogleDriveConnected();
   const state = loadState();
-
-  const lastSuccessMs = state.lastSuccessAt ? Date.parse(state.lastSuccessAt) : 0;
-  const overdue = connected && !state.needsReconnect && (lastSuccessMs === 0 || Date.now() - lastSuccessMs > OVERDUE_GRACE_MS);
 
   return {
     connected,
@@ -484,6 +454,5 @@ export function getBackupStatus() {
     lastSuccessAt: state.lastSuccessAt,
     lastAttemptAt: state.lastAttemptAt,
     lastError: state.lastError,
-    overdue,
   };
 }

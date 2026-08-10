@@ -1,6 +1,9 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { ListPagination } from '../../components/ui/ListPagination';
 import { api, type Party } from '../../lib/api';
 import { formatLedgerBalance } from '../../lib/format';
+import { PhoneInput } from '../../components/ui/PhoneInput';
+import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
@@ -13,29 +16,33 @@ function PartyPage({
 }: {
   title: string;
   subtitle: string;
-  listFn: () => Promise<Party[]>;
+  listFn: (pagination: { limit: number; offset: number }) => Promise<{ items: Party[]; total: number }>;
   createFn: (data: Record<string, string>) => Promise<Party>;
   removeFn: (id: number) => Promise<unknown>;
 }) {
   const [parties, setParties] = useState<Party[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  async function refresh() {
+  const refresh = useCallback(async (pageOffset = offset) => {
     try {
-      const res = await listFn();
-      setParties(Array.isArray(res) ? res : []);
+      const res = await listFn({ limit: BROWSE_PAGE_SIZE, offset: pageOffset });
+      setParties(Array.isArray(res.items) ? res.items : []);
+      setTotal(res.total ?? 0);
     } catch {
       setParties([]);
+      setTotal(0);
     }
-  }
+  }, [listFn, offset]);
 
   useEffect(() => {
-    void refresh();
-  }, []);
+    void refresh(offset);
+  }, [refresh, offset]);
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
@@ -47,7 +54,8 @@ function PartyPage({
       setName('');
       setPhone('');
       setShowForm(false);
-      await refresh();
+      setOffset(0);
+      await refresh(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -58,7 +66,9 @@ function PartyPage({
     setError('');
     try {
       await removeFn(id);
-      await refresh();
+      const nextOffset = offset >= total - 1 && offset > 0 ? Math.max(0, offset - BROWSE_PAGE_SIZE) : offset;
+      setOffset(nextOffset);
+      await refresh(nextOffset);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -79,7 +89,7 @@ function PartyPage({
             </div>
             <div>
               <FieldLabel>Phone</FieldLabel>
-              <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <PhoneInput value={phone} onChange={setPhone} />
             </div>
             <div className="flex gap-2">
               <PrimaryButton type="submit">Save</PrimaryButton>
@@ -116,6 +126,7 @@ function PartyPage({
           </tbody>
         </table>
         {(parties?.length ?? 0) === 0 ? <p className="py-4 text-sm text-textMuted">No parties yet.</p> : null}
+        <ListPagination total={total} offset={offset} onPageChange={setOffset} className="mt-4" />
       </Panel>
       <PageCloseBar />
     </PageShell>
@@ -127,7 +138,7 @@ export function SalePartiesPage() {
     <PartyPage
       title="Sale Party"
       subtitle="Sale Party ledger accounts — each party gets an account under Sale Party"
-      listFn={api.listSaleParties}
+      listFn={api.listSalePartiesPage}
       createFn={api.createSaleParty}
       removeFn={api.removeSaleParty}
     />
@@ -139,7 +150,7 @@ export function PurchasePartiesPage() {
     <PartyPage
       title="Purchase Party"
       subtitle="Purchase Party ledger accounts — each party gets an account under Purchase Party"
-      listFn={api.listPurchaseParties}
+      listFn={api.listPurchasePartiesPage}
       createFn={api.createPurchaseParty}
       removeFn={api.removePurchaseParty}
     />

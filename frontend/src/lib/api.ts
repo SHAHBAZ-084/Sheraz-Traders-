@@ -12,13 +12,16 @@ async function fetchListItems<T>(path: string): Promise<T[]> {
   return page.items;
 }
 
+async function fetchPaginatedPage<T>(path: string): Promise<Paginated<T>> {
+  return request<Paginated<T>>(path);
+}
+
 export type BackupStatus = {
   connected: boolean;
   needsReconnect: boolean;
   lastSuccessAt: string | null;
   lastAttemptAt: string | null;
   lastError: string | null;
-  overdue: boolean;
 };
 
 export type User = {
@@ -390,6 +393,13 @@ export const api = {
   listSaleParties() {
     return fetchListItems<Party>(`/api/parties/sale-parties?${SELECTOR_LIST_QUERY}`);
   },
+  listSalePartiesPage(pagination?: { limit?: number; offset?: number }) {
+    const query = new URLSearchParams({
+      limit: String(pagination?.limit ?? 25),
+      offset: String(pagination?.offset ?? 0),
+    });
+    return fetchPaginatedPage<Party>(`/api/parties/sale-parties?${query}`);
+  },
   createSaleParty(data: Record<string, string | undefined>) {
     return request<Party>('/api/parties/sale-parties', { method: 'POST', body: JSON.stringify(data) });
   },
@@ -399,6 +409,13 @@ export const api = {
 
   listPurchaseParties() {
     return fetchListItems<Party>(`/api/parties/purchase-parties?${SELECTOR_LIST_QUERY}`);
+  },
+  listPurchasePartiesPage(pagination?: { limit?: number; offset?: number }) {
+    const query = new URLSearchParams({
+      limit: String(pagination?.limit ?? 25),
+      offset: String(pagination?.offset ?? 0),
+    });
+    return fetchPaginatedPage<Party>(`/api/parties/purchase-parties?${query}`);
   },
   createPurchaseParty(data: Record<string, string | undefined>) {
     return request<Party>('/api/parties/purchase-parties', { method: 'POST', body: JSON.stringify(data) });
@@ -634,9 +651,17 @@ export const api = {
 
   getLedger(
     accountId: number,
-    params?: { fromDate?: string; toDate?: string; limit?: number; cursor?: string; financialYearId?: number },
+    params?: {
+      fromDate?: string;
+      toDate?: string;
+      limit?: number;
+      offset?: number;
+      cursor?: string;
+      financialYearId?: number;
+    },
   ) {
-    const query = new URLSearchParams({ limit: String(params?.limit ?? 2000) });
+    const query = new URLSearchParams({ limit: String(params?.limit ?? 25) });
+    if (params?.offset != null) query.set('offset', String(params.offset));
     if (params?.fromDate) query.set('fromDate', params.fromDate);
     if (params?.toDate) query.set('toDate', params.toDate);
     if (params?.cursor) query.set('cursor', params.cursor);
@@ -671,23 +696,38 @@ export const api = {
     }>(`/api/accounting/ledger/${accountId}${suffix}`);
   },
 
-  getTrialBalance(params?: { financialYearId?: number }) {
-    const query =
-      params?.financialYearId != null ? `?financialYearId=${params.financialYearId}` : '';
+  getTrialBalance(params?: { financialYearId?: number; limit?: number; offset?: number }) {
+    const query = new URLSearchParams();
+    if (params?.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    const suffix = query.toString() ? `?${query}` : '';
     return request<{
       accounts: { accountName: string; debit: number; credit: number }[];
       totalDebit: number;
       totalCredit: number;
       isBalanced: boolean;
+      totalCount?: number;
       scope?: 'live' | 'closing_snapshot';
       financialYearId?: number | null;
       financialYearLabel?: string | null;
-    }>(`/api/accounting/trial-balance${query}`);
+      pagination?: { total: number; limit: number; offset: number };
+    }>(`/api/accounting/trial-balance${suffix}`);
   },
 
-  getAccountBalanceReport(params: { date: string; categoryId?: number; side?: 'debit' | 'credit' | 'both' }) {
+  getAccountBalanceReport(params: {
+    date: string;
+    categoryId?: number;
+    side?: 'debit' | 'credit' | 'both';
+    financialYearId?: number;
+    limit?: number;
+    offset?: number;
+  }) {
     const query = new URLSearchParams({ date: params.date, side: params.side ?? 'both' });
     if (params.categoryId != null) query.set('categoryId', String(params.categoryId));
+    if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    if (params.limit != null) query.set('limit', String(params.limit));
+    if (params.offset != null) query.set('offset', String(params.offset));
     return request<{
       date: string;
       side: 'debit' | 'credit' | 'both';
@@ -718,6 +758,8 @@ export const api = {
       }[];
       totalDebit: number;
       totalCredit: number;
+      totalCount?: number;
+      pagination?: { total: number; limit: number; offset: number };
     }>(`/api/accounting/reports/account-balance?${query.toString()}`);
   },
 
@@ -755,6 +797,32 @@ export const api = {
     }>(`/api/stock/report?${query.toString()}`);
   },
 
+  getProfitLossReport(params: {
+    financialYearId: number;
+    fromDate?: string;
+    toDate?: string;
+  }) {
+    const query = new URLSearchParams({ financialYearId: String(params.financialYearId) });
+    if (params.fromDate) query.set('fromDate', params.fromDate);
+    if (params.toDate) query.set('toDate', params.toDate);
+    return request<{
+      financialYearId: number;
+      financialYearLabel: string;
+      fromDate: string | null;
+      toDate: string | null;
+      rows: Array<{
+        date: string;
+        sourceType: 'SALE_INVOICE' | 'KACHI_MAAL';
+        reference: string;
+        productName: string;
+        purchasePrice: number | null;
+        salePrice: number | null;
+        profit: number;
+      }>;
+      netProfit: number;
+    }>(`/api/accounting/reports/profit-loss?${query.toString()}`);
+  },
+
   getBackupStatus() {
     return request<BackupStatus>('/api/system/backup-status');
   },
@@ -772,7 +840,7 @@ export const api = {
   },
 
   triggerGoogleDriveBackup() {
-    return request<{ ok: boolean }>('/api/system/google-drive/backup-now', {
+    return request<{ ok: boolean; uploadedAt?: string }>('/api/system/google-drive/backup-now', {
       method: 'POST',
     });
   },

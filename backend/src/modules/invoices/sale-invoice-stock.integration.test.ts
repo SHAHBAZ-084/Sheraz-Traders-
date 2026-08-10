@@ -1,7 +1,6 @@
 import { AccountType, InvoiceType } from '@prisma/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
-import { AppError } from '../../utils/helpers';
 import { voucherDateInActiveYear } from '../../test-helpers/financial-year';
 import { KACHI_MAAL_CATEGORY_NAMES } from '../accounting/accounting.service';
 import { createProduct } from '../products/products.service';
@@ -53,7 +52,7 @@ async function ensureAccountInCategory(
   return account;
 }
 
-describe('Sale Invoice per-store stock validation', () => {
+describe('Sale Invoice per-store stock (negative allowed)', () => {
   let userId: number;
   let salePartyId: number;
   let purchasePartyId: number;
@@ -61,7 +60,6 @@ describe('Sale Invoice per-store stock validation', () => {
   let storeAId: number;
   let storeBId: number;
   let invoiceDate: string;
-  let productName: string;
 
   beforeAll(async () => {
     invoiceDate = await voucherDateInActiveYear();
@@ -87,102 +85,72 @@ describe('Sale Invoice per-store stock validation', () => {
       )
     ).id;
 
-    productName = `SI Stock Product ${Date.now()}`;
-    const product = await createProduct({ name: productName });
+    const product = await createProduct({ name: `SI Stock Product ${Date.now()}` });
     productId = product.id;
 
     storeAId = (await createStore(`SI Stock Store A ${Date.now()}`)).id;
     storeBId = (await createStore(`SI Stock Store B ${Date.now()}`)).id;
   });
 
-  it('rejects selling more than available at the selected store and creates no invoice/stock', async () => {
+  it('allows selling more than available at the selected store and records negative balance', async () => {
     await createPurchaseInvoice({
       invoiceDate,
       storeId: storeAId,
       supplierAccountId: purchasePartyId,
-      billNo: 'PI-STOCK-OVERSELL',
+      billNo: `PI-STOCK-OVERSELL-${Date.now()}`,
       createdById: userId,
       lines: [{ productId, quantity: 5, rate: 40 }],
     });
 
-    const invoicesBefore = await prisma.invoice.count({
-      where: { type: InvoiceType.SALE_INVOICE, storeId: storeAId },
-    });
-    const movementsBefore = await prisma.stockMovement.count({
-      where: { productId, storeId: storeAId, invoiceType: InvoiceType.SALE_INVOICE },
+    const sale = await createSaleInvoice({
+      invoiceDate,
+      storeId: storeAId,
+      customerAccountId: salePartyId,
+      billNo: `SI-STOCK-OVERSELL-${Date.now()}`,
+      createdById: userId,
+      lines: [{ productId, quantity: 6, rate: 100 }],
     });
 
-    await expect(
-      createSaleInvoice({
-        invoiceDate,
+    expect(sale.status).toBe('POSTED');
+    expect(await getCurrentStockBalance(productId, storeAId)).toBe(-1);
+
+    const movement = await prisma.stockMovement.findFirst({
+      where: {
+        productId,
         storeId: storeAId,
-        customerAccountId: salePartyId,
-        billNo: 'SI-STOCK-OVERSELL',
-        createdById: userId,
-        lines: [{ productId, quantity: 6, rate: 100 }],
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      message: expect.stringMatching(/Insufficient stock/i),
+        invoiceType: InvoiceType.SALE_INVOICE,
+        invoiceId: sale.id,
+      },
     });
-
-    const invoicesAfter = await prisma.invoice.count({
-      where: { type: InvoiceType.SALE_INVOICE, storeId: storeAId },
-    });
-    const movementsAfter = await prisma.stockMovement.count({
-      where: { productId, storeId: storeAId, invoiceType: InvoiceType.SALE_INVOICE },
-    });
-    expect(invoicesAfter).toBe(invoicesBefore);
-    expect(movementsAfter).toBe(movementsBefore);
-    expect(await getCurrentStockBalance(productId, storeAId)).toBe(5);
+    expect(movement).not.toBeNull();
   });
 
-  it('blocks sale from Store B when stock only exists in Store A', async () => {
-    // Store A has 10 from this purchase; Store B has never received this product.
+  it('allows sale from Store B even when stock only exists in Store A (per-store negative)', async () => {
+    const crossProduct = await createProduct({ name: `SI Cross Store Product ${Date.now()}` });
+
     await createPurchaseInvoice({
       invoiceDate,
       storeId: storeAId,
       supplierAccountId: purchasePartyId,
-      billNo: 'PI-STOCK-CROSS',
+      billNo: `PI-STOCK-CROSS-${Date.now()}`,
       createdById: userId,
-      lines: [{ productId, quantity: 10, rate: 40 }],
+      lines: [{ productId: crossProduct.id, quantity: 10, rate: 40 }],
     });
 
-    expect(await getCurrentStockBalance(productId, storeAId)).toBeGreaterThanOrEqual(10);
-    expect(await getCurrentStockBalance(productId, storeBId)).toBe(0);
+    expect(await getCurrentStockBalance(crossProduct.id, storeAId)).toBeGreaterThanOrEqual(10);
+    expect(await getCurrentStockBalance(crossProduct.id, storeBId)).toBe(0);
 
-    let caught: unknown;
-    try {
-      await createSaleInvoice({
-        invoiceDate,
-        storeId: storeBId,
-        customerAccountId: salePartyId,
-        billNo: 'SI-STOCK-CROSS',
-        createdById: userId,
-        lines: [{ productId, quantity: 1, rate: 100 }],
-      });
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(caught).toBeInstanceOf(AppError);
-    expect(caught).toMatchObject({
-      statusCode: 400,
-      message: expect.stringMatching(/available 0/i),
+    const sale = await createSaleInvoice({
+      invoiceDate,
+      storeId: storeBId,
+      customerAccountId: salePartyId,
+      billNo: `SI-STOCK-CROSS-${Date.now()}`,
+      createdById: userId,
+      lines: [{ productId: crossProduct.id, quantity: 1, rate: 100 }],
     });
 
-    const straySale = await prisma.invoice.findFirst({
-      where: { type: InvoiceType.SALE_INVOICE, billNo: 'SI-STOCK-CROSS' },
-    });
-    expect(straySale).toBeNull();
-
-    const strayOut = await prisma.stockMovement.findFirst({
-      where: {
-        productId,
-        storeId: storeBId,
-        invoiceType: InvoiceType.SALE_INVOICE,
-      },
-    });
-    expect(strayOut).toBeNull();
+    expect(sale.status).toBe('POSTED');
+    expect(await getCurrentStockBalance(crossProduct.id, storeBId)).toBe(-1);
+    expect(await getCurrentStockBalance(crossProduct.id, storeAId)).toBeGreaterThanOrEqual(10);
   });
 });

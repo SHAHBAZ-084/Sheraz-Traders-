@@ -12,7 +12,7 @@ export type CursorPaginatedResult<T> = {
   hasMore: boolean;
 };
 
-export const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 200;
 /** Upper bound for dropdown / selector endpoints that need most of a small master list. */
 export const SELECTOR_MAX_PAGE_SIZE = 2000;

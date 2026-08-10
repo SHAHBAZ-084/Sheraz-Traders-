@@ -60,7 +60,9 @@ export function PageShell({
 /** Flat bordered summary block. */
 export function Tile({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`border border-border bg-surface2 p-3 ${className}`}>{children}</div>
+    <div className={`overflow-hidden rounded-lg border border-border bg-surface2 p-3 ${className}`}>
+      {children}
+    </div>
   );
 }
 

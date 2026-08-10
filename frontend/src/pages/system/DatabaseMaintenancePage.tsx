@@ -4,6 +4,11 @@ import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, BackupStatus } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 
+function formatBackupTimestamp(iso: string): string {
+  const date = new Date(iso);
+  return `${formatDate(iso)} ${date.toLocaleTimeString()}`;
+}
+
 export function DatabaseMaintenancePage() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -60,7 +65,7 @@ export function DatabaseMaintenancePage() {
   }
 
   async function onDisconnectGoogleDrive() {
-    if (!window.confirm('Are you sure you want to disconnect Google Drive automated backups?')) return;
+    if (!window.confirm('Are you sure you want to disconnect Google Drive backup?')) return;
     setActionLoading(true);
     setError('');
     setMessage('');
@@ -81,21 +86,19 @@ export function DatabaseMaintenancePage() {
     setMessage('');
     try {
       const res = await api.triggerGoogleDriveBackup();
-      if (res.ok) {
-        setMessage('Backup uploaded to Google Drive successfully!');
-      } else {
-        setError('Backup upload failed or internet connection unavailable. See log/status below.');
-      }
+      const uploadedAt = res.uploadedAt ?? new Date().toISOString();
+      setMessage(`Backup completed — uploaded to Google Drive (${formatBackupTimestamp(uploadedAt)})`);
       await loadStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Backup trigger failed');
+      const message = err instanceof Error ? err.message : 'Backup failed';
+      setError(message);
     } finally {
       setActionLoading(false);
     }
   }
 
   return (
-    <PageShell title="Database Maintenance" subtitle="Integrity checks and automated Google Drive backups">
+    <PageShell title="Database Maintenance" subtitle="Integrity checks and manual Google Drive backup">
       <Panel className="max-w-3xl space-y-4">
         {status?.needsReconnect ? (
           <div className="rounded-md bg-danger/10 p-4 border border-danger/30 text-danger">
@@ -103,8 +106,8 @@ export function DatabaseMaintenancePage() {
               <div>
                 <p className="font-semibold text-sm">Google Drive Reconnection Required</p>
                 <p className="mt-1 text-xs text-danger/90">
-                  Your Google Drive access token has expired or was revoked. Automated backups are currently paused.
-                  Click Reconnect Google Drive below to re-authorize.
+                  Your Google Drive access token has expired or was revoked. Click Reconnect Google Drive below to
+                  re-authorize before running a backup.
                 </p>
               </div>
               <PrimaryButton
@@ -119,22 +122,13 @@ export function DatabaseMaintenancePage() {
           </div>
         ) : null}
 
-        {status?.overdue && !status?.needsReconnect ? (
-          <div className="rounded-md bg-amber-500/10 p-4 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-            <p className="font-semibold text-sm">Google Drive Backup Overdue (&gt;26 hours)</p>
-            <p className="mt-1 text-xs">
-              More than 26 hours have passed since the last successful database backup to Google Drive.
-              Please ensure this PC is connected to the internet immediately so automated backups can resume.
-            </p>
-          </div>
-        ) : null}
-
         <Tile>
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
-              <p className="text-sm font-semibold text-textPrimary">Automatic Google Drive Backup</p>
+              <p className="text-sm font-semibold text-textPrimary">Google Drive Backup</p>
               <p className="mt-0.5 text-xs text-textMuted">
-                Database snapshot is automatically backed up to your Google Drive folder (&quot;Sheraz Traders Backups&quot;) every 24 hours.
+                Click Backup to upload a database snapshot to your Google Drive folder (&quot;Sheeraz Traders Backups&quot;).
+                Backups run only when you click the button.
               </p>
             </div>
             {loadingStatus ? (
@@ -158,14 +152,14 @@ export function DatabaseMaintenancePage() {
             <div className="rounded border border-border p-3 bg-surface2/50">
               <span className="text-textMuted font-medium block">Last Successful Backup</span>
               <span className="mt-1 text-sm font-semibold text-textPrimary block">
-                {status?.lastSuccessAt ? formatDate(status.lastSuccessAt) + ' (' + new Date(status.lastSuccessAt).toLocaleTimeString() + ')' : 'Never'}
+                {status?.lastSuccessAt ? formatBackupTimestamp(status.lastSuccessAt) : 'Never'}
               </span>
             </div>
 
             <div className="rounded border border-border p-3 bg-surface2/50">
               <span className="text-textMuted font-medium block">Last Backup Attempt</span>
               <span className="mt-1 text-sm font-semibold text-textPrimary block">
-                {status?.lastAttemptAt ? formatDate(status.lastAttemptAt) + ' (' + new Date(status.lastAttemptAt).toLocaleTimeString() + ')' : 'None'}
+                {status?.lastAttemptAt ? formatBackupTimestamp(status.lastAttemptAt) : 'None'}
               </span>
             </div>
           </div>
@@ -183,9 +177,9 @@ export function DatabaseMaintenancePage() {
               </PrimaryButton>
             ) : (
               <>
-                <SecondaryButton type="button" onClick={onTriggerBackupNow} disabled={actionLoading}>
-                  {actionLoading ? 'Backing up…' : 'Run Google Drive Backup Now'}
-                </SecondaryButton>
+                <PrimaryButton type="button" onClick={onTriggerBackupNow} disabled={actionLoading || status.needsReconnect}>
+                  {actionLoading ? 'Backing up…' : 'Backup'}
+                </PrimaryButton>
                 <SecondaryButton type="button" onClick={onDisconnectGoogleDrive} disabled={actionLoading}>
                   Disconnect Google Drive
                 </SecondaryButton>

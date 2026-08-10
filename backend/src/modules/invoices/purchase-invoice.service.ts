@@ -18,7 +18,7 @@ import {
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postPurchaseInvoiceStockIn } from '../stock/stock.service';
-import { voucherReferenceFromBillNo } from './invoice-voucher-descriptions';
+import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
   computePurchaseInvoiceTotals,
@@ -62,19 +62,27 @@ function buildPurchaseInvoiceLegs(
   supplierAccountId: number,
   resolvedLines: ResolvedPurchaseLine[],
   invoiceTotal: number,
-): VoucherLeg[] {
+): { legs: VoucherLeg[]; productDescription: string } {
+  const productDescription = formatInvoiceProductLinesDescription(
+    resolvedLines.map((line) => ({
+      productName: line.productName,
+      quantity: line.quantity,
+      rate: line.rate,
+    })),
+  );
+
   const legs: VoucherLeg[] = [
     ...resolvedLines.map((line) => ({
       accountId: line.maalKhataAccountId,
       type: LedgerEntryType.DEBIT,
       amount: line.lineTotal,
-      description: `Purchase Invoice ${line.productName}`,
+      description: productDescription,
     })),
     {
       accountId: supplierAccountId,
       type: LedgerEntryType.CREDIT,
       amount: invoiceTotal,
-      description: 'Purchase Invoice supplier',
+      description: productDescription,
     },
   ];
 
@@ -87,7 +95,7 @@ function buildPurchaseInvoiceLegs(
   if (Math.abs(totalDebits - totalCredits) > 0.01) {
     throw new AppError(500, 'Purchase Invoice voucher debits and credits do not balance');
   }
-  return legs;
+  return { legs, productDescription };
 }
 
 async function postPurchaseInvoiceAccounting(
@@ -104,7 +112,7 @@ async function postPurchaseInvoiceAccounting(
   },
   resolvedLines: ResolvedPurchaseLine[],
 ) {
-  const legs = buildPurchaseInvoiceLegs(
+  const { legs, productDescription } = buildPurchaseInvoiceLegs(
     invoice.debitAccountId,
     resolvedLines,
     Number(invoice.total),
@@ -115,7 +123,7 @@ async function postPurchaseInvoiceAccounting(
     legs,
     amount: Number(invoice.total),
     date: invoice.invoiceDate,
-    description: `Purchase Invoice ${invoice.reference}`,
+    description: productDescription,
     reference: voucherReferenceFromBillNo(invoice.billNo ?? undefined),
     createdById: invoice.createdById,
   });

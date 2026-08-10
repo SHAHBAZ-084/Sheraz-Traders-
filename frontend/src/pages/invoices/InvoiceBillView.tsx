@@ -1,4 +1,5 @@
-import { BILL_LETTERHEAD, BILL_TITLES } from '../../config/billPrint';
+import { BILL_TITLES } from '../../config/billPrint';
+import { BusinessLetterhead } from '../../components/reports/BusinessLetterhead';
 import type { InvoiceDetail, SystemPreferences } from '../../lib/api';
 import {
   computeKachiDeductions,
@@ -30,21 +31,10 @@ const billFont =
   'font-[Arial,Helvetica,sans-serif] text-[13px] leading-snug text-black lining-nums';
 
 function BillHeader({ title }: { title: string }) {
-  const h = BILL_LETTERHEAD;
   return (
-    <header className="text-center">
-      <h1 className="text-[22px] font-normal underline decoration-1 underline-offset-[3px]">
-        {h.companyName}
-      </h1>
-      <p className="mt-0.5 text-[13px]">{h.subtitle}</p>
-      <p className="mt-1 text-[11px]">Email: {h.email}</p>
-      {h.contacts.map((c) => (
-        <p key={c.phone} className="mt-0.5 text-[11px]">
-          {c.name}: {c.phone}
-        </p>
-      ))}
-      <div className="my-3 border-b border-dashed border-black" />
-      <h2 className="text-[15px] font-bold tracking-wide">{title}</h2>
+    <header className="text-center text-black">
+      <BusinessLetterhead />
+      <h2 className="mt-4 text-[15px] font-bold tracking-wide">{title}</h2>
     </header>
   );
 }
@@ -318,28 +308,9 @@ function InvoiceBillHeader({
   partyName: string;
   partyCode?: string;
 }) {
-  const h = BILL_LETTERHEAD;
   return (
     <header className="text-black">
-      <div className="flex items-center gap-4 border-b-2 border-[var(--fill-primary,#1B4332)] pb-3">
-        <img
-          src="/sheraz-traders-logo.png"
-          alt=""
-          className="h-14 w-14 shrink-0 object-contain"
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[22px] font-bold leading-tight tracking-wide text-[var(--fill-primary,#1B4332)]">
-            {h.companyName}
-          </h1>
-          <p className="mt-0.5 text-[12px] text-black/80">{h.subtitle}</p>
-          <p className="mt-0.5 text-[10px] text-black/70">Email: {h.email}</p>
-          {h.contacts.map((c) => (
-            <p key={c.phone} className="mt-0.5 text-[10px] text-black/70">
-              {c.name}: {c.phone}
-            </p>
-          ))}
-        </div>
-      </div>
+      <BusinessLetterhead />
 
       <div className="mt-4 text-center">
         <h2 className="inline-block text-[18px] font-bold tracking-[0.08em] text-black">

@@ -1,5 +1,6 @@
 import { FormEvent, useRef, useState } from 'react';
 import { FieldLabel, PrimaryButton, SecondaryButton, TextInput } from '../ui/PageShell';
+import { PhoneInput } from '../ui/PhoneInput';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { api, type Party } from '../../lib/api';
 
@@ -87,10 +88,10 @@ export function QuickAddPartyModal({
 
           <div>
             <FieldLabel>Phone Number</FieldLabel>
-            <TextInput
+            <PhoneInput
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0300-1234567"
+              onChange={setPhone}
+              placeholder="03001234567"
             />
           </div>
 

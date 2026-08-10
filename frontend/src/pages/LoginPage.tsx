@@ -31,7 +31,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-surface3 px-4">
       <div className="w-full max-w-md border border-border bg-surface2">
         <div className="border-b border-border bg-[var(--fill-accent)] px-6 py-5 text-center text-white">
-          <img src="/sheraz-traders-logo.png" alt="Sheraz Traders" className="login-brand-logo mx-auto" />
+          <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="login-brand-logo mx-auto" />
           <p className="mt-2 text-xs uppercase tracking-widest opacity-90">Grain Market POS</p>
         </div>
 

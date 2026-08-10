@@ -2426,10 +2426,18 @@ export async function getAccountBalancesAsOf(params: {
   side?: 'debit' | 'credit' | 'both';
   limit?: number;
   offset?: number;
+  financialYearId?: number;
 }) {
   const side = params.side ?? 'both';
   const asOf = parseDateEnd(params.date);
-  const financialYearId = await getActiveFinancialYearId(prisma);
+  const financialYearId =
+    params.financialYearId != null
+      ? params.financialYearId
+      : await getActiveFinancialYearId(prisma);
+  if (params.financialYearId != null) {
+    const year = await prisma.financialYear.findFirst({ where: { id: params.financialYearId } });
+    if (!year) throw new AppError(404, 'Financial year not found');
+  }
   const { yearStart, yearEnd } = await loadFinancialYearBounds(prisma, financialYearId);
 
   const where = {

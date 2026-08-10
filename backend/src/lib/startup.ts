@@ -11,7 +11,6 @@ import {
 } from './database-maintenance';
 import { ensureDatabaseDirectoryExists, getBackendRoot } from './database-path';
 import { logger } from './logger';
-import { startAutoBackupScheduler } from './google-drive-backup';
 import { applyMigrationsProgrammatically } from './programmatic-migrations';
 
 export type StartupStatus = {
@@ -106,10 +105,6 @@ export async function initializeDatabase(db: PrismaClient): Promise<StartupStatu
 
     if (checkpointTimer) clearInterval(checkpointTimer);
     checkpointTimer = scheduleWalCheckpoint(db);
-
-    if (process.env.NODE_ENV !== 'test') {
-      startAutoBackupScheduler();
-    }
 
     status.ok = true;
     return status;

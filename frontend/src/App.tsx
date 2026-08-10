@@ -13,7 +13,8 @@ import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
 import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
 import { LoginPage } from './pages/LoginPage';
 import { PosHomePage } from './pages/PosHomePage';
-import { AccountReportsPage, AccountBalancePage, StockReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { AccountReportsPage, AccountBalancePage, ProfitLossStatementPage, StockReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { FinancialYearReportsHubPage, FinancialYearReportsPickerPage } from './pages/reports/FinancialYearReportsPage';
 import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
 import { DatabaseMaintenancePage } from './pages/system/DatabaseMaintenancePage';
 import { StoresPage } from './pages/system/StoresPage';
@@ -63,6 +64,9 @@ export default function App() {
                 <Route path="/reports/account-balance" element={<AccountBalancePage />} />
                 <Route path="/reports/vouchers" element={<VouchersReportPage />} />
                 <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
+                <Route path="/reports/profit-loss" element={<ProfitLossStatementPage />} />
+                <Route path="/reports/financial-year" element={<FinancialYearReportsPickerPage />} />
+                <Route path="/reports/financial-year/:yearId" element={<FinancialYearReportsHubPage />} />
                 <Route path="/reports/stock" element={<StockReportPage />} />
 
                 <Route path="/system/database" element={<DatabaseMaintenancePage />} />

@@ -176,8 +176,8 @@ export function TopBar() {
   return (
     <header className="app-topnav sticky top-0 isolate shadow-md">
       <div className="app-topnav-inner">
-        <Link to="/" className="app-topnav-brand shrink-0" aria-label="Sheraz Traders — Dashboard">
-          <img src="/sheraz-traders-logo.png" alt="Sheraz Traders" className="app-topnav-logo" />
+        <Link to="/" className="app-topnav-brand shrink-0" aria-label="Sheeraz Traders — Dashboard">
+          <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="app-topnav-logo" />
         </Link>
         <nav className="app-topnav-nav">
           {TOP_NAV.map((entry) => {

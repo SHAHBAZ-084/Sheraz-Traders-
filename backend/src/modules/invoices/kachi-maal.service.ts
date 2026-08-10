@@ -99,6 +99,7 @@ function buildLedgerLegs(
   totals: ReturnType<typeof computeKachiMaalInvoiceTotals>,
   systemAccounts: Awaited<ReturnType<typeof ensureKachiMaalAccounts>>,
   header: InvoiceVoucherHeader,
+  invoiceJins?: string | null,
 ) {
   const legs: VoucherLeg[] = [];
   const allLines = computedLines;
@@ -107,7 +108,7 @@ function buildLedgerLegs(
     accountId: debitAccountId,
     type: LedgerEntryType.DEBIT,
     amount: totals.totalDebitAmount,
-    description: blendedLegDescription(allLines, header),
+    description: blendedLegDescription(allLines, header, invoiceJins),
   });
 
   const partyNetByAccount = new Map<number, number>();
@@ -128,6 +129,7 @@ function buildLedgerLegs(
       description: blendedLegDescription(
         allLines.filter((line) => line.partyAccountId === partyAccountId),
         header,
+        invoiceJins,
       ),
     });
   }
@@ -137,7 +139,7 @@ function buildLedgerLegs(
       accountId: systemAccounts.mazduri.id,
       type: LedgerEntryType.CREDIT,
       amount: totals.totalPaleDari,
-      description: blendedLegDescription(allLines, header),
+      description: blendedLegDescription(allLines, header, invoiceJins),
     });
   }
 
@@ -146,7 +148,7 @@ function buildLedgerLegs(
       accountId: systemAccounts.broker.id,
       type: LedgerEntryType.CREDIT,
       amount: totals.totalBrokery,
-      description: blendedLegDescription(allLines, header),
+      description: blendedLegDescription(allLines, header, invoiceJins),
     });
   }
 
@@ -155,7 +157,7 @@ function buildLedgerLegs(
       accountId: systemAccounts.marketFee.id,
       type: LedgerEntryType.CREDIT,
       amount: totals.marketFeeAmount,
-      description: blendedLegDescription(allLines, header),
+      description: blendedLegDescription(allLines, header, invoiceJins),
     });
   }
 
@@ -171,7 +173,7 @@ function buildLedgerLegs(
       accountId: systemAccounts.misc.id,
       type: LedgerEntryType.CREDIT,
       amount: miscAmount,
-      description: blendedLegDescription(allLines, header),
+      description: blendedLegDescription(allLines, header, invoiceJins),
     });
   }
 
@@ -180,7 +182,7 @@ function buildLedgerLegs(
       accountId: systemAccounts.commission.id,
       type: LedgerEntryType.CREDIT,
       amount: totals.profitAmount,
-      description: blendedLegDescription(allLines, header),
+      description: blendedLegDescription(allLines, header, invoiceJins),
     });
   }
 
@@ -266,6 +268,7 @@ export async function createKachiMaalInvoice(
       totals,
       systemAccounts,
       voucherHeader,
+      data.jins,
     );
 
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
@@ -389,6 +392,7 @@ export async function approveKachiMaalInvoice(invoiceId: number) {
       totals,
       systemAccounts,
       voucherHeader,
+      invoice.jins,
     );
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
       throw new AppError(500, 'Invoice debits and credits do not balance — approve aborted');

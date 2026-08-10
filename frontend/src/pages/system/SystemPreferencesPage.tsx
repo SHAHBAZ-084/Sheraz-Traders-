@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, SystemPreferences } from '../../lib/api';
 
-type PrefForm = Omit<SystemPreferences, 'updatedAt'>;
+type NumericPrefKey = Exclude<keyof SystemPreferences, 'updatedAt' | 'closingDate' | 'marketFeeEnabled'>;
 
-type NumericPrefKey = Exclude<keyof PrefForm, 'closingDate' | 'marketFeeEnabled'>;
+/** Draft form — numeric prefs stay as plain strings while typing (e.g. ".", "1."). */
+type PrefFormDraft = Record<NumericPrefKey, string> & Pick<SystemPreferences, 'marketFeeEnabled'>;
 
 type PrefTab = 'kachi' | 'general';
 
@@ -34,8 +36,17 @@ const TAB_FIELDS: Record<PrefTab, NumericPrefKey[]> = {
 
 const ALL_NUMERIC_KEYS = Object.keys(PREF_FIELDS) as NumericPrefKey[];
 
+function prefsToDraft(prefs: Omit<SystemPreferences, 'updatedAt'>): PrefFormDraft {
+  const draft = {} as PrefFormDraft;
+  for (const key of ALL_NUMERIC_KEYS) {
+    draft[key] = String(prefs[key]);
+  }
+  draft.marketFeeEnabled = prefs.marketFeeEnabled;
+  return draft;
+}
+
 export function SystemPreferencesPage() {
-  const [form, setForm] = useState<PrefForm | null>(null);
+  const [form, setForm] = useState<PrefFormDraft | null>(null);
   const [closingDate, setClosingDate] = useState('');
   const [tab, setTab] = useState<PrefTab>('kachi');
   const [saving, setSaving] = useState(false);
@@ -45,7 +56,7 @@ export function SystemPreferencesPage() {
   useEffect(() => {
     api.getSystemPreferences().then((prefs) => {
       const { updatedAt: _, ...rest } = prefs;
-      setForm(rest);
+      setForm(prefsToDraft(rest));
       setClosingDate(prefs.closingDate ?? '');
     }).catch(() => setError('Failed to load preferences'));
   }, []);
@@ -57,7 +68,7 @@ export function SystemPreferencesPage() {
     setError('');
     setMessage('');
     try {
-      const payload = {} as Partial<PrefForm>;
+      const payload: Partial<Omit<SystemPreferences, 'updatedAt'>> = {};
       for (const key of ALL_NUMERIC_KEYS) {
         payload[key] = Number(form[key]) || 0;
       }
@@ -65,7 +76,7 @@ export function SystemPreferencesPage() {
       payload.closingDate = closingDate.trim() || null;
       const updated = await api.updateSystemPreferences(payload);
       const { updatedAt: _, ...rest } = updated;
-      setForm(rest);
+      setForm(prefsToDraft(rest));
       setClosingDate(updated.closingDate ?? '');
       setMessage('Preferences saved.');
     } catch (err) {
@@ -76,7 +87,7 @@ export function SystemPreferencesPage() {
   }
 
   function updateField(key: NumericPrefKey, raw: string) {
-    setForm((prev) => (prev ? { ...prev, [key]: raw === '' ? 0 : Number(raw) } : prev));
+    setForm((prev) => (prev ? { ...prev, [key]: raw } : prev));
   }
 
   const visibleFields = TAB_FIELDS[tab].map((key) => PREF_FIELDS[key]);
@@ -96,12 +107,9 @@ export function SystemPreferencesPage() {
               {visibleFields.map((field) => (
                 <div key={`${tab}-${field.key}`}>
                   <FieldLabel>{field.label}</FieldLabel>
-                  <TextInput
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={String(form[field.key])}
-                    onChange={(e) => updateField(field.key, e.target.value)}
+                  <DecimalInput
+                    value={form[field.key]}
+                    onChange={(raw) => updateField(field.key, raw)}
                     disabled={field.key === 'marketFeeRate' && !form.marketFeeEnabled}
                   />
                   {field.key === 'marketFeeRate' ? (

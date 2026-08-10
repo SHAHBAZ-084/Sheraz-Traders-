@@ -125,18 +125,22 @@ export function InvoiceHeaderRow({ children }: { children: ReactNode }) {
 export function InvoiceReadOnlyField({
   label,
   value,
+  displayText,
   className = '',
   format = 'amount',
 }: {
   label: string;
   value: number;
+  /** When set, shown instead of formatting `value` (value still used for state/calc). */
+  displayText?: string;
   className?: string;
   format?: 'amount' | 'number';
 }) {
   const display =
-    format === 'number'
+    displayText ??
+    (format === 'number'
       ? value.toLocaleString('en-PK', { maximumFractionDigits: 2 })
-      : formatLedgerAmount(value);
+      : formatLedgerAmount(value));
   return (
     <InvoiceField className={className}>
       <FieldLabel>{label}</FieldLabel>

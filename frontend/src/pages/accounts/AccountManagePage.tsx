@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { formatLedgerBalance } from '../../lib/format';
 import { api, type Account, type AccountCategory } from '../../lib/api';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 type Mode = 'add' | 'edit' | 'remove';
@@ -135,12 +136,9 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <FieldLabel>Opening balance</FieldLabel>
-                  <TextInput
-                    type="number"
-                    min="0"
-                    step="0.01"
+                  <DecimalInput
                     value={openingBalance}
-                    onChange={(e) => setOpeningBalance(e.target.value)}
+                    onChange={setOpeningBalance}
                     placeholder="0.00 (optional)"
                   />
                 </div>

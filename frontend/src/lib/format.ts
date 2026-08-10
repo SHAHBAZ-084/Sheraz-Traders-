@@ -1,8 +1,49 @@
-export function formatAmount(amount: number | string | null | undefined) {
-  if (amount == null || amount === '') return '0';
-  return Number(amount).toLocaleString('en-PK');
+export function formatAmount(
+  amount: number | string | null | undefined,
+  fractionDigits?: number,
+) {
+  if (amount == null || amount === '') {
+    return fractionDigits != null
+      ? Number(0).toLocaleString('en-PK', {
+          minimumFractionDigits: fractionDigits,
+          maximumFractionDigits: fractionDigits,
+        })
+      : '0';
+  }
+  const opts =
+    fractionDigits != null
+      ? { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits }
+      : undefined;
+  return Number(amount).toLocaleString('en-PK', opts);
 }
 export const formatLedgerAmount = formatAmount;
+
+import { sanitizeDecimalInput } from './numericInput';
+
+/** Strip commas and invalid chars — returns clean numeric string for state/API (may end with "."). */
+export const sanitizeAmountInput = sanitizeDecimalInput;
+
+/** Comma-formatted display string for amount inputs (preserves trailing decimal while typing). */
+export function formatAmountInputDisplay(value: string): string {
+  const sanitized = sanitizeAmountInput(value);
+  if (!sanitized) return '';
+
+  const dotPos = sanitized.indexOf('.');
+  const intRaw = dotPos === -1 ? sanitized : sanitized.slice(0, dotPos);
+  const decRaw = dotPos === -1 ? '' : sanitized.slice(dotPos + 1);
+  const trailingDot = sanitized.endsWith('.');
+
+  let intFormatted = '';
+  if (intRaw) {
+    intFormatted = Number(intRaw).toLocaleString('en-PK');
+  } else if (dotPos !== -1) {
+    intFormatted = '0';
+  }
+
+  if (dotPos === -1) return intFormatted;
+  if (trailingDot && !decRaw) return `${intFormatted}.`;
+  return decRaw ? `${intFormatted}.${decRaw}` : intFormatted;
+}
 
 /** Running balance: positive = Dr, negative = Cr (never show negative Dr). Zero = no suffix. */
 export function formatLedgerBalance(balance: number | string) {

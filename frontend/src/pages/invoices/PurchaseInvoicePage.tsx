@@ -10,6 +10,7 @@ import {
   InvoiceHeaderRow,
 } from '../../components/invoices/InvoiceFormLayout';
 import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
@@ -22,10 +23,12 @@ import {
   type Store,
 } from '../../lib/api';
 import { formatLedgerAmount } from '../../lib/format';
-import { flatPartyAccountOptions } from '../../lib/partyAccounts';
+import {
+  partyAccountOptionsForCategory,
+  partyCategoryIdForAccount,
+  partyCategorySelectOptions,
+} from '../../lib/partyAccounts';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
-
-import { QuickAddPartyModal } from '../../components/invoices/QuickAddPartyModal';
 
 type GridRow = {
   clientId: string;
@@ -46,6 +49,7 @@ type PurchaseInvoiceDraft = {
   productId: string;
   quantity: string;
   rate: string;
+  partyCategoryId: string;
   supplierAccountId: string;
 };
 
@@ -116,8 +120,8 @@ export function PurchaseInvoicePage() {
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
   const [quantity, setQuantity] = useState(() => restoredState?.quantity ?? '1');
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
+  const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [supplierAccountId, setSupplierAccountId] = useState(() => restoredState?.supplierAccountId ?? '');
-  const [showQuickAddParty, setShowQuickAddParty] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -132,9 +136,33 @@ export function PurchaseInvoicePage() {
       if (restoredState.productId) setProductId(restoredState.productId);
       if (restoredState.quantity) setQuantity(restoredState.quantity);
       if (restoredState.rate) setRate(restoredState.rate);
+      if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.supplierAccountId) setSupplierAccountId(restoredState.supplierAccountId);
     }
   }, [restoredState]);
+
+  useEffect(() => {
+    if (!supplierAccountId || partyCategoryId || accounts.length === 0) return;
+    const derived = partyCategoryIdForAccount(accounts, supplierAccountId);
+    if (derived) setPartyCategoryId(derived);
+  }, [accounts, supplierAccountId, partyCategoryId]);
+
+  useEffect(() => {
+    if (!partyCategoryId || categories.length === 0) return;
+    const valid = partyCategorySelectOptions(categories).some((o) => o.value === partyCategoryId);
+    if (!valid) {
+      setPartyCategoryId('');
+      setSupplierAccountId('');
+    }
+  }, [partyCategoryId, categories]);
+
+  useEffect(() => {
+    if (!partyCategoryId || !supplierAccountId) return;
+    const acct = accounts.find((a) => String(a.id) === supplierAccountId);
+    if (acct && String(acct.categoryId) !== partyCategoryId) {
+      setSupplierAccountId('');
+    }
+  }, [partyCategoryId, supplierAccountId, accounts]);
 
   useEffect(() => {
     Promise.all([
@@ -175,9 +203,13 @@ export function PurchaseInvoicePage() {
     () => (Array.isArray(stores) ? stores : []).map((s) => ({ value: String(s.id), label: s.name })),
     [stores],
   );
+  const partyCategoryOptions = useMemo(
+    () => partyCategorySelectOptions(categories),
+    [categories],
+  );
   const supplierOptions = useMemo(
-    () => flatPartyAccountOptions(categories, accounts),
-    [categories, accounts],
+    () => partyAccountOptionsForCategory(accounts, partyCategoryId),
+    [accounts, partyCategoryId],
   );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
@@ -187,6 +219,11 @@ export function PurchaseInvoicePage() {
   function onProductCategoryChange(value: string) {
     setProductCategoryId(value);
     setProductId('');
+  }
+
+  function onPartyCategoryChange(value: string) {
+    setPartyCategoryId(value);
+    setSupplierAccountId('');
   }
 
   function addRow() {
@@ -260,9 +297,9 @@ export function PurchaseInvoicePage() {
 
   return (
     <PageShell centerTitle invoiceTitleBand title="Purchase Invoice">
-      <Panel className="inv-form-panel mx-auto w-full overflow-visible bg-white">
+      <Panel className="inv-form-panel inv-sp-invoice-panel mx-auto w-full overflow-visible bg-white">
         <form ref={trapRef} onSubmit={onSubmit}>
-          <div className="flex flex-col gap-6">
+          <div className="inv-sp-invoice-form">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>
                   <InvoiceField>
@@ -312,49 +349,39 @@ export function PurchaseInvoicePage() {
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Qty</FieldLabel>
-                      <TextInput value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                      <DecimalInput value={quantity} onChange={setQuantity} />
                     </InvoiceField>
                     <InvoiceField>
                       <FieldLabel>Rate</FieldLabel>
-                      <TextInput value={rate} onChange={(e) => setRate(e.target.value)} />
+                      <DecimalInput value={rate} onChange={setRate} />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Supplier">
-                <InvoiceField wide>
-                  <div className="mb-2 flex items-center justify-between gap-3">
+                <InvoiceFieldRow cols={2}>
+                  <InvoiceField>
+                    <FieldLabel>Purchase party category</FieldLabel>
+                    <SearchSelect
+                      options={partyCategoryOptions}
+                      value={partyCategoryId}
+                      onChange={onPartyCategoryChange}
+                      placeholder="Select category…"
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
                     <FieldLabel>Party</FieldLabel>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-financial hover:underline px-2 py-0.5 rounded hover:bg-financial/10 transition-colors"
-                      onClick={() => setShowQuickAddParty(true)}
-                    >
-                      + New Supplier
-                    </button>
-                  </div>
-                  <SearchSelect
-                    options={supplierOptions}
-                    value={supplierAccountId}
-                    onChange={setSupplierAccountId}
-                    placeholder="Select party"
-                  />
-                </InvoiceField>
+                    <SearchSelect
+                      options={supplierOptions}
+                      value={supplierAccountId}
+                      onChange={setSupplierAccountId}
+                      placeholder={partyCategoryId ? 'Select party' : 'Select a category first'}
+                      disabled={!partyCategoryId}
+                    />
+                  </InvoiceField>
+                </InvoiceFieldRow>
               </InvoiceFormSection>
-
-              <QuickAddPartyModal
-                kind="supplier"
-                isOpen={showQuickAddParty}
-                onClose={() => setShowQuickAddParty(false)}
-                onCreated={async (party) => {
-                  const updatedAccounts = await api.listAccounts({ lite: true });
-                  setAccounts(updatedAccounts);
-                  if (party.accountId) {
-                    setSupplierAccountId(String(party.accountId));
-                  }
-                }}
-              />
 
               <InvoiceAddRowAction onClick={addRow} />
 
@@ -383,6 +410,7 @@ export function PurchaseInvoicePage() {
                       productId,
                       quantity,
                       rate,
+                      partyCategoryId,
                       supplierAccountId,
                     },
                     predictedRef || 'Purchase Invoice',
