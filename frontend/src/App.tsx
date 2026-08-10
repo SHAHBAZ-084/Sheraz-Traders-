@@ -23,10 +23,11 @@ import { FinancialYearProvider } from './contexts/FinancialYearContext';
 import { FinancialYearManagementPage } from './pages/admin/FinancialYearManagementPage';
 import { UserInfoPage } from './pages/user/UserInfoPage';
 import { VoucherFormPage, VoucherListPage } from './pages/vouchers/VoucherPages';
+import { JamaNaamRegisterPage } from './pages/jama-naam/JamaNaamRegisterPage';
 
 export default function App() {
   return (
-    <ErrorBoundary title="Grain Market POS encountered an error">
+    <ErrorBoundary title="Sheeraz Traders encountered an error">
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -52,6 +53,8 @@ export default function App() {
                 <Route path="/invoices/sale-invoice" element={<InvoiceFormPage slug="sale-invoice" />} />
                 <Route path="/invoices/purchase-invoice" element={<InvoiceFormPage slug="purchase-invoice" />} />
                 <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
+
+                <Route path="/jama-naam" element={<JamaNaamRegisterPage />} />
 
                 <Route path="/inventory/stock-transfer" element={<StockTransferPage />} />
 

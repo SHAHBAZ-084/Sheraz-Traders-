@@ -50,6 +50,12 @@ export function UserInfoPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [gateOpen, setGateOpen] = useState(false);
   const [gatePassword, setGatePassword] = useState('');
 
@@ -125,6 +131,42 @@ export function UserInfoPage() {
     }
   }
 
+  async function onChangePassword(event: FormEvent) {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordMessage('');
+
+    if (!currentPassword) {
+      setPasswordError('Current password is required');
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError('New password is required');
+      return;
+    }
+    if (newPassword.length < 4) {
+      setPasswordError('Password must be at least 4 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match');
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await api.changePassword({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage('Password updated successfully.');
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Failed to change password');
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   async function onDeleteUser(u: User) {
     if (u.id === user?.id) {
       alert('Cannot delete your own account.');
@@ -159,6 +201,50 @@ export function UserInfoPage() {
           <p className="text-xs uppercase tracking-wide text-textSecondary">Role</p>
           <p className="text-textPrimary">{user?.role}</p>
         </div>
+      </Panel>
+
+      <Panel className="mt-4 max-w-xl space-y-4">
+        <h2 className="text-lg font-semibold text-textPrimary">Change password</h2>
+        <p className="text-sm text-textMuted">Update your login password for this account.</p>
+        <form className="grid gap-3 sm:grid-cols-2" onSubmit={onChangePassword}>
+          <div className="sm:col-span-2">
+            <FieldLabel>Current password</FieldLabel>
+            <TextInput
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          <div>
+            <FieldLabel>New password</FieldLabel>
+            <TextInput
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </div>
+          <div>
+            <FieldLabel>Confirm new password</FieldLabel>
+            <TextInput
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <PrimaryButton type="submit" disabled={passwordBusy}>
+              {passwordBusy ? 'Updating…' : 'Update password'}
+            </PrimaryButton>
+          </div>
+        </form>
+        {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
+        {passwordMessage ? <p className="text-sm text-success">{passwordMessage}</p> : null}
       </Panel>
 
       {isAdmin ? (

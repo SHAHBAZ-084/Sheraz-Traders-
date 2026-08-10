@@ -32,7 +32,7 @@ export function LoginPage() {
       <div className="w-full max-w-md border border-border bg-surface2">
         <div className="border-b border-border bg-[var(--fill-accent)] px-6 py-5 text-center text-white">
           <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="login-brand-logo mx-auto" />
-          <p className="mt-2 text-xs uppercase tracking-widest opacity-90">Grain Market POS</p>
+          <p className="mt-2 text-xs uppercase tracking-widest opacity-90">Grain Market Chishtian</p>
         </div>
 
         <form className="space-y-4 p-6" onSubmit={handleSubmit}>

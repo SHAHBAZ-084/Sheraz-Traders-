@@ -55,6 +55,31 @@ export async function verifyUserPassword(id: number, password: string): Promise<
   return bcrypt.compare(password, user.passwordHash);
 }
 
+export async function changeOwnPassword(userId: number, currentPassword: string, newPassword: string) {
+  if (!currentPassword) {
+    throw new AppError(400, 'Current password is required');
+  }
+  if (!newPassword || newPassword.length < 4) {
+    throw new AppError(400, 'Password must be at least 4 characters');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new AppError(404, 'User not found');
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new AppError(400, 'Current password is incorrect');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+}
+
 export async function listUsers() {
   const users = await prisma.user.findMany({
     orderBy: { username: 'asc' },

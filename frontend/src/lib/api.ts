@@ -71,6 +71,20 @@ export type Store = {
   createdAt?: string;
 };
 
+export type JamaNaamEntry = {
+  id: number;
+  partyId: number;
+  partyName: string;
+  productId: number | null;
+  productName: string | null;
+  quantity: number | null;
+  amount: number | null;
+  direction: 'JAMA' | 'NAAM';
+  date: string;
+  notes: string | null;
+  createdAt: string;
+};
+
 export type Product = {
   id: number;
   name: string;
@@ -248,6 +262,12 @@ export const api = {
   deleteUser(id: number) {
     return request<{ id: number }>(`/api/auth/users/${id}`, {
       method: 'DELETE',
+    });
+  },
+  changePassword(data: { currentPassword: string; newPassword: string }) {
+    return request<{ ok: boolean }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 
@@ -843,5 +863,26 @@ export const api = {
     return request<{ ok: boolean; uploadedAt?: string }>('/api/system/google-drive/backup-now', {
       method: 'POST',
     });
+  },
+
+  listJamaNaamEntries() {
+    return request<JamaNaamEntry[]>('/api/jama-naam');
+  },
+  createJamaNaamEntry(data: {
+    partyId: number;
+    productId?: number | null;
+    quantity?: number | null;
+    amount?: number | null;
+    direction: 'JAMA' | 'NAAM';
+    date: string;
+    notes?: string | null;
+  }) {
+    return request<JamaNaamEntry>('/api/jama-naam', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  settleJamaNaamEntry(id: number) {
+    return request<{ ok: boolean }>(`/api/jama-naam/${id}`, { method: 'DELETE' });
   },
 };

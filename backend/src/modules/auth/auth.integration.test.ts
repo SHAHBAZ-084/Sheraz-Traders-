@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
-import { createUser, deleteUser } from './auth.service';
+import { changeOwnPassword, createUser, deleteUser, login } from './auth.service';
 
 describe('User management & hard delete integration test', () => {
   let adminId: number;
@@ -30,5 +30,25 @@ describe('User management & hard delete integration test', () => {
 
     const check = await prisma.user.findUnique({ where: { id: created.id } });
     expect(check).toBeNull();
+  });
+
+  it('changes own password with current password verification', async () => {
+    const testUsername = `pwuser_${Date.now()}`;
+    const created = await createUser({
+      username: testUsername,
+      password: 'oldpass123',
+      displayName: 'Password Test',
+    });
+
+    await expect(
+      changeOwnPassword(created.id, 'wrongpass', 'newpass123'),
+    ).rejects.toThrow('Current password is incorrect');
+
+    await changeOwnPassword(created.id, 'oldpass123', 'newpass123');
+
+    expect(await login(testUsername, 'oldpass123')).toBeNull();
+    expect(await login(testUsername, 'newpass123')).toMatchObject({ id: created.id });
+
+    await deleteUser(created.id, adminId);
   });
 });

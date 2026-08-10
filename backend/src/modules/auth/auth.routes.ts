@@ -116,3 +116,22 @@ authRouter.delete(
     res.json(result);
   }),
 );
+
+authRouter.post(
+  '/change-password',
+  requireAuth,
+  validateBody(
+    z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(4),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    await authService.changeOwnPassword(
+      req.session.userId!,
+      req.body.currentPassword,
+      req.body.newPassword,
+    );
+    res.json({ ok: true });
+  }),
+);

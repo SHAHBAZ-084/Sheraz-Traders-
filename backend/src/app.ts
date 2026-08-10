@@ -16,6 +16,7 @@ import { createSystemHealthHandler, systemRouter } from './modules/system/system
 import { stockRouter } from './modules/stock/stock.routes';
 import { storesRouter } from './modules/stores/stores.routes';
 import { approvalsRouter } from './modules/approvals/approvals.routes';
+import { jamaNaamRouter } from './modules/jama-naam/jama-naam.routes';
 import type { StartupStatus } from './lib/startup';
 
 declare module 'express-session' {
@@ -97,6 +98,7 @@ export function createApp(getStartupStatus?: () => StartupStatus | null) {
   app.use('/api/stores', storesRouter);
   app.use('/api/approvals', approvalsRouter);
   app.use('/api/preferences', preferencesRouter);
+  app.use('/api/jama-naam', jamaNaamRouter);
   app.use('/api/system', systemRouter);
 
   if (env.isProduction) {

@@ -82,6 +82,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
       { kind: 'link', label: 'Purchase Invoice', to: '/invoices/purchase-invoice' },
       { kind: 'link', label: 'Kachi Maal', to: '/invoices/kachi-maal' },
       { kind: 'link', label: 'View Invoice', to: '/invoices/view-invoice' },
+      { kind: 'link', label: 'Jama Naam Register', to: '/jama-naam' },
     ],
   },
   {
@@ -123,6 +124,7 @@ const DASHBOARD_INVOICE_ROUTES = [
   '/invoices/sale-invoice',
   '/invoices/purchase-invoice',
   '/invoices/view-invoice',
+  '/jama-naam',
 ] as const;
 
 export const INVOICE_QUICK_LINKS: NavLink[] = (() => {
@@ -177,7 +179,7 @@ export function getPageTitle(pathname: string): string {
     .filter(([path]) => path !== '/')
     .sort(([a], [b]) => b.length - a.length)
     .find(([path]) => pathname.startsWith(path));
-  return match?.[1] ?? 'Grain Market POS';
+  return match?.[1] ?? 'Sheeraz Traders';
 }
 
 export const INVOICE_TYPE_LABELS: Record<string, string> = {

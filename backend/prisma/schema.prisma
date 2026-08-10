@@ -54,6 +54,11 @@ enum InvoiceStatus {
   PENDING_APPROVAL
 }
 
+enum JamaNaamDirection {
+  JAMA
+  NAAM
+}
+
 enum Role {
   ADMIN
   USER
@@ -138,6 +143,7 @@ model Account {
   product              Product?
   kachiMaalLines         KachiMaalLine[]   @relation("KachiMaalPartyAccount")
   kachiMaalDebitInvoices   Invoice[]         @relation("KachiMaalDebitAccount")
+  jamaNaamEntries        JamaNaamEntry[]
 
   @@index([categoryId])
   @@index([isActive, categoryId])
@@ -278,6 +284,7 @@ model Product {
   invoices        Invoice[]
   stockMovements  StockMovement[]
   stockRemainders StockRemainder[]
+  jamaNaamEntries JamaNaamEntry[]
 
   @@index([categoryId])
   @@index([isActive, name])
@@ -459,4 +466,24 @@ model StockMovement {
   @@index([productId, date, id])
   @@index([invoiceId])
   @@index([storeId])
+}
+
+/** Informal borrow/lend register — isolated from ledger, stock, and invoices. */
+model JamaNaamEntry {
+  id        Int               @id @default(autoincrement())
+  partyId   Int
+  productId Int?
+  quantity  Decimal?
+  amount    Decimal?
+  direction JamaNaamDirection
+  date      DateTime
+  notes     String?
+  createdAt DateTime          @default(now())
+
+  party   Account  @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([date, id])
+  @@index([partyId])
+  @@index([productId])
 }

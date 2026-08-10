@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowDownCircle,
+  ArrowLeftRight,
   ArrowUpCircle,
   BarChart3,
   BookOpen,
@@ -35,6 +36,7 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
   '/vouchers/journal': { variant: 'journal', icon: BookOpen },
   '/invoices/kachi-maal': { variant: 'kachi-maal', icon: Wheat },
   '/invoices/view-invoice': { variant: 'view', icon: Eye },
+  '/jama-naam': { variant: 'view', icon: ArrowLeftRight },
   '/reports/accounts': { variant: 'report', icon: ScrollText },
   '/reports/account-balance': { variant: 'report', icon: Wallet },
   '/reports/vouchers': { variant: 'report', icon: Receipt },
@@ -181,7 +183,9 @@ export function PosHomePage() {
               description={
                 link.to === '/invoices/view-invoice'
                   ? 'Look up a posted invoice by type and number'
-                  : 'Open invoice form'
+                  : link.to === '/jama-naam'
+                    ? 'Track informal borrow/lend bags (no stock or ledger impact)'
+                    : 'Open invoice form'
               }
             />
           ))}

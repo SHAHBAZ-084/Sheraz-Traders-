@@ -1,6 +1,6 @@
 {
   "name": "sheraz-traders",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Sheeraz Traders — offline desktop POS for grain market (Electron + React + Express + SQLite)",
   "main": "dist-electron/main.js",

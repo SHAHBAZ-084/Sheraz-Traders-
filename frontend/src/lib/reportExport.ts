@@ -7,8 +7,6 @@ import { writeBusinessLetterheadToPdf, type ReportLetterheadConfig } from './let
 
 export type { ReportLetterheadConfig };
 
-const REPORT_PDF_FOOTER = 'Built with AS Solutions (03220726006)';
-
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -16,20 +14,6 @@ function triggerDownload(blob: Blob, filename: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function stampPdfFooters(doc: jsPDF) {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const total = doc.getNumberOfPages();
-
-  for (let page = 1; page <= total; page += 1) {
-    doc.setPage(page);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(140, 140, 140);
-    doc.text(REPORT_PDF_FOOTER, pageWidth / 2, pageHeight - 6, { align: 'center' });
-  }
 }
 
 function writeCenteredLines(
@@ -216,8 +200,6 @@ export async function downloadPdf(
     },
     columnStyles: buildPdfColumnStyles(headers),
   });
-
-  stampPdfFooters(doc);
 
   const pdfBlob = doc.output('blob');
   triggerDownload(pdfBlob, filename);

@@ -119,7 +119,6 @@ export function Sidebar() {
         <Link to="/" className="app-sidebar-brand-link" aria-label="Sheeraz Traders — Dashboard">
           <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="app-sidebar-brand-logo" />
         </Link>
-        <p className="app-sidebar-brand-sub">Grain Market POS</p>
       </div>
 
       <nav className="app-sidebar-nav">

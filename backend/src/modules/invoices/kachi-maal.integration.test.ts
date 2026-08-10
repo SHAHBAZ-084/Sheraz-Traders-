@@ -28,7 +28,7 @@ async function ensureAccountInCategory(categoryName: string, accountName: string
   if (!category) throw new Error(`Category missing: ${categoryName}`);
 
   let account = await prisma.account.findFirst({
-    where: { isActive: true, code },
+    where: { code },
     include: { ledger: true, category: true },
   });
   if (!account) {
@@ -38,10 +38,10 @@ async function ensureAccountInCategory(categoryName: string, accountName: string
     });
     await prisma.ledger.create({ data: { accountId: account.id, balance: 0 } });
   } else {
-    if (account.categoryId !== category.id) {
+    if (account.categoryId !== category.id || !account.isActive) {
       await prisma.account.update({
         where: { id: account.id },
-        data: { categoryId: category.id },
+        data: { categoryId: category.id, isActive: true },
       });
       account = await prisma.account.findUniqueOrThrow({
         where: { id: account.id },
