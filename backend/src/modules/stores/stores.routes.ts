@@ -45,6 +45,7 @@ storesRouter.post(
 
 storesRouter.patch(
   '/:id',
+  requireAdmin,
   validateBody(z.object({ isActive: z.boolean() })),
   asyncHandler(async (req, res) => {
     const store = await storesService.setStoreActive(

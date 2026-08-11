@@ -6,6 +6,7 @@ export const INVOICE_TYPE_PREFIX: Record<InvoiceType, string> = {
   SALE_INVOICE: 'SI',
   PURCHASE_INVOICE: 'PI',
   STOCK_TRANSFER: 'TR',
+  OPENING_STOCK: 'OS',
 };
 
 export function buildInvoiceReference(type: InvoiceType, number: number): string {

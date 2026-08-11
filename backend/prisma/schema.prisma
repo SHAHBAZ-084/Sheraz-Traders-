@@ -45,6 +45,7 @@ enum InvoiceType {
   SALE_INVOICE
   PURCHASE_INVOICE
   STOCK_TRANSFER
+  OPENING_STOCK
 }
 
 enum InvoiceStatus {
@@ -127,13 +128,14 @@ model AccountCategory {
 }
 
 model Account {
-  id         Int         @id @default(autoincrement())
-  categoryId Int
-  name       String
-  code       String      @unique
-  type       AccountType
-  isActive   Boolean     @default(true)
-  createdAt  DateTime    @default(now())
+  id                   Int         @id @default(autoincrement())
+  categoryId           Int
+  name                 String
+  code                 String      @unique
+  type                 AccountType
+  isActive             Boolean     @default(true)
+  excludeFromSelectors Boolean     @default(false)
+  createdAt            DateTime    @default(now())
 
   category        AccountCategory               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   ledger          Ledger?
@@ -457,6 +459,7 @@ model StockMovement {
   invoiceType      InvoiceType
   invoiceReference String
   description      String?
+  isOpeningStock   Boolean        @default(false)
   createdAt        DateTime       @default(now())
 
   product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)

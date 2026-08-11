@@ -2,7 +2,7 @@ import { AccountType, InvoiceStatus, InvoiceType, Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma';
 import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { AppError } from '../../utils/helpers';
-import { getCurrentStockBalance } from '../stock/stock.service';
+import { getCurrentStockBalance, postOpeningStockIn } from '../stock/stock.service';
 import {
   ensureMaalKhataCategoryInTx,
   generateNextMaalKhataCodeInTx,
@@ -148,9 +148,20 @@ export async function createProduct(data: {
   unit?: string;
   code?: string;
   categoryId?: number | null;
+  openingStock?: number;
+  openingStoreId?: number;
 }) {
   const name = data.name.trim();
   if (!name) throw new AppError(400, 'Product name is required');
+
+  const openingStock =
+    data.openingStock != null && data.openingStock !== undefined ? Number(data.openingStock) : 0;
+  if (!Number.isFinite(openingStock) || openingStock < 0) {
+    throw new AppError(400, 'Opening stock must be zero or greater');
+  }
+  if (openingStock > 0 && (data.openingStoreId == null || data.openingStoreId <= 0)) {
+    throw new AppError(400, 'Store is required when opening stock is greater than zero');
+  }
 
   const existing = await prisma.product.findFirst({
     where: { isActive: true, name },
@@ -203,6 +214,14 @@ export async function createProduct(data: {
         category: true,
       },
     });
+
+    if (openingStock > 0) {
+      await postOpeningStockIn(tx, {
+        productId: product.id,
+        storeId: data.openingStoreId!,
+        quantity: openingStock,
+      });
+    }
 
     return product;
   });

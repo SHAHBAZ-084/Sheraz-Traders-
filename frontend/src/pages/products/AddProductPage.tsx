@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { api, type Product, type ProductCategory } from '../../lib/api';
+import { api, type Product, type ProductCategory, type Store } from '../../lib/api';
 import {
   FieldLabel,
   LegacyTable,
@@ -16,7 +16,10 @@ export function AddProductPage() {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const [categoryId, setCategoryId] = useState<number | ''>('');
+  const [openingStock, setOpeningStock] = useState('');
+  const [openingStoreId, setOpeningStoreId] = useState<number | ''>('');
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -33,6 +36,19 @@ export function AddProductPage() {
     }
   }
 
+  async function loadStores() {
+    try {
+      const res = await api.listActiveStores();
+      const rows = Array.isArray(res) ? res : [];
+      setStores(rows);
+      if (rows.length === 1) {
+        setOpeningStoreId(rows[0].id);
+      }
+    } catch {
+      setStores([]);
+    }
+  }
+
   async function loadProducts() {
     try {
       const res = await api.listProducts();
@@ -44,6 +60,7 @@ export function AddProductPage() {
 
   useEffect(() => {
     void loadCategories();
+    void loadStores();
     void loadProducts();
   }, []);
 
@@ -69,24 +86,49 @@ export function AddProductPage() {
     event.preventDefault();
     setError('');
     setMessage('');
+
+    const parsedOpeningStock = openingStock.trim() === '' ? undefined : Number(openingStock);
+    if (parsedOpeningStock != null && (!Number.isFinite(parsedOpeningStock) || parsedOpeningStock < 0)) {
+      setError('Opening stock must be zero or greater');
+      return;
+    }
+    if (parsedOpeningStock != null && parsedOpeningStock > 0 && openingStoreId === '') {
+      setError('Select a store for the opening stock quantity');
+      return;
+    }
+
     try {
       const product = await api.createProduct({
         name,
         unit: unit || undefined,
         categoryId: categoryId === '' ? undefined : categoryId,
+        openingStock: parsedOpeningStock,
+        openingStoreId: openingStoreId === '' ? undefined : openingStoreId,
       });
+      const stockNote =
+        parsedOpeningStock != null && parsedOpeningStock > 0
+          ? ` Opening stock: ${parsedOpeningStock}${unit ? ` ${unit}` : ''}.`
+          : '';
       setMessage(
         `Product "${product.name}" created with ledger ${product.account?.name ?? ''}`.trim()
-          + (product.category ? ` (category: ${product.category.name}).` : '.'),
+          + (product.category ? ` (category: ${product.category.name}).` : '.')
+          + stockNote,
       );
       setName('');
       setUnit('');
       setCategoryId('');
+      setOpeningStock('');
+      if (stores.length !== 1) {
+        setOpeningStoreId('');
+      }
       await loadProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
   }
+
+  const showStorePicker =
+    openingStock.trim() !== '' && Number(openingStock) > 0 && stores.length > 1;
 
   return (
     <PageShell title="Add Product" subtitle="Creates the product and its inventory ledger automatically">
@@ -98,8 +140,38 @@ export function AddProductPage() {
           </div>
           <div>
             <FieldLabel>Unit (optional)</FieldLabel>
-            <TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. maund, kg" />
+            <TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. maund, kg, bori" />
           </div>
+          <div>
+            <FieldLabel>Opening stock (optional)</FieldLabel>
+            <TextInput
+              type="number"
+              min={0}
+              step="any"
+              value={openingStock}
+              onChange={(e) => setOpeningStock(e.target.value)}
+              placeholder="Quantity already in shop — set once at creation"
+            />
+            <p className="mt-1 text-xs text-textMuted">
+              Pure stock quantity only. No purchase invoice, rate, or ledger entry is created.
+            </p>
+          </div>
+          {showStorePicker ? (
+            <div>
+              <FieldLabel>Store for opening stock</FieldLabel>
+              <select
+                className="w-full rounded-sm border border-border px-2.5 py-2 text-sm"
+                value={openingStoreId}
+                onChange={(e) => setOpeningStoreId(e.target.value ? Number(e.target.value) : '')}
+                required
+              >
+                <option value="">Select store</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>{store.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div>
             <FieldLabel>Category (optional)</FieldLabel>
             <select

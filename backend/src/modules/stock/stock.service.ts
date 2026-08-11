@@ -445,6 +445,48 @@ export async function reverseInvoiceStockMovements(
 }
 
 /** Stock IN for Purchase Invoice — quantity treated as whole bags. */
+export async function postOpeningStockIn(
+  tx: Tx,
+  data: {
+    productId: number;
+    storeId: number;
+    quantity: number;
+    date?: Date;
+  },
+) {
+  const qty = Number(data.quantity);
+  if (!(qty > 0)) return;
+
+  const product = await tx.product.findFirst({ where: { id: data.productId, isActive: true } });
+  if (!product) throw new AppError(400, `Product #${data.productId} not found`);
+
+  const store = await tx.store.findFirst({ where: { id: data.storeId, isActive: true } });
+  if (!store) throw new AppError(400, 'Store not found or inactive');
+
+  const existingOpening = await tx.stockMovement.findFirst({
+    where: { productId: product.id, storeId: store.id, isOpeningStock: true },
+  });
+  if (existingOpening) {
+    throw new AppError(400, 'Opening stock was already recorded for this product at this store');
+  }
+
+  await tx.stockMovement.create({
+    data: {
+      productId: product.id,
+      storeId: store.id,
+      direction: StockDirection.IN,
+      bags: qty,
+      date: data.date ?? new Date(),
+      invoiceId: null,
+      invoiceType: InvoiceType.OPENING_STOCK,
+      invoiceReference: 'Opening Stock',
+      description: 'Opening Stock',
+      isOpeningStock: true,
+    },
+  });
+}
+
+/** Stock IN for Purchase Invoice — quantity treated as whole bags. */
 export async function postPurchaseInvoiceStockIn(
   tx: Tx,
   data: {

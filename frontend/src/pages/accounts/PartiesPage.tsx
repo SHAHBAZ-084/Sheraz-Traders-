@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ListPagination } from '../../components/ui/ListPagination';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { api, type Party } from '../../lib/api';
 import { formatLedgerBalance } from '../../lib/format';
 import { PhoneInput } from '../../components/ui/PhoneInput';
@@ -28,6 +29,7 @@ function PartyPage({
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const isAdmin = useIsAdmin();
 
   const refresh = useCallback(async (pageOffset = offset) => {
     try {
@@ -109,7 +111,7 @@ function PartyPage({
               <th className="py-2">Name</th>
               <th className="py-2">Phone</th>
               <th className="py-2">Balance</th>
-              <th className="py-2" />
+              {isAdmin ? <th className="py-2" /> : null}
             </tr>
           </thead>
           <tbody>
@@ -118,9 +120,11 @@ function PartyPage({
                 <td className="py-2 font-medium">{party.name}</td>
                 <td className="py-2">{party.phone ?? '—'}</td>
                 <td className="py-2">{formatLedgerBalance(party.balance ?? 0)}</td>
-                <td className="py-2 text-right">
-                  <SecondaryButton className="text-xs" onClick={() => onRemove(party.id)}>Remove</SecondaryButton>
-                </td>
+                {isAdmin ? (
+                  <td className="py-2 text-right">
+                    <SecondaryButton className="text-xs" onClick={() => onRemove(party.id)}>Remove</SecondaryButton>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

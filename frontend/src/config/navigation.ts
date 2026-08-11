@@ -188,6 +188,35 @@ export const INVOICE_TYPE_LABELS: Record<string, string> = {
   PURCHASE_INVOICE: 'Purchase Invoice',
 };
 
+/** Nav targets that perform delete/remove actions — admin only. */
+export const ADMIN_ONLY_NAV_PATHS = new Set([
+  '/accounts/categories/remove',
+  '/accounts/manage/remove',
+  '/products/remove',
+]);
+
+export function filterNavItemsForRole(items: NavItem[], isAdmin: boolean): NavItem[] {
+  if (isAdmin) return items;
+  return items.flatMap((item): NavItem[] => {
+    if (item.kind === 'link') {
+      return ADMIN_ONLY_NAV_PATHS.has(item.to) ? [] : [item];
+    }
+    const children = item.children.filter((child) => !ADMIN_ONLY_NAV_PATHS.has(child.to));
+    if (children.length === 0) return [];
+    return [{ ...item, children }];
+  });
+}
+
+export function filterSidebarSectionsForRole(sections: SidebarSection[], isAdmin: boolean): SidebarSection[] {
+  if (isAdmin) return sections;
+  return sections
+    .map((section) => ({
+      ...section,
+      items: filterNavItemsForRole(section.items, isAdmin),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 /** @deprecated Use SIDEBAR_NAV — kept for any legacy imports */
 export type NavGroup = {
   label: string;

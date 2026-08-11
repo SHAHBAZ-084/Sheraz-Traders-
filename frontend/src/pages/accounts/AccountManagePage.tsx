@@ -34,7 +34,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     api.listCategories().then(setCategories).catch(() => setCategories([]));
-    api.listAccounts().then(setAccounts).catch(() => setAccounts([]));
+    api.listAccounts({ forSelectors: false }).then(setAccounts).catch(() => setAccounts([]));
   }, []);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
 
   async function reload() {
     setCategories(await api.listCategories());
-    setAccounts(await api.listAccounts());
+    setAccounts(await api.listAccounts({ forSelectors: false }));
   }
 
   async function onSubmit(event: FormEvent) {

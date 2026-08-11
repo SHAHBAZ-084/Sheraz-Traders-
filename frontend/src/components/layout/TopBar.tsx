@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
-import { TOP_NAV, NavItem } from '../../config/navigation';
+import { TOP_NAV, NavItem, filterNavItemsForRole } from '../../config/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { voucherTypeColorClass } from '../../lib/format';
 
 function linkMatchesPath(pathname: string, to: string) {
@@ -66,7 +67,9 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const location = useLocation();
-  const active = groupHasActive(location.pathname, children);
+  const isAdmin = useIsAdmin();
+  const visibleChildren = filterNavItemsForRole(children, isAdmin);
+  const active = groupHasActive(location.pathname, visibleChildren);
 
   useEffect(() => {
     setOpen(false);
@@ -93,7 +96,7 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
       </button>
       {open ? (
         <div className="app-dropdown left-0 top-full mt-1">
-          {children.map((item) =>
+          {visibleChildren.map((item) =>
             item.kind === 'submenu' ? (
               <NavSubmenu key={item.label} label={item.label} children={item.children} />
             ) : (

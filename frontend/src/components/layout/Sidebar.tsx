@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, LayoutDashboard, Users } from 'lucide-react';
-import { SIDEBAR_NAV, type NavItem } from '../../config/navigation';
+import { SIDEBAR_NAV, filterSidebarSectionsForRole, type NavItem } from '../../config/navigation';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import type { LucideIcon } from 'lucide-react';
 
 function linkMatchesPath(pathname: string, to: string) {
@@ -109,9 +110,10 @@ function SidebarSectionBlock({
 
 export function Sidebar() {
   const location = useLocation();
+  const isAdmin = useIsAdmin();
   const dashboardActive = location.pathname === '/';
 
-  const sections = SIDEBAR_NAV;
+  const sections = filterSidebarSectionsForRole(SIDEBAR_NAV, isAdmin);
 
   return (
     <aside className="app-sidebar">

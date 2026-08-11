@@ -32,6 +32,7 @@ accountingRouter.post(
 
 accountingRouter.delete(
   '/categories/:id',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const category = await accountingService.softDeleteAccountCategory(
       parseInt(param(req.params.id), 10),
@@ -44,8 +45,9 @@ accountingRouter.get(
   '/accounts',
   asyncHandler(async (req, res) => {
     const lite = req.query.lite === '1' || req.query.lite === 'true';
+    const forSelectors = req.query.forSelectors !== '0' && req.query.forSelectors !== 'false';
     const accounts = await accountingService.listAccounts(
-      { includeLedger: !lite },
+      { includeLedger: !lite, forSelectors },
       parsePagination(req.query, SELECTOR_PAGINATION),
     );
     res.json(accounts);
@@ -410,6 +412,7 @@ accountingRouter.patch(
 
 accountingRouter.delete(
   '/accounts/:id',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const account = await accountingService.softDeleteAccount(parseInt(param(req.params.id), 10));
     res.json(account);

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { AppError, asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
 import * as productsService from './products.service';
@@ -49,6 +49,8 @@ productsRouter.post(
       unit: z.string().optional(),
       code: z.string().optional(),
       categoryId: z.number().int().positive().nullable().optional(),
+      openingStock: z.number().min(0).optional(),
+      openingStoreId: z.number().int().positive().optional(),
     }),
   ),
   asyncHandler(async (req, res) => {
@@ -59,6 +61,7 @@ productsRouter.post(
 
 productsRouter.delete(
   '/:id',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     res.json(await productsService.removeProduct(parseInt(param(req.params.id), 10)));
   }),

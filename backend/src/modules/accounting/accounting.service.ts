@@ -620,17 +620,27 @@ async function generateNextAccountCodeInTx(
   return String(max + 1);
 }
 
+export const OPENING_BALANCE_EQUITY_ACCOUNT_NAME = 'Opening Balance Equity';
+
 async function findOrCreateOpeningBalanceEquityAccount(
   tx: Prisma.TransactionClient,
   ) {
   const existing = await tx.account.findFirst({
     where: { isActive: true,
       type: AccountType.EQUITY,
-      name: { equals: 'Opening Balance Equity' },
+      name: { equals: OPENING_BALANCE_EQUITY_ACCOUNT_NAME },
     },
     include: { ledger: true },
   });
-  if (existing?.ledger) return existing;
+  if (existing?.ledger) {
+    if (!existing.excludeFromSelectors) {
+      await tx.account.update({
+        where: { id: existing.id },
+        data: { excludeFromSelectors: true },
+      });
+    }
+    return existing;
+  }
 
   let category = await tx.accountCategory.findFirst({
     where: { isActive: true,
@@ -645,9 +655,10 @@ async function findOrCreateOpeningBalanceEquityAccount(
 
   const account = await tx.account.create({
     data: { categoryId: category.id,
-      name: 'Opening Balance Equity',
+      name: OPENING_BALANCE_EQUITY_ACCOUNT_NAME,
       code: await generateNextAccountCodeInTx(tx),
       type: AccountType.EQUITY,
+      excludeFromSelectors: true,
     },
   });
 
@@ -1074,13 +1085,17 @@ export async function runAccountingMaintenance() {
 }
 
 export async function listAccounts(
-  options?: { includeLedger?: boolean },
+  options?: { includeLedger?: boolean; forSelectors?: boolean },
   pagination?: { limit: number; offset: number },
 ): Promise<PaginatedResult<Awaited<ReturnType<typeof mapListedAccount>>>> {
   const includeLedger = options?.includeLedger !== false;
+  const forSelectors = options?.forSelectors !== false;
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
-  const where = { isActive: true };
+  const where = {
+    isActive: true,
+    ...(forSelectors ? { excludeFromSelectors: false } : {}),
+  };
 
   const [accounts, total] = await Promise.all([
     prisma.account.findMany({
@@ -2448,6 +2463,7 @@ export async function getAccountBalancesAsOf(params: {
 
   const where = {
     isActive: true,
+    excludeFromSelectors: false,
     ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
   };
 

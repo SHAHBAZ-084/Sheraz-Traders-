@@ -327,7 +327,14 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
-  createProduct(data: { name: string; unit?: string; code?: string; categoryId?: number | null }) {
+  createProduct(data: {
+    name: string;
+    unit?: string;
+    code?: string;
+    categoryId?: number | null;
+    openingStock?: number;
+    openingStoreId?: number;
+  }) {
     return request<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) });
   },
   removeProduct(id: number) {
@@ -647,9 +654,10 @@ export const api = {
     return request<InvoiceDetail>(`/api/invoices/${invoiceId}`, { method: 'DELETE' });
   },
 
-  listAccounts(options?: { lite?: boolean }) {
+  listAccounts(options?: { lite?: boolean; forSelectors?: boolean }) {
     const query = new URLSearchParams({ limit: '2000' });
     if (options?.lite) query.set('lite', '1');
+    if (options?.forSelectors === false) query.set('forSelectors', '0');
     return fetchListItems<Account>(`/api/accounting/accounts?${query.toString()}`);
   },
   createAccount(data: {

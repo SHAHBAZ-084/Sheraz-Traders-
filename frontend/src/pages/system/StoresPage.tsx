@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput, Tile } from '../../components/ui/PageShell';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { api, type Store } from '../../lib/api';
 
 export function StoresPage() {
+  const isAdmin = useIsAdmin();
   const [stores, setStores] = useState<Store[]>([]);
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -118,17 +120,21 @@ export function StoresPage() {
                     <p className="text-xs text-textMuted">{store.isActive ? 'Active' : 'Inactive'}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <SecondaryButton type="button" disabled={busy} onClick={() => void onToggle(store)}>
-                      {store.isActive ? 'Deactivate' : 'Activate'}
-                    </SecondaryButton>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void openDeleteModal(store)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-                    >
-                      Delete
-                    </button>
+                    {isAdmin ? (
+                      <>
+                        <SecondaryButton type="button" disabled={busy} onClick={() => void onToggle(store)}>
+                          {store.isActive ? 'Deactivate' : 'Activate'}
+                        </SecondaryButton>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void openDeleteModal(store)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ))

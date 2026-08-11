@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { AccountManagePage } from './pages/accounts/AccountManagePage';
 import { CategoryManagePage } from './pages/accounts/CategoryManagePage';
@@ -38,12 +39,14 @@ export default function App() {
 
                 <Route path="/accounts/categories/add" element={<CategoryManagePage mode="add" />} />
                 <Route path="/accounts/categories/edit" element={<CategoryManagePage mode="edit" />} />
-                <Route path="/accounts/categories/remove" element={<CategoryManagePage mode="remove" />} />
+                <Route element={<AdminRoute />}>
+                  <Route path="/accounts/categories/remove" element={<CategoryManagePage mode="remove" />} />
+                  <Route path="/accounts/manage/remove" element={<AccountManagePage mode="remove" />} />
+                  <Route path="/products/remove" element={<ProductRemovePage />} />
+                </Route>
                 <Route path="/accounts/manage/add" element={<AccountManagePage mode="add" />} />
                 <Route path="/accounts/manage/edit" element={<AccountManagePage mode="edit" />} />
-                <Route path="/accounts/manage/remove" element={<AccountManagePage mode="remove" />} />
                 <Route path="/products/add" element={<AddProductPage />} />
-                <Route path="/products/remove" element={<ProductRemovePage />} />
                 <Route path="/accounts/products/add" element={<Navigate to="/products/add" replace />} />
                 <Route path="/accounts/products/remove" element={<Navigate to="/products/remove" replace />} />
                 <Route path="/accounts/sale-parties" element={<SalePartiesPage />} />
