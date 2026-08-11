@@ -8,15 +8,22 @@ const APP_NAME = 'Sheeraz Traders';
 const PREVIOUS_APP_NAME = 'Sheraz Traders';
 const LEGACY_APP_NAME = 'Grain Market POS';
 const APP_ID = 'com.sheraztraders.pos';
+/** Only show the splash if the backend is still warming up after this grace period. */
+const LOADING_GRACE_MS = 400;
+/** Poll frequently so login appears as soon as the backend reports ready. */
+const HEALTH_POLL_INTERVAL_MS = 100;
+const HEALTH_MAX_ATTEMPTS = 100;
 
-function resolveAppIcon(): string {
-  const winIcon = process.platform === 'win32';
-  const fileName = winIcon ? 'icon.ico' : 'icon.png';
-  const candidates = [
-    path.join(__dirname, `../build/${fileName}`),
-    path.join(app.getAppPath(), `build/${fileName}`),
-    path.join(process.resourcesPath, `app.asar.unpacked/build/${fileName}`),
-  ];
+function resolveAppIcon(): string | undefined {
+  const fileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const candidates = isDev
+    ? [path.join(__dirname, `../build/${fileName}`)]
+    : [
+        path.join(process.resourcesPath, `app.asar.unpacked/build/${fileName}`),
+        path.join(process.resourcesPath, `build/${fileName}`),
+        path.join(__dirname, `../build/${fileName}`),
+        path.join(app.getAppPath(), `build/${fileName}`),
+      ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -24,11 +31,12 @@ function resolveAppIcon(): string {
     }
   }
 
-  return candidates[0]!;
+  return undefined;
 }
 
 let mainWindow: BrowserWindow | null = null;
 let loadingWindow: BrowserWindow | null = null;
+let backendBootPromise: Promise<void> | null = null;
 
 /** Windows 10/11: prevent occluded-window bugs that block mouse/keyboard in the renderer. */
 if (process.platform === 'win32') {
@@ -104,15 +112,43 @@ async function startBackend(): Promise<void> {
     process.env.GOOGLE_DRIVE_CLIENT_SECRET || decodeConfig(['R09DU1BY', 'LU5aczJ4d05fRnYzMDRoQU5xT25kNHA1cnBneG8=']);
 
   const backendEntry = path.join(__dirname, '../backend/dist/index.js');
-  const backend = await import(backendEntry);
-  if (typeof backend.backendReady?.then === 'function') {
-    await backend.backendReady;
+  // Import kicks off backend startup; readiness is confirmed via /api/health polling.
+  await import(backendEntry);
+}
+
+/** Begin backend boot as early as possible (parallel with app launch). */
+function ensureBackendStarting(): Promise<void> {
+  if (isDev) return Promise.resolve();
+  if (!backendBootPromise) {
+    backendBootPromise = startBackend().catch((err) => {
+      backendBootPromise = null;
+      throw err;
+    });
   }
+  return backendBootPromise;
+}
+
+function scheduleLoadingWindowIfSlow(): () => void {
+  if (isDev) return () => {};
+
+  let shown = false;
+  const timer = setTimeout(() => {
+    shown = true;
+    showLoadingWindow();
+  }, LOADING_GRACE_MS);
+
+  return () => {
+    clearTimeout(timer);
+    if (shown) {
+      closeLoadingWindow();
+    }
+  };
 }
 
 function showLoadingWindow(): void {
   if (isDev) return;
 
+  const iconPath = resolveAppIcon();
   loadingWindow = new BrowserWindow({
     width: 420,
     height: 160,
@@ -122,7 +158,7 @@ function showLoadingWindow(): void {
     center: true,
     show: false,
     backgroundColor: '#f4f5f7',
-    icon: resolveAppIcon(),
+    ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -173,13 +209,14 @@ function closeLoadingWindow(): void {
 }
 
 async function createWindow(): Promise<void> {
+  const iconPath = resolveAppIcon();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 700,
     title: APP_NAME,
-    icon: resolveAppIcon(),
+    ...(iconPath ? { icon: iconPath } : {}),
     show: false,
     backgroundColor: '#f4f5f7',
     webPreferences: {
@@ -259,14 +296,13 @@ async function showStartupError(message: string): Promise<void> {
 configureStableUserDataPath();
 
 app.whenReady().then(async () => {
+  const backendPromise = !isDev ? ensureBackendStarting() : Promise.resolve();
+  const dismissLoadingGrace = scheduleLoadingWindowIfSlow();
+
   try {
     if (!isDev) {
-      showLoadingWindow();
-    }
+      await backendPromise;
 
-    await startBackend();
-
-    if (!isDev) {
       const health = await waitForBackendHealth();
       if (!health.ok) {
         const detail =
@@ -274,13 +310,16 @@ app.whenReady().then(async () => {
           (health.database && !health.database.integrityOk
             ? 'Database integrity check failed.'
             : 'Backend health check failed.');
+        dismissLoadingGrace();
         await showStartupError(detail);
         return;
       }
     }
 
+    dismissLoadingGrace();
     await createWindow();
   } catch (err) {
+    dismissLoadingGrace();
     const message = err instanceof Error ? err.message : String(err);
     await showStartupError(message);
     return;
@@ -314,20 +353,26 @@ type HealthResponse = {
   };
 };
 
-async function waitForBackendHealth(maxAttempts = 40): Promise<HealthResponse> {
+async function waitForBackendHealth(
+  maxAttempts = HEALTH_MAX_ATTEMPTS,
+  pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
+): Promise<HealthResponse> {
   const url = `http://127.0.0.1:${BACKEND_PORT}/api/health`;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const response = await fetch(url);
       if (response.ok) {
-        return (await response.json()) as HealthResponse;
+        const data = (await response.json()) as HealthResponse;
+        if (data.ok) {
+          return data;
+        }
       }
     } catch {
       // Server not ready yet.
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   throw new Error('Backend failed to start');

@@ -27,7 +27,8 @@
     "appId": "com.sheraztraders.pos",
     "productName": "Sheeraz Traders",
     "copyright": "Copyright © Sheeraz Traders",
-    "icon": "icon.png",
+    "icon": "build/icon.png",
+    "afterPack": "./scripts/embed-win-icon.mjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -64,7 +65,8 @@
       }
     ],
     "win": {
-      "icon": "icon.ico",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
       "target": [
         "nsis"
       ],
@@ -80,9 +82,9 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Sheeraz Traders",
       "uninstallDisplayName": "Sheeraz Traders",
-      "installerIcon": "icon.ico",
-      "uninstallerIcon": "icon.ico",
-      "installerHeaderIcon": "icon.ico",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "artifactName": "${productName} Setup ${version}.${ext}",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true
@@ -94,6 +96,7 @@
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
     "png-to-ico": "^3.0.2",
+    "rcedit": "^5.0.2",
     "sharp": "^0.35.3",
     "typescript": "^5.9.3",
     "wait-on": "^8.0.5"

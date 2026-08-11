@@ -25,6 +25,8 @@ export type ProfitLossReport = {
   fromDate: string | null;
   toDate: string | null;
   rows: ProfitLossRow[];
+  totalPurchase: number;
+  totalSale: number;
   netProfit: number;
 };
 
@@ -69,6 +71,8 @@ export async function getProfitLossReport(params: {
   financialYearId: number;
   fromDate?: string;
   toDate?: string;
+  productId?: number;
+  categoryId?: number;
 }): Promise<ProfitLossReport> {
   const year = await prisma.financialYear.findFirst({
     where: { id: params.financialYearId },
@@ -103,16 +107,30 @@ export async function getProfitLossReport(params: {
     }
   }
 
+  const saleItemFilter: {
+    productId?: number | { not: null };
+    product?: { categoryId: number };
+  } = { productId: { not: null } };
+  if (params.productId != null) {
+    saleItemFilter.productId = params.productId;
+  }
+  if (params.categoryId != null) {
+    saleItemFilter.product = { categoryId: params.categoryId };
+  }
+
   const saleInvoices = await prisma.invoice.findMany({
     where: {
       type: InvoiceType.SALE_INVOICE,
       status: InvoiceStatus.POSTED,
       financialYearId: params.financialYearId,
       invoiceDate: { gte: rangeStart, lte: rangeEnd },
+      ...(params.productId != null || params.categoryId != null
+        ? { items: { some: saleItemFilter } }
+        : {}),
     },
     include: {
       items: {
-        where: { productId: { not: null } },
+        where: saleItemFilter,
         include: { product: { select: { name: true } } },
       },
     },
@@ -158,6 +176,8 @@ export async function getProfitLossReport(params: {
   }
 
   const rows: ProfitLossRow[] = [];
+  let totalPurchase = 0;
+  let totalSale = 0;
 
   for (const invoice of saleInvoices) {
     if (!invoice.invoiceDate) continue;
@@ -169,7 +189,12 @@ export async function getProfitLossReport(params: {
       const salePrice = Number(item.unitPrice);
       const purchaseHistory = purchaseItemsByProduct.get(item.productId) ?? [];
       const purchasePrice = averagePurchaseRate(purchaseHistory);
-      const profit = roundMoney((salePrice - (purchasePrice ?? 0)) * quantity);
+      const purchaseAmount = roundMoney((purchasePrice ?? 0) * quantity);
+      const saleAmount = roundMoney(salePrice * quantity);
+      const profit = roundMoney(saleAmount - purchaseAmount);
+
+      totalPurchase = roundMoney(totalPurchase + purchaseAmount);
+      totalSale = roundMoney(totalSale + saleAmount);
 
       rows.push({
         date: saleDate.toISOString(),
@@ -183,48 +208,52 @@ export async function getProfitLossReport(params: {
     }
   }
 
-  const kachiInvoices = await prisma.invoice.findMany({
-    where: {
-      type: InvoiceType.KACHI_MAAL,
-      status: InvoiceStatus.POSTED,
-      financialYearId: params.financialYearId,
-      invoiceDate: { gte: rangeStart, lte: rangeEnd },
-    },
-    include: { kachiMaalLines: { orderBy: { sortOrder: 'asc' } } },
-    orderBy: [{ invoiceDate: 'asc' }, { reference: 'asc' }],
-  });
+  const includeDaami = params.productId == null && params.categoryId == null;
 
-  const prefs = await getSystemPreferences();
-  for (const invoice of kachiInvoices) {
-    if (!invoice.invoiceDate) continue;
-    const computedRows = invoice.kachiMaalLines.map((line) => {
-      const bhartii = Number(line.bhartii);
-      return {
-        ...computeKachiMaalRow(
-          {
-            bagCount: Number(line.bagCount),
-            bhartii,
-            dharanCount: Number(line.dharanCount),
-            looseKg: Number(line.looseKg),
-            ratePerMaund: Number(line.ratePerMaund),
-          },
-          prefs,
-        ),
-        bhartii,
-      };
+  if (includeDaami) {
+    const kachiInvoices = await prisma.invoice.findMany({
+      where: {
+        type: InvoiceType.KACHI_MAAL,
+        status: InvoiceStatus.POSTED,
+        financialYearId: params.financialYearId,
+        invoiceDate: { gte: rangeStart, lte: rangeEnd },
+      },
+      include: { kachiMaalLines: { orderBy: { sortOrder: 'asc' } } },
+      orderBy: [{ invoiceDate: 'asc' }, { reference: 'asc' }],
     });
-    const totals = computeKachiMaalInvoiceTotals(computedRows, prefs, Number(invoice.miscAmount));
-    if (totals.profitAmount <= 0) continue;
 
-    rows.push({
-      date: invoice.invoiceDate.toISOString(),
-      sourceType: 'KACHI_MAAL',
-      reference: invoice.reference,
-      productName: 'Daami',
-      purchasePrice: null,
-      salePrice: null,
-      profit: totals.profitAmount,
-    });
+    const prefs = await getSystemPreferences();
+    for (const invoice of kachiInvoices) {
+      if (!invoice.invoiceDate) continue;
+      const computedRows = invoice.kachiMaalLines.map((line) => {
+        const bhartii = Number(line.bhartii);
+        return {
+          ...computeKachiMaalRow(
+            {
+              bagCount: Number(line.bagCount),
+              bhartii,
+              dharanCount: Number(line.dharanCount),
+              looseKg: Number(line.looseKg),
+              ratePerMaund: Number(line.ratePerMaund),
+            },
+            prefs,
+          ),
+          bhartii,
+        };
+      });
+      const totals = computeKachiMaalInvoiceTotals(computedRows, prefs, Number(invoice.miscAmount));
+      if (totals.profitAmount <= 0) continue;
+
+      rows.push({
+        date: invoice.invoiceDate.toISOString(),
+        sourceType: 'KACHI_MAAL',
+        reference: invoice.reference,
+        productName: 'Daami',
+        purchasePrice: null,
+        salePrice: null,
+        profit: totals.profitAmount,
+      });
+    }
   }
 
   rows.sort((a, b) => {
@@ -245,6 +274,8 @@ export async function getProfitLossReport(params: {
     fromDate: params.fromDate ?? null,
     toDate: params.toDate ?? null,
     rows,
+    totalPurchase,
+    totalSale,
     netProfit,
   };
 }

@@ -139,11 +139,23 @@ accountingRouter.get(
 
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
+    const productIdParam = req.query.productId as string | undefined;
+    const categoryIdParam = req.query.categoryId as string | undefined;
+    const productId =
+      productIdParam && productIdParam.trim() !== ''
+        ? parseInt(productIdParam, 10)
+        : undefined;
+    const categoryId =
+      categoryIdParam && categoryIdParam.trim() !== ''
+        ? parseInt(categoryIdParam, 10)
+        : undefined;
 
     const report = await getProfitLossReport({
       financialYearId,
       fromDate: fromDate?.trim() || undefined,
       toDate: toDate?.trim() || undefined,
+      productId: Number.isFinite(productId) ? productId : undefined,
+      categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
     });
     res.json(report);
   }),

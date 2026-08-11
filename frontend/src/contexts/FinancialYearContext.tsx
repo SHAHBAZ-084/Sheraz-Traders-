@@ -71,3 +71,9 @@ export function useFinancialYear() {
   }
   return ctx;
 }
+
+/** Global report FY from Reports > Financial Year, unless viewing a closed-year hub. */
+export function useReportFinancialYearId(historicalScope?: { financialYearId: number } | null) {
+  const { activeYear, selectedYearId } = useFinancialYear();
+  return historicalScope?.financialYearId ?? selectedYearId ?? activeYear?.id ?? null;
+}

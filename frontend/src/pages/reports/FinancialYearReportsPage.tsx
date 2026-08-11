@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { FyReportsShell, type FyReportTab } from '../../components/reports/FyReportsShell';
+import { ReportFinancialYearSelect } from '../../components/reports/ReportFinancialYearSelect';
 import { useFinancialYear } from '../../contexts/FinancialYearContext';
 import { formatDate } from '../../lib/format';
 import { PageShell, Panel } from '../../components/ui/PageShell';
@@ -28,6 +29,12 @@ export function FinancialYearReportsPickerPage() {
   return (
     <PageShell subtitle="Browse read-only ledger, vouchers, and account balance for a closed financial year">
       <Panel className="fy-reports-picker">
+        <div className="mb-6 max-w-md border-b border-border pb-6 print:hidden">
+          <ReportFinancialYearSelect />
+          <p className="mt-2 text-xs text-textMuted">
+            This financial year applies to Profit &amp; Loss, Trial Balance, Account Ledger, and other live reports.
+          </p>
+        </div>
         {loading ? (
           <p className="fy-report-empty">Loading financial years…</p>
         ) : closedYears.length === 0 ? (

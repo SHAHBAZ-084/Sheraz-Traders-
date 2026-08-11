@@ -81,6 +81,7 @@ async function main() {
 
   await bootstrapChartOfAccounts();
   console.log('Chart of accounts bootstrapped.');
+  console.log('For dev/test sample data, run: npm run db:seed:test -w backend');
 }
 
 main()

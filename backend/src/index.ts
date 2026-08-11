@@ -12,20 +12,6 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 let startupStatus: Awaited<ReturnType<typeof initializeDatabase>> | null = null;
 
 async function main() {
-  startupStatus = await initializeDatabase(prisma);
-  if (!startupStatus.ok) {
-    logger.error('Startup aborted — database not ready', startupStatus);
-    process.exit(1);
-  }
-
-  try {
-    await runAccountingMaintenance();
-  } catch (err) {
-    logger.warn('Accounting maintenance on startup failed', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-
   const app = createApp(() => startupStatus);
 
   const server = app.listen(env.port, '127.0.0.1');
@@ -35,6 +21,18 @@ async function main() {
       resolve();
     });
     server.once('error', reject);
+  });
+
+  startupStatus = await initializeDatabase(prisma);
+  if (!startupStatus.ok) {
+    logger.error('Startup aborted — database not ready', startupStatus);
+    process.exit(1);
+  }
+
+  void runAccountingMaintenance().catch((err) => {
+    logger.warn('Accounting maintenance on startup failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   });
 
   const shutdown = async (signal: string) => {

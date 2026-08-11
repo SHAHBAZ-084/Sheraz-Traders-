@@ -1,7 +1,8 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../../lib/format';
+import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
+import { LedgerVoucherDescription, voucherSideLabelClass } from '../../components/vouchers/LedgerVoucherDescription';
 import { DangerButton, FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { AmountInput } from '../../components/ui/AmountInput';
 import { FormActionFooter } from '../../components/ui/FormActionFooter';
@@ -86,53 +87,61 @@ function AccountSideFields({
   const safeAccs = Array.isArray(accounts) ? accounts : [];
   const filteredAccounts = safeAccs.filter((a) => categoryId && String(a.categoryId) === categoryId);
   const selected = safeAccs.find((a) => String(a.id) === accountId);
+  const titleClass = voucherSideLabelClass(label);
 
   const fields = (
-    <>
-      {embedded ? <h3 className="inv-section-title m-0">{label}</h3> : null}
-      <div className={embedded ? 'inv-section-body mt-0 space-y-3' : 'space-y-3'}>
-        <InvoiceField>
-          <FieldLabel>Category</FieldLabel>
-          <SearchSelect
-            inputRef={categoryInputRef}
-            tabIndex={categoryTabIndex}
-            value={categoryId}
-            onChange={onCategoryChange}
-            options={(Array.isArray(categories) ? categories : []).map((c) => ({ value: String(c.id), label: c.name }))}
-            placeholder="Search category…"
-            nextFocusRef={accountInputRef}
-            onSelected={() => {
-              requestAnimationFrame(() => accountInputRef.current?.focus());
-            }}
-          />
-        </InvoiceField>
-        <InvoiceField>
-          <FieldLabel>Account</FieldLabel>
-          <SearchSelect
-            inputRef={accountInputRef}
-            tabIndex={accountTabIndex}
-            value={accountId}
-            onChange={onAccountChange}
-            options={filteredAccounts.map((a) => ({ value: String(a.id), label: a.name }))}
-            placeholder={categoryId ? 'Search account…' : 'Select a category first'}
-            disabled={!categoryId}
-            nextFocusRef={accountNextFocusRef}
-          />
-        </InvoiceField>
-        <p className="jv-account-balance mt-1 mb-3 min-h-[1.125rem] text-xs text-textSecondary">
-          {selected?.ledger
-            ? `Current balance: ${formatLedgerBalance(selected.ledger.balance)}`
-            : '\u00A0'}
-        </p>
-      </div>
-    </>
+    <div className={embedded ? 'inv-section-body mt-0 space-y-3' : 'space-y-3'}>
+      <InvoiceField>
+        <FieldLabel>Category</FieldLabel>
+        <SearchSelect
+          inputRef={categoryInputRef}
+          tabIndex={categoryTabIndex}
+          value={categoryId}
+          onChange={onCategoryChange}
+          options={(Array.isArray(categories) ? categories : []).map((c) => ({ value: String(c.id), label: c.name }))}
+          placeholder="Search category…"
+          nextFocusRef={accountInputRef}
+          onSelected={() => {
+            requestAnimationFrame(() => accountInputRef.current?.focus());
+          }}
+        />
+      </InvoiceField>
+      <InvoiceField>
+        <FieldLabel>Account</FieldLabel>
+        <SearchSelect
+          inputRef={accountInputRef}
+          tabIndex={accountTabIndex}
+          value={accountId}
+          onChange={onAccountChange}
+          options={filteredAccounts.map((a) => ({ value: String(a.id), label: a.name }))}
+          placeholder={categoryId ? 'Search account…' : 'Select a category first'}
+          disabled={!categoryId}
+          nextFocusRef={accountNextFocusRef}
+        />
+      </InvoiceField>
+      <p className="jv-account-balance mt-1 mb-3 min-h-[1.125rem] text-xs text-textSecondary">
+        {selected?.ledger
+          ? `Current balance: ${formatLedgerBalance(selected.ledger.balance)}`
+          : '\u00A0'}
+      </p>
+    </div>
   );
 
   if (embedded) {
-    return <div className="jv-account-column min-w-0">{fields}</div>;
+    return (
+      <div className="jv-account-column min-w-0">
+        <h3 className={`inv-section-title m-0 ${titleClass}`}>{label}</h3>
+        {fields}
+      </div>
+    );
   }
 
-  return <InvoiceFormSection label={label}>{fields}</InvoiceFormSection>;
+  return (
+    <section className="inv-section">
+      <h2 className={`inv-section-title ${titleClass}`}>{label}</h2>
+      <div className="inv-section-body">{fields}</div>
+    </section>
+  );
 }
 
 function isBankOrCashCategory(name: string) {
@@ -805,8 +814,8 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
                       <th className="px-3 py-2.5">Voucher #</th>
                       <th className="px-3 py-2.5">Date</th>
-                      <th className="px-3 py-2.5">{leftLabel}</th>
-                      <th className="px-3 py-2.5">{rightLabel}</th>
+                      <th className={`px-3 py-2.5 ${voucherSideLabelClass(leftLabel)}`}>{leftLabel}</th>
+                      <th className={`px-3 py-2.5 ${voucherSideLabelClass(rightLabel)}`}>{rightLabel}</th>
                       <th className="px-3 py-2.5 text-right">Amount</th>
                       <th className="px-3 py-2.5">Reference</th>
                       <th className="px-3 py-2.5">Description</th>
@@ -820,8 +829,8 @@ function BatchVoucherFormContent({ kind }: { kind: 'payment' | 'receipt' }) {
                           {formatVoucherNumber(item.voucherNumber)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.date)}</td>
-                        <td className="px-3 py-2">{item.creditAccountName}</td>
-                        <td className="px-3 py-2">{item.debitAccountName}</td>
+                        <td className={`px-3 py-2 font-medium ${ledgerCreditAmountClass(true)}`}>{item.creditAccountName}</td>
+                        <td className={`px-3 py-2 font-medium ${ledgerDebitAmountClass(true)}`}>{item.debitAccountName}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(Number(item.amount))}</td>
                         <td className="px-3 py-2 text-textSecondary">{item.reference}</td>
                         <td className="px-3 py-2 text-textSecondary truncate max-w-[120px]">{item.description || '—'}</td>
@@ -993,8 +1002,8 @@ export function VoucherDetailCard({
       <dl className="divide-y divide-border">
         {rows.map((row) => (
           <div key={row.label} className="grid grid-cols-[120px_1fr] gap-4 py-3">
-            <dt className="text-sm text-textSecondary">{row.label}</dt>
-            <dd className="text-sm font-medium text-textPrimary">{row.value}</dd>
+            <dt className={`text-sm ${voucherSideLabelClass(row.label) || 'text-textSecondary'}`}>{row.label}</dt>
+            <dd className={`text-sm font-medium ${voucherSideLabelClass(row.label) || 'text-textPrimary'}`}>{row.value}</dd>
           </div>
         ))}
         {(isMultiLeg && (kachiLegs?.length ?? 0) > 0) ? (
@@ -1017,11 +1026,13 @@ export function VoucherDetailCard({
                         <td className="py-2 pr-3 font-medium text-textPrimary">
                           {leg.ledger?.account?.name ?? '—'}
                         </td>
-                        <td className={`py-2 pr-3 font-medium ${leg.type === 'DEBIT' ? 'text-danger' : 'text-success'}`}>
+                        <td className={`py-2 pr-3 font-medium ${leg.type === 'DEBIT' ? ledgerDebitAmountClass(true) : ledgerCreditAmountClass(true)}`}>
                           {leg.type === 'DEBIT' ? 'Debit' : 'Credit'}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{formatLedgerAmount(leg.amount)}</td>
-                        <td className="py-2 text-textSecondary">{leg.notes ?? ''}</td>
+                        <td className={`py-2 pr-3 text-right tabular-nums ${leg.type === 'DEBIT' ? ledgerDebitAmountClass(true) : ledgerCreditAmountClass(true)}`}>{formatLedgerAmount(leg.amount)}</td>
+                        <td className="py-2 text-textSecondary">
+                          {leg.notes ? <LedgerVoucherDescription text={leg.notes} /> : ''}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

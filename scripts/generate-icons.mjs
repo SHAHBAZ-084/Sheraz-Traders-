@@ -108,6 +108,10 @@ async function main() {
     fs.unlinkSync(tempPath);
   }
 
+  // electron-builder / NSIS also resolve icons from the project root.
+  fs.copyFileSync(iconIco, path.join(root, 'icon.ico'));
+  fs.copyFileSync(iconPng, path.join(root, 'icon.png'));
+
   console.log(`Source: ${path.relative(root, source)}`);
   console.log(`Generated ${path.relative(root, iconPng)} and ${path.relative(root, iconIco)} (${ICO_SIZES.join(', ')}px)`);
 }

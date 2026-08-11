@@ -94,8 +94,9 @@ systemRouter.post(
 export function createSystemHealthHandler(getStartupStatus?: () => StartupStatus | null) {
   return (_req: import('express').Request, res: import('express').Response) => {
     const startup = getStartupStatus?.();
-    res.json({
-      ok: startup?.ok ?? true,
+    const ready = startup?.ok === true;
+    const body = {
+      ok: ready,
       app: 'grain-market-pos',
       database: startup
         ? {
@@ -105,6 +106,13 @@ export function createSystemHealthHandler(getStartupStatus?: () => StartupStatus
             error: startup.error ?? null,
           }
         : undefined,
-    });
+    };
+
+    if (!ready) {
+      res.status(503).json(body);
+      return;
+    }
+
+    res.json(body);
   };
 }

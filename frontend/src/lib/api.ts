@@ -829,10 +829,14 @@ export const api = {
     financialYearId: number;
     fromDate?: string;
     toDate?: string;
+    productId?: number;
+    categoryId?: number;
   }) {
     const query = new URLSearchParams({ financialYearId: String(params.financialYearId) });
     if (params.fromDate) query.set('fromDate', params.fromDate);
     if (params.toDate) query.set('toDate', params.toDate);
+    if (params.productId != null) query.set('productId', String(params.productId));
+    if (params.categoryId != null) query.set('categoryId', String(params.categoryId));
     return request<{
       financialYearId: number;
       financialYearLabel: string;
@@ -847,6 +851,8 @@ export const api = {
         salePrice: number | null;
         profit: number;
       }>;
+      totalPurchase: number;
+      totalSale: number;
       netProfit: number;
     }>(`/api/accounting/reports/profit-loss?${query.toString()}`);
   },

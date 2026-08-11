@@ -8,9 +8,9 @@ import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, FinancialButton, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { ReportLetterhead } from '../../components/reports/ReportLetterhead';
-import { ReportFinancialYearSelect } from '../../components/reports/ReportFinancialYearSelect';
+import { LedgerVoucherDescription, voucherSideLabelClass } from '../../components/vouchers/LedgerVoucherDescription';
 import { ReportTable } from '../../components/reports/ReportTable';
-import { useFinancialYear } from '../../contexts/FinancialYearContext';
+import { useFinancialYear, useReportFinancialYearId } from '../../contexts/FinancialYearContext';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { VoucherDetailCard } from '../vouchers/VoucherPages';
 
@@ -55,7 +55,7 @@ function reportFilterClass(embedded?: boolean, variant: 'ledger' | 'balance' | '
     balance: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end',
     vouchers: 'mb-4 grid gap-4 print:hidden lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end',
     profitLoss:
-      'grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end',
+      'grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] lg:items-end',
   };
 
   return standalone[variant];
@@ -117,8 +117,7 @@ function voucherToAccount(voucher: Voucher) {
 }
 
 export function AccountReportsPage({ historicalScope, embedded }: ReportPageOptions = {}) {
-  const { activeYear } = useFinancialYear();
-  const financialYearId = historicalScope?.financialYearId ?? activeYear?.id ?? null;
+  const financialYearId = useReportFinancialYearId(historicalScope);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categoryId, setCategoryId] = useState('');
@@ -334,7 +333,9 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
                     <td className="pr-4 text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
                     <td className="pl-3 pr-2 truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
                     <td className={`pr-2 font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
-                    <td className="pr-2 whitespace-normal break-words text-textSecondary">{r.description}</td>
+                    <td className="pr-2 whitespace-normal break-words text-textSecondary">
+                      {r.description ? <LedgerVoucherDescription text={r.description} /> : ''}
+                    </td>
                     <td className={`pr-2 text-right tabular-nums ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
                     <td className={`pr-2 text-right tabular-nums ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
                     <td className="text-right font-medium tabular-nums text-accent">{formatLedgerBalance(r.balance)}</td>
@@ -344,8 +345,8 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
               <tfoot>
                 <tr>
                   <td colSpan={5}>Total / Closing</td>
-                  <td className="text-right">{formatLedgerAmount(ledger.summary.totalDebit)}</td>
-                  <td className="text-right">{formatLedgerAmount(ledger.summary.totalCredit)}</td>
+                  <td className={`text-right tabular-nums ${ledgerDebitAmountClass(ledger.summary.totalDebit > 0)}`}>{formatLedgerAmount(ledger.summary.totalDebit)}</td>
+                  <td className={`text-right tabular-nums ${ledgerCreditAmountClass(ledger.summary.totalCredit > 0)}`}>{formatLedgerAmount(ledger.summary.totalCredit)}</td>
                   <td className="text-right text-accent">{formatLedgerBalance(ledger.summary.closingBalance)}</td>
                 </tr>
               </tfoot>
@@ -373,7 +374,7 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
 }
 
 export function TrialBalancePage() {
-  const { activeYear } = useFinancialYear();
+  const financialYearId = useReportFinancialYearId();
   const [data, setData] = useState<Awaited<ReturnType<typeof api.getTrialBalance>> | null>(null);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -382,14 +383,14 @@ export function TrialBalancePage() {
 
   useEffect(() => {
     setOffset(0);
-  }, [activeYear?.id]);
+  }, [financialYearId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     api
       .getTrialBalance({
-        ...(activeYear?.id != null ? { financialYearId: activeYear.id } : {}),
+        ...(financialYearId != null ? { financialYearId } : {}),
         limit: BROWSE_PAGE_SIZE,
         offset,
       })
@@ -411,7 +412,7 @@ export function TrialBalancePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeYear?.id, offset]);
+  }, [financialYearId, offset]);
 
   const scopeLabel =
     data?.scope === 'closing_snapshot' && data.financialYearLabel
@@ -424,7 +425,7 @@ export function TrialBalancePage() {
       const exportData =
         total > data.accounts.length
           ? await api.getTrialBalance({
-              ...(activeYear?.id != null ? { financialYearId: activeYear.id } : {}),
+              ...(financialYearId != null ? { financialYearId } : {}),
               limit: total,
               offset: 0,
             })
@@ -474,15 +475,19 @@ export function TrialBalancePage() {
                 {data.accounts.map((row, i) => (
                   <tr key={i}>
                     <td>{row.accountName}</td>
-                    <td className="text-right">{formatLedgerAmount(row.debit, 2)}</td>
-                    <td className="text-right">{formatLedgerAmount(row.credit, 2)}</td>
+                    <td className={`text-right tabular-nums ${ledgerDebitAmountClass(row.debit > 0)}`}>{formatLedgerAmount(row.debit, 2)}</td>
+                    <td className={`text-right tabular-nums ${ledgerCreditAmountClass(row.credit > 0)}`}>{formatLedgerAmount(row.credit, 2)}</td>
                   </tr>
                 ))}
               </tbody>
             </ReportTable>
             <ListPagination total={total} offset={offset} onPageChange={setOffset} className="mt-4" />
             <p className="mt-4 text-sm text-textSecondary">
-              Total debit {formatLedgerAmount(data.totalDebit, 2)} · Total credit {formatLedgerAmount(data.totalCredit, 2)} ·{' '}
+              Total debit{' '}
+              <span className={ledgerDebitAmountClass(data.totalDebit > 0)}>{formatLedgerAmount(data.totalDebit, 2)}</span>
+              {' · '}Total credit{' '}
+              <span className={ledgerCreditAmountClass(data.totalCredit > 0)}>{formatLedgerAmount(data.totalCredit, 2)}</span>
+              {' · '}
               {data.isBalanced ? 'Balanced' : 'Out of balance'}
             </p>
           </div>
@@ -696,10 +701,10 @@ function BalanceTable({
           <tr key={row.accountId}>
             <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
             <td className="pr-3">{row.accountName}</td>
-            <td className="pr-3 text-right tabular-nums">
+            <td className={`pr-3 text-right tabular-nums ${ledgerDebitAmountClass(row.debit > 0)}`}>
               {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
             </td>
-            <td className="pr-3 text-right tabular-nums">
+            <td className={`pr-3 text-right tabular-nums ${ledgerCreditAmountClass(row.credit > 0)}`}>
               {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
             </td>
             <td className="text-right font-medium tabular-nums text-accent">
@@ -711,8 +716,8 @@ function BalanceTable({
       <tfoot>
         <tr>
           <td colSpan={2}>Total</td>
-          <td className="text-right tabular-nums">{formatLedgerAmount(totalDebit)}</td>
-          <td className="text-right tabular-nums">{formatLedgerAmount(totalCredit)}</td>
+          <td className={`text-right tabular-nums ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
+          <td className={`text-right tabular-nums ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
           <td />
         </tr>
       </tfoot>
@@ -721,8 +726,7 @@ function BalanceTable({
 }
 
 export function AccountBalancePage({ historicalScope, embedded }: ReportPageOptions = {}) {
-  const { activeYear } = useFinancialYear();
-  const financialYearId = historicalScope?.financialYearId ?? activeYear?.id ?? null;
+  const financialYearId = useReportFinancialYearId(historicalScope);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [datedOn, setDatedOn] = useState(todayInputValue);
   const [categoryId, setCategoryId] = useState('');
@@ -901,8 +905,8 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                   <tfoot>
                     <tr>
                       <td colSpan={2}>Grand Total</td>
-                      <td className="text-right tabular-nums">{formatLedgerAmount(report.totalDebit)}</td>
-                      <td className="text-right tabular-nums">{formatLedgerAmount(report.totalCredit)}</td>
+                      <td className={`text-right tabular-nums ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
+                      <td className={`text-right tabular-nums ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -937,9 +941,18 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
   );
 }
 
+function voucherFromColumnClass(voucher: Voucher) {
+  if (voucher.type === 'JOURNAL') return ledgerDebitAmountClass(true);
+  return ledgerCreditAmountClass(true);
+}
+
+function voucherToColumnClass(voucher: Voucher) {
+  if (voucher.type === 'JOURNAL') return ledgerCreditAmountClass(true);
+  return ledgerDebitAmountClass(true);
+}
+
 export function VouchersReportPage({ historicalScope, embedded }: ReportPageOptions = {}) {
-  const { activeYear } = useFinancialYear();
-  const financialYearId = historicalScope?.financialYearId ?? activeYear?.id ?? null;
+  const financialYearId = useReportFinancialYearId(historicalScope);
   const readOnly = historicalScope?.readOnly ?? false;
   const [fromDate, setFromDate] = useState(monthStartInputValue);
   const [toDate, setToDate] = useState(monthEndInputValue);
@@ -1135,8 +1148,8 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
                   <th className="pr-2 text-right">Voucher #</th>
                   <th className="pr-2">Date</th>
                   <th className="pr-2">Type</th>
-                  <th className="pr-2">From/Debit Account</th>
-                  <th className="pr-2">To/Credit Account</th>
+                  <th className={`pr-2 ${voucherSideLabelClass('From')}`}>From/Debit Account</th>
+                  <th className={`pr-2 ${voucherSideLabelClass('To')}`}>To/Credit Account</th>
                   <th className="pr-2 text-right">Amount</th>
                   <th className="pr-2">Ref#</th>
                   <th>Status</th>
@@ -1158,8 +1171,8 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
                     <td className={`pr-2 font-medium ${voucherTypeColorClass(v.type)}`}>
                       {formatVoucherTypeLabel(v.type)}
                     </td>
-                    <td className="pr-2 text-textSecondary">{voucherFromAccount(v)}</td>
-                    <td className="pr-2 text-textSecondary">{voucherToAccount(v)}</td>
+                    <td className={`pr-2 font-medium ${voucherFromColumnClass(v)}`}>{voucherFromAccount(v)}</td>
+                    <td className={`pr-2 font-medium ${voucherToColumnClass(v)}`}>{voucherToAccount(v)}</td>
                     <td className="pr-2 text-right tabular-nums">{formatLedgerAmount(v.amount)}</td>
                     <td className="pr-2 text-textSecondary">{v.reference ?? ''}</td>
                     <td>
@@ -1223,8 +1236,8 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
 type ProfitLossResult = Awaited<ReturnType<typeof api.getProfitLossReport>>;
 
 export function ProfitLossStatementPage() {
-  const { years, selectedYearId, activeYear } = useFinancialYear();
-  const financialYearId = selectedYearId ?? activeYear?.id ?? null;
+  const { years } = useFinancialYear();
+  const financialYearId = useReportFinancialYearId();
   const selectedYear = useMemo(
     () => years.find((y) => y.id === financialYearId) ?? null,
     [years, financialYearId],
@@ -1236,6 +1249,10 @@ export function ProfitLossStatementPage() {
 
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [productId, setProductId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [products, setProducts] = useState<Array<{ id: number; name: string; code: string; categoryId: number | null }>>([]);
+  const [productCategories, setProductCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [report, setReport] = useState<ProfitLossResult | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1243,16 +1260,30 @@ export function ProfitLossStatementPage() {
   const letterheadRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    Promise.all([api.listProducts({ lite: true }), api.listProductCategories()])
+      .then(([productRows, categoryRows]) => {
+        setProducts(productRows.map((p) => ({ id: p.id, name: p.name, code: p.code, categoryId: p.categoryId ?? null })));
+        setProductCategories(categoryRows.map((c) => ({ id: c.id, name: c.name })));
+      })
+      .catch(() => {
+        setProducts([]);
+        setProductCategories([]);
+      });
+  }, []);
+
+  useEffect(() => {
     setFromDate('');
     setToDate('');
+    setProductId('');
+    setCategoryId('');
     setLoaded(false);
     setReport(null);
     setError('');
   }, [financialYearId]);
 
-  async function loadReport(nextFrom = fromDate, nextTo = toDate) {
+  async function loadReport(nextFrom = fromDate, nextTo = toDate, nextProductId = productId, nextCategoryId = categoryId) {
     if (financialYearId == null) {
-      setError('Select a financial year');
+      setError('Select a financial year under Reports > Financial Year');
       return;
     }
     if ((nextFrom && !nextTo) || (!nextFrom && nextTo)) {
@@ -1266,6 +1297,8 @@ export function ProfitLossStatementPage() {
         financialYearId,
         fromDate: nextFrom || undefined,
         toDate: nextTo || undefined,
+        productId: nextProductId ? Number(nextProductId) : undefined,
+        categoryId: nextCategoryId ? Number(nextCategoryId) : undefined,
       });
       setReport(result);
       setLoaded(true);
@@ -1285,11 +1318,25 @@ export function ProfitLossStatementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-load full FY when year is ready
   }, [financialYearId]);
 
-  function clearDateFilter() {
+  function clearFilters() {
     setFromDate('');
     setToDate('');
-    void loadReport('', '');
+    setProductId('');
+    setCategoryId('');
+    void loadReport('', '', '', '');
   }
+
+  function onProductCategoryChange(value: string) {
+    setCategoryId(value);
+    setProductId('');
+  }
+
+  const productSelectOptions = useMemo(() => {
+    const rows = categoryId
+      ? products.filter((p) => String(p.categoryId ?? '') === categoryId)
+      : products;
+    return rows.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.name}` }));
+  }, [products, categoryId]);
 
   function exportReport(format: 'pdf' | 'excel') {
     if (!report) return;
@@ -1303,7 +1350,7 @@ export function ProfitLossStatementPage() {
       formatProfitLossPrice(row.salePrice),
       formatLedgerAmount(row.profit),
     ]);
-    rows.push(['', '', '', '', 'Net Profit', formatLedgerAmount(report.netProfit)]);
+    rows.push(['Total', '', '', formatLedgerAmount(report.totalPurchase), formatLedgerAmount(report.totalSale), formatLedgerAmount(report.netProfit)]);
     const base = `profit-loss-${report.financialYearLabel.replace(/\s+/g, '-')}`;
     if (format === 'excel') {
       downloadExcel(`${base}.xlsx`, 'Profit & Loss', headers, rows);
@@ -1317,14 +1364,18 @@ export function ProfitLossStatementPage() {
   }
 
   const periodSubtitle = [fromDate, toDate].filter(Boolean).join(' to ') || 'Full financial year';
+  const filterSubtitle = [
+    periodSubtitle,
+    categoryId ? productCategories.find((c) => String(c.id) === categoryId)?.name : null,
+    productId ? products.find((p) => String(p.id) === productId)?.name : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <PageShell title="Profit & Loss Statement" subtitle="Sale invoice profit/loss and Kachi Maal daami">
       <Panel className="overflow-visible">
-        <div className="mb-4 space-y-4 print:hidden">
-          <div className="max-w-md border-b border-border pb-4">
-            <ReportFinancialYearSelect />
-          </div>
+        <div className="mb-4 print:hidden">
           <div className={reportFilterClass(false, 'profitLoss')}>
             <div>
               <FieldLabel>From Date</FieldLabel>
@@ -1346,8 +1397,33 @@ export function ProfitLossStatementPage() {
                 onChange={(e) => setToDate(clampDateInput(e.target.value, fromDate || fyMinDate, fyMaxDate))}
               />
             </div>
-            <SecondaryButton type="button" onClick={clearDateFilter} disabled={!fromDate && !toDate}>
-              Clear filter
+            <div>
+              <FieldLabel>Product Category</FieldLabel>
+              <SearchSelect
+                value={categoryId}
+                onChange={onProductCategoryChange}
+                options={[
+                  { value: '', label: 'All categories' },
+                  ...productCategories.map((c) => ({ value: String(c.id), label: c.name })),
+                ]}
+                placeholder="All categories"
+              />
+            </div>
+            <div>
+              <FieldLabel>Product</FieldLabel>
+              <SearchSelect
+                value={productId}
+                onChange={setProductId}
+                options={[{ value: '', label: 'All products' }, ...productSelectOptions]}
+                placeholder={categoryId ? 'Products in category…' : 'All products'}
+              />
+            </div>
+            <SecondaryButton
+              type="button"
+              onClick={clearFilters}
+              disabled={!fromDate && !toDate && !productId && !categoryId}
+            >
+              Clear filters
             </SecondaryButton>
             <PrimaryButton type="button" onClick={() => void loadReport()} disabled={loading}>
               {loading ? 'Loading…' : 'Load Report'}
@@ -1368,7 +1444,7 @@ export function ProfitLossStatementPage() {
             <ReportLetterhead
               ref={letterheadRef}
               title="Profit & Loss Statement"
-              subtitle={`${report.financialYearLabel} · ${periodSubtitle}`}
+              subtitle={`${report.financialYearLabel} · ${filterSubtitle}`}
             />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
@@ -1405,7 +1481,13 @@ export function ProfitLossStatementPage() {
               </tbody>
               <tfoot>
                 <tr className="report-table-row--emphasis">
-                  <td colSpan={5}>Net Profit</td>
+                  <td colSpan={3}>Total</td>
+                  <td className="pr-3 text-right tabular-nums font-semibold">
+                    {formatLedgerAmount(report.totalPurchase)}
+                  </td>
+                  <td className="pr-3 text-right tabular-nums font-semibold">
+                    {formatLedgerAmount(report.totalSale)}
+                  </td>
                   <td
                     className={`text-right tabular-nums font-semibold ${
                       report.netProfit >= 0 ? ledgerCreditAmountClass(true) : ledgerDebitAmountClass(true)
