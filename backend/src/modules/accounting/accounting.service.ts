@@ -739,6 +739,7 @@ export async function createAccount(data: {
     : await generateNextAccountCode();
 
   const amount = Math.abs(data.openingBalance ?? 0);
+  // Dr or Cr is always allowed — openingBalanceSide overrides category default when provided.
   const side = data.openingBalanceSide ?? defaultOpeningSide(type);
   const signedBalance = amount === 0 ? 0 : side === 'DR' ? amount : -amount;
 

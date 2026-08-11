@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { formatLedgerBalance } from '../../lib/format';
+import { sanitizeDecimalInput } from '../../lib/numericInput';
 import { api, type Account, type AccountCategory } from '../../lib/api';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
@@ -13,7 +14,14 @@ const copy: Record<Mode, { title: string; subtitle: string }> = {
   remove: { title: 'Remove Account', subtitle: 'Soft-delete an account' },
 };
 
-function defaultOpeningSideForCategory(categoryId: number, accounts: Account[]): 'DR' | 'CR' {
+function parseOpeningAmount(raw: string): number {
+  const cleaned = sanitizeDecimalInput(raw.trim());
+  if (!cleaned) return 0;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function suggestedOpeningSideForCategory(categoryId: number, accounts: Account[]): 'DR' | 'CR' {
   const sibling = accounts.find((a) => a.categoryId === categoryId);
   if (sibling) {
     return sibling.type === 'ASSET' || sibling.type === 'EXPENSE' ? 'DR' : 'CR';
@@ -28,6 +36,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
   const [name, setName] = useState('');
   const [openingBalance, setOpeningBalance] = useState('');
   const [openingBalanceSide, setOpeningBalanceSide] = useState<'DR' | 'CR'>('DR');
+  const openingSideTouched = useRef(false);
   const [selectedId, setSelectedId] = useState<number | ''>('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -45,10 +54,13 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
   }, [selectedId, accounts, mode]);
 
   useEffect(() => {
-    if (mode === 'add' && categoryId) {
-      setOpeningBalanceSide(defaultOpeningSideForCategory(Number(categoryId), accounts));
+    if (mode === 'add' && categoryId && !openingSideTouched.current) {
+      setOpeningBalanceSide(suggestedOpeningSideForCategory(Number(categoryId), accounts));
     }
   }, [categoryId, accounts, mode]);
+
+  const parsedOpeningAmount = useMemo(() => parseOpeningAmount(openingBalance), [openingBalance]);
+  const hasOpeningAmount = parsedOpeningAmount > 0;
 
   const selectedCategory = useMemo(
     () => categories.find((c) => c.id === categoryId),
@@ -67,18 +79,20 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     try {
       if (mode === 'add') {
         if (!categoryId) throw new Error('Select a category');
-        const parsedOpening = openingBalance.trim() ? Number(openingBalance) : 0;
-        if (openingBalance.trim() && !(parsedOpening >= 0)) {
+        if (openingBalance.trim() && !Number.isFinite(parsedOpeningAmount)) {
+          throw new Error('Opening balance must be a valid number');
+        }
+        if (openingBalance.trim() && parsedOpeningAmount < 0) {
           throw new Error('Opening balance must be zero or greater');
         }
         const created = await api.createAccount({
           categoryId: Number(categoryId),
           name,
-          ...(parsedOpening > 0
-            ? { openingBalance: parsedOpening, openingBalanceSide }
+          ...(hasOpeningAmount
+            ? { openingBalance: parsedOpeningAmount, openingBalanceSide }
             : {}),
         });
-        if (parsedOpening > 0 && created.ledger) {
+        if (hasOpeningAmount && created.ledger) {
           setMessage(
             `Account created with opening balance ${formatLedgerBalance(created.ledger.balance)}.`,
           );
@@ -89,6 +103,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
         setName('');
         setOpeningBalance('');
         setOpeningBalanceSide('DR');
+        openingSideTouched.current = false;
       } else if (mode === 'edit') {
         if (!selectedId) throw new Error('Select an account');
         await api.updateAccount(Number(selectedId), { name });
@@ -120,7 +135,10 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
                 <select
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+                  onChange={(e) => {
+                    openingSideTouched.current = false;
+                    setCategoryId(e.target.value ? Number(e.target.value) : '');
+                  }}
                   required
                 >
                   <option value="">Select category</option>
@@ -147,15 +165,18 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
                   <select
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                     value={openingBalanceSide}
-                    onChange={(e) => setOpeningBalanceSide(e.target.value as 'DR' | 'CR')}
-                    disabled={!openingBalance.trim() || Number(openingBalance) <= 0}
+                    onChange={(e) => {
+                      openingSideTouched.current = true;
+                      setOpeningBalanceSide(e.target.value as 'DR' | 'CR');
+                    }}
+                    disabled={!hasOpeningAmount}
                   >
                     <option value="DR">Dr</option>
                     <option value="CR">Cr</option>
                   </select>
-                  {selectedCategory ? (
+                  {selectedCategory && !openingSideTouched.current ? (
                     <p className="mt-1 text-xs text-textMuted">
-                      Default for {selectedCategory.name}: {defaultOpeningSideForCategory(selectedCategory.id, accounts)} side
+                      Suggested for {selectedCategory.name}: {suggestedOpeningSideForCategory(selectedCategory.id, accounts)} — you can choose Dr or Cr
                     </p>
                   ) : null}
                 </div>
@@ -189,7 +210,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
           {message ? <p className="text-sm text-success">{message}</p> : null}
           <div className="flex gap-2">
             <PrimaryButton type="submit">{mode === 'remove' ? 'Remove' : 'Save'}</PrimaryButton>
-            <SecondaryButton type="button" onClick={() => { setCategoryId(''); setName(''); setOpeningBalance(''); setSelectedId(''); }}>Clear</SecondaryButton>
+            <SecondaryButton type="button" onClick={() => { setCategoryId(''); setName(''); setOpeningBalance(''); setOpeningBalanceSide('DR'); openingSideTouched.current = false; setSelectedId(''); }}>Clear</SecondaryButton>
           </div>
         </form>
       </Panel>

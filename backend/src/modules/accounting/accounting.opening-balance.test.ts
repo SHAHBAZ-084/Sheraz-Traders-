@@ -44,4 +44,29 @@ describe('opening balance ledger report (Part 8 regression)', () => {
     expect(ledgerReport.balance).toBeCloseTo(tbRow!.balance, 2);
     expect(ledgerReport.summary.closingBalance).toBeCloseTo(tbRow!.balance, 2);
   });
+
+  it('accepts Cr opening balance on asset accounts (e.g. Bank)', async () => {
+    await bootstrapChartOfAccounts();
+
+    const bankCat = await import('../../lib/prisma').then(({ prisma }) =>
+      prisma.accountCategory.findFirst({ where: { name: 'Bank' } }),
+    );
+    if (!bankCat) throw new Error('Bank category missing');
+
+    const account = await createAccount({
+      categoryId: bankCat.id,
+      name: `OB CR Bank Test ${Date.now()}`,
+      openingBalance: 25000,
+      openingBalanceSide: 'CR',
+    });
+
+    expect(Number(account.ledger!.balance)).toBe(-25000);
+
+    const ledgerReport = await getLedgerEntries(account.id);
+    const openingRow = ledgerReport.rows.find((r) => r.type === 'Opening Balance');
+    expect(openingRow).toBeTruthy();
+    expect(openingRow!.debit).toBe(0);
+    expect(openingRow!.credit).toBe(25000);
+    expect(openingRow!.balance).toBe(-25000);
+  });
 });
