@@ -8,9 +8,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -18,10 +15,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: .
 
       - name: Generate Prisma client
         run: npm run db:generate -w backend
@@ -30,3 +27,4 @@ jobs:
         run: npm test -w backend
         env:
           SKIP_MIGRATIONS: '1'
+          DATABASE_URL: 'file:./data/sheraztrader-ci.db?connection_limit=1'
