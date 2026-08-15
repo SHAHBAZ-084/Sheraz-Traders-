@@ -1,0 +1,104 @@
+{
+  "name": "sheraz-traders",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sheeraz Traders grain market POS",
+  "main": "dist-electron/main.js",
+  "author": "Sheeraz Traders",
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\" \"npm run electron:dev\"",
+    "dev:web": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "electron:dev": "npm run build:electron && wait-on http://127.0.0.1:5173 http://127.0.0.1:3847/api/health && cross-env NODE_ENV=development electron .",
+    "preelectron:build": "npm run icons:generate",
+    "electron:build": "npm run build -w backend && npm run build -w frontend && npm run build:electron",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "predist": "npm run icons:generate",
+    "dist": "npm run electron:build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "dist:win": "npm run electron:build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win",
+    "start": "cross-env NODE_ENV=production electron .",
+    "postinstall": "npm run db:generate -w backend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "build": {
+    "appId": "com.sheraztraders.pos",
+    "productName": "Sheeraz Traders",
+    "copyright": "Copyright © Sheeraz Traders",
+    "icon": "build/icon.png",
+    "afterPack": "./scripts/embed-win-icon.mjs",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "backend/dist/**/*",
+      "backend/prisma/schema.prisma",
+      "backend/prisma/migrations/**/*",
+      "backend/prisma/seed.ts",
+      "backend/package.json",
+      "frontend/dist/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "package.json",
+      "!backend/prisma/data/**"
+    ],
+    "asarUnpack": [
+      "backend/prisma/schema.prisma",
+      "backend/prisma/migrations/**/*",
+      "frontend/dist/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "node_modules/.prisma/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/.prisma",
+        "to": "node_modules/.prisma"
+      },
+      {
+        "from": "node_modules/@prisma/client",
+        "to": "node_modules/@prisma/client"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ],
+      "publisherName": "Sheeraz Traders",
+      "legalTrademarks": "Sheeraz Traders"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sheeraz Traders",
+      "uninstallDisplayName": "Sheeraz Traders",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4",
+    "cross-env": "^7.0.3",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.2",
+    "rcedit": "^5.0.2",
+    "sharp": "^0.35.3",
+    "typescript": "^5.9.3",
+    "wait-on": "^8.0.5"
+  }
+}

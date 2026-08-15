@@ -1,0 +1,679 @@
+{
+  "meta": {
+    "description": "Test seed data for Sheeraz Traders POS. Insert via existing services/models (not raw SQL) so ledger postings, stock updates, and voucher numbering trigger exactly as if entered through the UI. This must run only via an explicit manual dev/test command (e.g. npm run db:seed:test), never automatically, and never as part of the production build.",
+    "date": "today (use current system date for all entries unless otherwise specified)",
+    "postSeedChecks": [
+      "Run verifyLedgerIntegrity() and confirm trial balance is balanced.",
+      "Confirm 10 banks, 5 purchase parties, 5 sale parties, 20 products (10 fertilizers + 10 pesticides) with correct opening stock.",
+      "Confirm 10 receipt, 10 payment, 10 journal vouchers all posted correctly.",
+      "Confirm 10 Kachi Maal invoices, 10 purchase invoices, 10 sale invoices all posted correctly.",
+      "Check Ledger view for a few accounts for correct balances/descriptions.",
+      "Check Profit & Loss Statement for correct per-product profit plus Daami rows.",
+      "Check Stock Report for correct stock = opening stock + purchases - sales."
+    ]
+  },
+  "bankAccounts": [
+    {
+      "name": "HBL Main Branch",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "UBL Chishtian",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "MCB Bahawalnagar",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Allied Bank Fort Abbas",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Bank Alfalah Chishtian",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Meezan Bank Chishtian",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Faysal Bank Bahawalnagar",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Bank of Punjab Chishtian",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "Askari Bank Chishtian",
+      "category": "Bank",
+      "openingBalance": 100000
+    },
+    {
+      "name": "National Bank Fort Abbas",
+      "category": "Bank",
+      "openingBalance": 100000
+    }
+  ],
+  "purchaseParties": [
+    {
+      "name": "Ahmad Traders",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Waseem Grain Suppliers",
+      "location": "Bahawalnagar"
+    },
+    {
+      "name": "Punjab Fertilizer Co.",
+      "location": "Fort Abbas"
+    },
+    {
+      "name": "Rana Agro Supplies",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Al-Habib Commodities",
+      "location": "Bahawalnagar"
+    }
+  ],
+  "saleParties": [
+    {
+      "name": "Iqbal Farm House",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Malik Brothers Agri Store",
+      "location": "Fort Abbas"
+    },
+    {
+      "name": "Chaudhry Traders",
+      "location": "Bahawalnagar"
+    },
+    {
+      "name": "Green Fields Agro",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Tariq Grain Merchants",
+      "location": "Bahawalnagar"
+    }
+  ],
+  "products": {
+    "fertilizers": [
+      {
+        "name": "Urea",
+        "unit": "Bags",
+        "openingStock": 200,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "DAP",
+        "unit": "Bags",
+        "openingStock": 150,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "SOP",
+        "unit": "Bags",
+        "openingStock": 100,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "NPK",
+        "unit": "Bags",
+        "openingStock": 120,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Ammonium Sulphate",
+        "unit": "Bags",
+        "openingStock": 90,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Zinc Sulphate",
+        "unit": "Bags",
+        "openingStock": 60,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Calcium Ammonium Nitrate (CAN)",
+        "unit": "Bags",
+        "openingStock": 80,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Single Super Phosphate (SSP)",
+        "unit": "Bags",
+        "openingStock": 110,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Potash",
+        "unit": "Bags",
+        "openingStock": 70,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "Boron",
+        "unit": "Bags",
+        "openingStock": 50,
+        "openingStockRate": 4500
+      }
+    ],
+    "pesticides": [
+      {
+        "name": "Confidor",
+        "unit": "Litres",
+        "openingStock": 40,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Karate",
+        "unit": "Litres",
+        "openingStock": 35,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Roundup",
+        "unit": "Litres",
+        "openingStock": 60,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Actara",
+        "unit": "Kg",
+        "openingStock": 25,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Coragen",
+        "unit": "Litres",
+        "openingStock": 30,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Curacron",
+        "unit": "Litres",
+        "openingStock": 45,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Larvin",
+        "unit": "Kg",
+        "openingStock": 20,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Talstar",
+        "unit": "Litres",
+        "openingStock": 28,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Match",
+        "unit": "Litres",
+        "openingStock": 33,
+        "openingStockRate": 2500
+      },
+      {
+        "name": "Polo",
+        "unit": "Litres",
+        "openingStock": 22,
+        "openingStockRate": 2500
+      }
+    ]
+  },
+  "receiptVouchers": [
+    {
+      "date": "today",
+      "debit": "HBL Main Branch",
+      "credit": "Iqbal Farm House",
+      "amount": 25000,
+      "reference": "RCPT-1"
+    },
+    {
+      "date": "today",
+      "debit": "UBL Chishtian",
+      "credit": "Malik Brothers Agri Store",
+      "amount": 18500,
+      "reference": "RCPT-2"
+    },
+    {
+      "date": "today",
+      "debit": "MCB Bahawalnagar",
+      "credit": "Chaudhry Traders",
+      "amount": 32000,
+      "reference": "RCPT-3"
+    },
+    {
+      "date": "today",
+      "debit": "Allied Bank Fort Abbas",
+      "credit": "Green Fields Agro",
+      "amount": 15750,
+      "reference": "RCPT-4"
+    },
+    {
+      "date": "today",
+      "debit": "Bank Alfalah Chishtian",
+      "credit": "Tariq Grain Merchants",
+      "amount": 40000,
+      "reference": "RCPT-5"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 22300,
+      "reference": "RCPT-6"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Malik Brothers Agri Store",
+      "amount": 19900,
+      "reference": "RCPT-7"
+    },
+    {
+      "date": "today",
+      "debit": "Bank of Punjab Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 27600,
+      "reference": "RCPT-8"
+    },
+    {
+      "date": "today",
+      "debit": "Askari Bank Chishtian",
+      "credit": "Green Fields Agro",
+      "amount": 33400,
+      "reference": "RCPT-9"
+    },
+    {
+      "date": "today",
+      "debit": "National Bank Fort Abbas",
+      "credit": "Tariq Grain Merchants",
+      "amount": 21200,
+      "reference": "RCPT-10"
+    }
+  ],
+  "paymentVouchers": [
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "HBL Main Branch",
+      "amount": 30000,
+      "reference": "PAY-1"
+    },
+    {
+      "date": "today",
+      "debit": "Waseem Grain Suppliers",
+      "credit": "UBL Chishtian",
+      "amount": 24500,
+      "reference": "PAY-2"
+    },
+    {
+      "date": "today",
+      "debit": "Punjab Fertilizer Co.",
+      "credit": "MCB Bahawalnagar",
+      "amount": 45000,
+      "reference": "PAY-3"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Allied Bank Fort Abbas",
+      "amount": 12300,
+      "reference": "PAY-4"
+    },
+    {
+      "date": "today",
+      "debit": "Al-Habib Commodities",
+      "credit": "Bank Alfalah Chishtian",
+      "amount": 38700,
+      "reference": "PAY-5"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 16900,
+      "reference": "PAY-6"
+    },
+    {
+      "date": "today",
+      "debit": "Waseem Grain Suppliers",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 29400,
+      "reference": "PAY-7"
+    },
+    {
+      "date": "today",
+      "debit": "Punjab Fertilizer Co.",
+      "credit": "Bank of Punjab Chishtian",
+      "amount": 21800,
+      "reference": "PAY-8"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Askari Bank Chishtian",
+      "amount": 17600,
+      "reference": "PAY-9"
+    },
+    {
+      "date": "today",
+      "debit": "Al-Habib Commodities",
+      "credit": "National Bank Fort Abbas",
+      "amount": 26300,
+      "reference": "PAY-10"
+    }
+  ],
+  "journalVouchers": [
+    {
+      "date": "today",
+      "debit": "HBL Main Branch",
+      "credit": "UBL Chishtian",
+      "amount": 10000,
+      "reference": "JV-1"
+    },
+    {
+      "date": "today",
+      "debit": "MCB Bahawalnagar",
+      "credit": "Allied Bank Fort Abbas",
+      "amount": 8500,
+      "reference": "JV-2"
+    },
+    {
+      "date": "today",
+      "debit": "Bank Alfalah Chishtian",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 12000,
+      "reference": "JV-3"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Bank of Punjab Chishtian",
+      "amount": 7300,
+      "reference": "JV-4"
+    },
+    {
+      "date": "today",
+      "debit": "Askari Bank Chishtian",
+      "credit": "National Bank Fort Abbas",
+      "amount": 9600,
+      "reference": "JV-5"
+    },
+    {
+      "date": "today",
+      "debit": "UBL Chishtian",
+      "credit": "HBL Main Branch",
+      "amount": 5400,
+      "reference": "JV-6"
+    },
+    {
+      "date": "today",
+      "debit": "Allied Bank Fort Abbas",
+      "credit": "MCB Bahawalnagar",
+      "amount": 6700,
+      "reference": "JV-7"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Bank Alfalah Chishtian",
+      "amount": 11200,
+      "reference": "JV-8"
+    },
+    {
+      "date": "today",
+      "debit": "Bank of Punjab Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 8900,
+      "reference": "JV-9"
+    },
+    {
+      "date": "today",
+      "debit": "National Bank Fort Abbas",
+      "credit": "Askari Bank Chishtian",
+      "amount": 13500,
+      "reference": "JV-10"
+    }
+  ],
+  "kachiMaalInvoices": [
+    {
+      "date": "today",
+      "jins": "Cotton",
+      "party": "Ahmad Traders",
+      "boriCount": 40,
+      "ratePerMaund": 8500,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Wheat",
+      "party": "Waseem Grain Suppliers",
+      "boriCount": 60,
+      "ratePerMaund": 3200,
+      "debitAccount": "Waseem Grain Suppliers"
+    },
+    {
+      "date": "today",
+      "jins": "Rice",
+      "party": "Punjab Fertilizer Co.",
+      "boriCount": 50,
+      "ratePerMaund": 5600,
+      "debitAccount": "Punjab Fertilizer Co."
+    },
+    {
+      "date": "today",
+      "jins": "Maize",
+      "party": "Rana Agro Supplies",
+      "boriCount": 45,
+      "ratePerMaund": 2800,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Sugarcane",
+      "party": "Al-Habib Commodities",
+      "boriCount": 70,
+      "ratePerMaund": 1900,
+      "debitAccount": "Al-Habib Commodities"
+    },
+    {
+      "date": "today",
+      "jins": "Gram (Chana)",
+      "party": "Ahmad Traders",
+      "boriCount": 35,
+      "ratePerMaund": 6400,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Sesame (Til)",
+      "party": "Waseem Grain Suppliers",
+      "boriCount": 25,
+      "ratePerMaund": 9800,
+      "debitAccount": "Waseem Grain Suppliers"
+    },
+    {
+      "date": "today",
+      "jins": "Mustard (Sarson)",
+      "party": "Punjab Fertilizer Co.",
+      "boriCount": 30,
+      "ratePerMaund": 7200,
+      "debitAccount": "Punjab Fertilizer Co."
+    },
+    {
+      "date": "today",
+      "jins": "Barley (Jau)",
+      "party": "Rana Agro Supplies",
+      "boriCount": 55,
+      "ratePerMaund": 3500,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Moong",
+      "party": "Al-Habib Commodities",
+      "boriCount": 20,
+      "ratePerMaund": 8900,
+      "debitAccount": "Al-Habib Commodities"
+    }
+  ],
+  "purchaseInvoices": [
+    {
+      "date": "today",
+      "product": "Urea",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 50,
+      "rate": 4200
+    },
+    {
+      "date": "today",
+      "product": "DAP",
+      "purchaseParty": "Waseem Grain Suppliers",
+      "qty": 40,
+      "rate": 11500
+    },
+    {
+      "date": "today",
+      "product": "SOP",
+      "purchaseParty": "Punjab Fertilizer Co.",
+      "qty": 30,
+      "rate": 15000
+    },
+    {
+      "date": "today",
+      "product": "NPK",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 35,
+      "rate": 9800
+    },
+    {
+      "date": "today",
+      "product": "Ammonium Sulphate",
+      "purchaseParty": "Al-Habib Commodities",
+      "qty": 25,
+      "rate": 3600
+    },
+    {
+      "date": "today",
+      "product": "Zinc Sulphate",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 20,
+      "rate": 5200
+    },
+    {
+      "date": "today",
+      "product": "Calcium Ammonium Nitrate (CAN)",
+      "purchaseParty": "Waseem Grain Suppliers",
+      "qty": 30,
+      "rate": 4900
+    },
+    {
+      "date": "today",
+      "product": "Single Super Phosphate (SSP)",
+      "purchaseParty": "Punjab Fertilizer Co.",
+      "qty": 40,
+      "rate": 2700
+    },
+    {
+      "date": "today",
+      "product": "Potash",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 25,
+      "rate": 8300
+    },
+    {
+      "date": "today",
+      "product": "Boron",
+      "purchaseParty": "Al-Habib Commodities",
+      "qty": 15,
+      "rate": 12600
+    }
+  ],
+  "saleInvoices": [
+    {
+      "date": "today",
+      "product": "Urea",
+      "saleParty": "Iqbal Farm House",
+      "qty": 20,
+      "rate": 4550
+    },
+    {
+      "date": "today",
+      "product": "DAP",
+      "saleParty": "Malik Brothers Agri Store",
+      "qty": 15,
+      "rate": 12500
+    },
+    {
+      "date": "today",
+      "product": "SOP",
+      "saleParty": "Chaudhry Traders",
+      "qty": 12,
+      "rate": 16200
+    },
+    {
+      "date": "today",
+      "product": "NPK",
+      "saleParty": "Green Fields Agro",
+      "qty": 18,
+      "rate": 10600
+    },
+    {
+      "date": "today",
+      "product": "Ammonium Sulphate",
+      "saleParty": "Tariq Grain Merchants",
+      "qty": 10,
+      "rate": 3950
+    },
+    {
+      "date": "today",
+      "product": "Zinc Sulphate",
+      "saleParty": "Iqbal Farm House",
+      "qty": 8,
+      "rate": 5700
+    },
+    {
+      "date": "today",
+      "product": "Calcium Ammonium Nitrate (CAN)",
+      "saleParty": "Malik Brothers Agri Store",
+      "qty": 12,
+      "rate": 5300
+    },
+    {
+      "date": "today",
+      "product": "Single Super Phosphate (SSP)",
+      "saleParty": "Chaudhry Traders",
+      "qty": 15,
+      "rate": 2950
+    },
+    {
+      "date": "today",
+      "product": "Potash",
+      "saleParty": "Green Fields Agro",
+      "qty": 10,
+      "rate": 9000
+    },
+    {
+      "date": "today",
+      "product": "Boron",
+      "saleParty": "Tariq Grain Merchants",
+      "qty": 6,
+      "rate": 13500
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+:root {
+  /* Forest green + warm gold — grain / agriculture */
+  --surface-1: #F7F6F1;
+  --surface-2: #FFFFFF;
+  --surface-3: #F7F6F1;
+
+  --text-primary: #1B4332;
+  --text-secondary: #2A2A24;
+  --text-muted: #4A4A40;
+  --border: #D8D4C8;
+  --border-strong: #2D6A4F;
+
+  --fill-accent: #1B4332;
+  --brand-green: var(--fill-accent);
+  --brand-gold: var(--fill-financial);
+  --on-accent: #FFFFFF;
+  --bg-accent: #EEF2EC;
+  --text-accent: #1B4332;
+
+  /* Warm gold for financial / CTA emphasis */
+  --fill-financial: #C08A2E;
+  --on-financial: #1B4332;
+  --text-financial: #8B5E1A;
+
+  /* Teal-green success — distinct from forest primary */
+  --text-success: #0D7377;
+  --text-danger: #B33A2B;
+  --color-credit-green: #1BB255;
+  --ledger-debit: #FF0000;
+  --ledger-credit: var(--color-credit-green);
+  --bg-success: #E6F5F3;
+  --bg-danger: #FBF0EE;
+
+  --voucher-payment: #B33A2B;
+  --voucher-receipt: #0D7377;
+  --voucher-journal: #C08A2E;
+  --voucher-kachi: #8B6914;
+
+  --metric-cash-bg: #FFFFFF;
+  --metric-cash-accent: #1B4332;
+  --metric-receivables-bg: #FFFFFF;
+  --metric-receivables-accent: #1B4332;
+  --metric-payables-bg: #FFFFFF;
+  --metric-payables-accent: #1B4332;
+  --metric-vouchers-bg: #FFFFFF;
+  --metric-vouchers-accent: #1B4332;
+
+  --card-sale-commission-bg: #EEF2EC;
+  --card-sale-commission-accent: #1B4332;
+  --card-sale-paunch-bg: #EEF2EC;
+  --card-sale-paunch-accent: #1B4332;
+  --card-purchase-maal-bg: #EEF2EC;
+  --card-purchase-maal-accent: #1B4332;
+  --card-kachi-maal-bg: #EEF2EC;
+  --card-kachi-maal-accent: #1B4332;
+
+  /* Dashboard quick-link accents — varied hues, harmonized with green+gold */
+  --ql-payment: #B83228;
+  --ql-payment-bg: #FDECEC;
+  --ql-payment-hover: #FAD4D4;
+  --ql-receipt: #0D7A6B;
+  --ql-receipt-bg: #E6F5F1;
+  --ql-receipt-hover: #D0EDE6;
+  --ql-journal: #A67C2D;
+  --ql-journal-bg: #F7F3E8;
+  --ql-journal-hover: #EEE6D4;
+  --ql-sale-commission: #2A7A6E;
+  --ql-sale-commission-hover: #E8F4F1;
+  --ql-sale-paunch: #C08A2E;
+  --ql-sale-paunch-hover: #F8F1E4;
+  --ql-purchase-maal: #6B4A8A;
+  --ql-purchase-maal-hover: #F3EEF7;
+  --ql-kachi-maal: #A67C1A;
+  --ql-kachi-maal-hover: #F8F3E4;
+  --ql-view: #2D6A4F;
+  --ql-view-hover: #EEF2EC;
+  --ql-report: #3D6B5A;
+  --ql-report-hover: #EEF2EC;
+
+  --dropdown-bg: #FFFFFF;
+  --dropdown-border: #1B4332;
+  --dropdown-shadow: none;
+
+  --sidebar-width: 240px;
+  --nav-bg: #1B4332;
+  --nav-bg-light: #2D6A4F;
+  --nav-border: #0F2E22;
+  --nav-text: #D8E5DC;
+  --nav-text-hover: #FFFFFF;
+  --nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-active-bg: rgba(255, 255, 255, 0.14);
+  --nav-active-border: #FFFFFF;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+}
