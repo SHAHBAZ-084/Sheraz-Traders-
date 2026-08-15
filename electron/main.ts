@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, shell } from 'electron';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -70,6 +71,26 @@ function decodeConfig(chunks: string[]): string {
   return Buffer.from(chunks.join(''), 'base64').toString('utf8');
 }
 
+/**
+ * Persist a per-install session secret next to the database so packaged builds
+ * never fall back to a shared hardcoded string.
+ */
+function ensurePersistedSessionSecret(dataDir: string): string {
+  const secretPath = path.join(dataDir, 'session.secret');
+  try {
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf8').trim();
+      if (existing.length >= 32) return existing;
+    }
+  } catch {
+    // Fall through and regenerate.
+  }
+
+  const secret = crypto.randomBytes(48).toString('hex');
+  fs.writeFileSync(secretPath, secret, { encoding: 'utf8', mode: 0o600 });
+  return secret;
+}
+
 function configurePrismaEnginePath(): void {
   if (isDev) return;
 
@@ -103,8 +124,9 @@ async function startBackend(): Promise<void> {
 
   process.env.PORT = BACKEND_PORT;
   process.env.NODE_ENV = 'production';
-  process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}`;
-  process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'grain-market-pos-prod-secret';
+  // Single connection so PRAGMA busy_timeout applies for the app lifetime (avoids intermittent SQLite locks).
+  process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}?connection_limit=1`;
+  process.env.SESSION_SECRET = process.env.SESSION_SECRET || ensurePersistedSessionSecret(dataDir);
   process.env.GOOGLE_DRIVE_CLIENT_ID =
     process.env.GOOGLE_DRIVE_CLIENT_ID ||
     decodeConfig(['MTcxNjMz', 'NjQwMzYxLWhhMG5iZnFmc3AwMHZ0bHUydnZqcDZuazUzM3ZocTUw', 'LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t']);

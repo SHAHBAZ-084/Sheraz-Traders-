@@ -10,11 +10,13 @@ import { AppError } from '../../utils/helpers';
 import {
   assertPartyAccount,
   assertActiveFinancialYear,
+  assertVoucherDateInActiveFinancialYear,
   createMultiLegVoucherInTx,
   getActiveFinancialYearId,
   WRITE_TRANSACTION_OPTIONS,
   type VoucherLeg,
 } from '../accounting/accounting.service';
+import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postSaleInvoiceStockOut } from '../stock/stock.service';
@@ -157,8 +159,15 @@ export async function createSaleInvoice(
   }
 
   return prisma.$transaction(async (tx) => {
-    await getActiveFinancialYearId(tx);
-    await assertActiveStore(data.storeId);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
+    await assertActiveStore(data.storeId, tx);
     await assertSalePartyAccount(tx, data.customerAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
@@ -177,9 +186,7 @@ export async function createSaleInvoice(
 
     buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
-    const financialYearId = await getActiveFinancialYearId(tx);
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
-    const invoiceDate = new Date(data.invoiceDate);
 
     const invoice = await tx.invoice.create({
       data: {
@@ -243,7 +250,7 @@ export async function approveSaleInvoice(invoiceId: number) {
     if (invoice.storeId == null) throw new AppError(400, 'Sale invoice missing store');
     if (invoice.debitAccountId == null) throw new AppError(400, 'Sale invoice missing customer');
 
-    await assertActiveStore(invoice.storeId);
+    await assertActiveStore(invoice.storeId, tx);
     await assertSalePartyAccount(tx, invoice.debitAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
@@ -312,9 +319,17 @@ export async function updatePendingSaleInvoice(
       },
     });
     if (!existing) throw new AppError(404, 'Pending sale invoice not found');
+    await assertActiveFinancialYear(tx, existing.financialYearId);
 
-    await getActiveFinancialYearId(tx);
-    await assertActiveStore(data.storeId);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
+    await assertActiveStore(data.storeId, tx);
     await assertSalePartyAccount(tx, data.customerAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
@@ -331,9 +346,6 @@ export async function updatePendingSaleInvoice(
     }
 
     buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
-
-    const financialYearId = await getActiveFinancialYearId(tx);
-    const invoiceDate = new Date(data.invoiceDate);
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 

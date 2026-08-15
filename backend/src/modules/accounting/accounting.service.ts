@@ -21,8 +21,8 @@ import { getStockSummary } from '../stock/stock.service';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
-/** Voucher posting recomputes full ledger chains — allow more time on busy databases. */
-export const WRITE_TRANSACTION_OPTIONS = { timeout: 30_000 } as const;
+/** Voucher posting recomputes full ledger chains — allow more time with connection_limit=1. */
+export const WRITE_TRANSACTION_OPTIONS = { maxWait: 30_000, timeout: 120_000 } as const;
 
 export function fiscalYearLabelForDate(date: Date): { label: string; startDate: Date } {
   const year = date.getFullYear();
@@ -79,10 +79,11 @@ export async function assertActiveFinancialYear(
   }
 }
 
-/** Voucher accounting date must fall inside the active financial year (not just "a year exists"). */
+/** Accounting date must fall inside the active financial year (not just "a year exists"). */
 export async function assertVoucherDateInActiveFinancialYear(
   db: DbClient,
   voucherDate: Date,
+  recordLabel: 'Voucher' | 'Invoice' = 'Voucher',
 ): Promise<number> {
   const activeYear = await db.financialYear.findFirst({
     where: { status: FinancialYearStatus.ACTIVE },
@@ -92,12 +93,12 @@ export async function assertVoucherDateInActiveFinancialYear(
   const day = startOfDay(voucherDate);
   const yearStart = startOfDay(activeYear.startDate);
   if (day < yearStart) {
-    throw new AppError(400, 'Voucher date is before the active financial year');
+    throw new AppError(400, `${recordLabel} date is before the active financial year`);
   }
   if (activeYear.endDate) {
     const yearEnd = endOfDay(activeYear.endDate);
     if (day > yearEnd) {
-      throw new AppError(400, 'Voucher date is after the active financial year');
+      throw new AppError(400, `${recordLabel} date is after the active financial year`);
     }
   }
   return activeYear.id;
@@ -1869,12 +1870,15 @@ export async function bootstrapChartOfAccounts() {
       '1',
     );
 
+    // Party / Kachi Maal categories and system fee accounts used across the app.
+    await ensureKachiMaalAccounts(tx);
+
     // Only consolidate Inventory if it already exists — never create it.
     await consolidateDuplicateInventoryCategories(tx);
     await consolidateDuplicateInventoryAccounts(tx);
 
     await cleanupRemovedAutoCategories(tx);
-  });
+  }, WRITE_TRANSACTION_OPTIONS);
 }
 
 export async function createVoucherInTx(

@@ -6,6 +6,6 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 3847),
-  sessionSecret: process.env.SESSION_SECRET ?? 'grain-market-pos-dev-secret',
+  sessionSecret: process.env.SESSION_SECRET?.trim() || 'grain-market-pos-dev-secret',
   isProduction: (process.env.NODE_ENV ?? 'development') === 'production',
 };

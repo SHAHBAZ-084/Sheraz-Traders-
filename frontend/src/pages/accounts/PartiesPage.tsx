@@ -1,12 +1,28 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ListPagination } from '../../components/ui/ListPagination';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { api, type Party } from '../../lib/api';
 import { formatLedgerBalance } from '../../lib/format';
+import { sanitizeDecimalInput } from '../../lib/numericInput';
 import { PhoneInput } from '../../components/ui/PhoneInput';
+import { DecimalInput } from '../../components/ui/DecimalInput';
 import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
+
+function parseOpeningAmount(raw: string): number {
+  const cleaned = sanitizeDecimalInput(raw.trim());
+  if (!cleaned) return 0;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+type CreatePartyPayload = {
+  name: string;
+  phone?: string;
+  openingBalance?: number;
+  openingBalanceSide?: 'DR' | 'CR';
+};
 
 function PartyPage({
   title,
@@ -14,22 +30,30 @@ function PartyPage({
   listFn,
   createFn,
   removeFn,
+  defaultOpeningSide,
 }: {
   title: string;
   subtitle: string;
   listFn: (pagination: { limit: number; offset: number }) => Promise<{ items: Party[]; total: number }>;
-  createFn: (data: Record<string, string>) => Promise<Party>;
+  createFn: (data: CreatePartyPayload) => Promise<Party>;
   removeFn: (id: number) => Promise<unknown>;
+  /** Suggested Dr/Cr for this party type (Sale Party ASSET → DR, Purchase Party LIABILITY → CR). */
+  defaultOpeningSide: 'DR' | 'CR';
 }) {
   const [parties, setParties] = useState<Party[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
+  const [openingBalanceSide, setOpeningBalanceSide] = useState<'DR' | 'CR'>(defaultOpeningSide);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const isAdmin = useIsAdmin();
+
+  const parsedOpeningAmount = useMemo(() => parseOpeningAmount(openingBalance), [openingBalance]);
+  const hasOpeningAmount = parsedOpeningAmount > 0;
 
   const refresh = useCallback(async (pageOffset = offset) => {
     try {
@@ -46,15 +70,39 @@ function PartyPage({
     void refresh(offset);
   }, [refresh, offset]);
 
+  function resetForm() {
+    setName('');
+    setPhone('');
+    setOpeningBalance('');
+    setOpeningBalanceSide(defaultOpeningSide);
+  }
+
   async function onCreate(event: FormEvent) {
     event.preventDefault();
     setError('');
     setMessage('');
     try {
-      await createFn({ name, ...(phone ? { phone } : {}) });
-      setMessage('Party saved with ledger account.');
-      setName('');
-      setPhone('');
+      if (openingBalance.trim() && !Number.isFinite(parsedOpeningAmount)) {
+        throw new Error('Opening balance must be a valid number');
+      }
+      if (openingBalance.trim() && parsedOpeningAmount < 0) {
+        throw new Error('Opening balance must be zero or greater');
+      }
+      const created = await createFn({
+        name,
+        ...(phone ? { phone } : {}),
+        ...(hasOpeningAmount
+          ? { openingBalance: parsedOpeningAmount, openingBalanceSide }
+          : {}),
+      });
+      if (hasOpeningAmount) {
+        setMessage(
+          `Party saved with opening balance ${formatLedgerBalance(created.balance ?? 0)}.`,
+        );
+      } else {
+        setMessage('Party saved with ledger account.');
+      }
+      resetForm();
       setShowForm(false);
       setOffset(0);
       await refresh(0);
@@ -80,7 +128,7 @@ function PartyPage({
     <PageShell
       title={title}
       subtitle={subtitle}
-      actions={<PrimaryButton onClick={() => setShowForm(true)}>Create new</PrimaryButton>}
+      actions={<PrimaryButton onClick={() => { setOpeningBalanceSide(defaultOpeningSide); setShowForm(true); }}>Create new</PrimaryButton>}
     >
       {showForm ? (
         <Panel className="mb-4 max-w-lg">
@@ -93,9 +141,34 @@ function PartyPage({
               <FieldLabel>Phone</FieldLabel>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <FieldLabel>Opening balance</FieldLabel>
+                <DecimalInput
+                  value={openingBalance}
+                  onChange={setOpeningBalance}
+                  placeholder="0.00 (optional)"
+                />
+              </div>
+              <div>
+                <FieldLabel>Opening balance side</FieldLabel>
+                <select
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+                  value={openingBalanceSide}
+                  onChange={(e) => setOpeningBalanceSide(e.target.value as 'DR' | 'CR')}
+                  disabled={!hasOpeningAmount}
+                >
+                  <option value="DR">Dr</option>
+                  <option value="CR">Cr</option>
+                </select>
+                <p className="mt-1 text-xs text-textMuted">
+                  Suggested: {defaultOpeningSide === 'DR' ? 'Dr' : 'Cr'} — you can choose Dr or Cr
+                </p>
+              </div>
+            </div>
             <div className="flex gap-2">
               <PrimaryButton type="submit">Save</PrimaryButton>
-              <SecondaryButton type="button" onClick={() => setShowForm(false)}>Cancel</SecondaryButton>
+              <SecondaryButton type="button" onClick={() => { setShowForm(false); resetForm(); }}>Cancel</SecondaryButton>
             </div>
           </form>
         </Panel>
@@ -145,6 +218,7 @@ export function SalePartiesPage() {
       listFn={api.listSalePartiesPage}
       createFn={api.createSaleParty}
       removeFn={api.removeSaleParty}
+      defaultOpeningSide="DR"
     />
   );
 }
@@ -157,6 +231,7 @@ export function PurchasePartiesPage() {
       listFn={api.listPurchasePartiesPage}
       createFn={api.createPurchaseParty}
       removeFn={api.removePurchaseParty}
+      defaultOpeningSide="CR"
     />
   );
 }

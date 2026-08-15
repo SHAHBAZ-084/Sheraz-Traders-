@@ -10,12 +10,14 @@ import { AppError } from '../../utils/helpers';
 import {
   assertPartyAccount,
   assertActiveFinancialYear,
+  assertVoucherDateInActiveFinancialYear,
   createMultiLegVoucherInTx,
   ensurePurchaseMazduriAccount,
   getActiveFinancialYearId,
   WRITE_TRANSACTION_OPTIONS,
   type VoucherLeg,
 } from '../accounting/accounting.service';
+import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postPurchaseInvoiceStockIn } from '../stock/stock.service';
@@ -179,8 +181,15 @@ export async function createPurchaseInvoice(
   }
 
   return prisma.$transaction(async (tx) => {
-    await getActiveFinancialYearId(tx);
-    await assertActiveStore(data.storeId);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
+    await assertActiveStore(data.storeId, tx);
     await assertPurchasePartyAccount(tx, data.supplierAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
@@ -210,9 +219,7 @@ export async function createPurchaseInvoice(
         : null,
     );
 
-    const financialYearId = await getActiveFinancialYearId(tx);
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.PURCHASE_INVOICE, financialYearId);
-    const invoiceDate = new Date(data.invoiceDate);
 
     const invoice = await tx.invoice.create({
       data: {
@@ -276,7 +283,7 @@ export async function approvePurchaseInvoice(invoiceId: number) {
     if (invoice.storeId == null) throw new AppError(400, 'Purchase invoice missing store');
     if (invoice.debitAccountId == null) throw new AppError(400, 'Purchase invoice missing supplier');
 
-    await assertActiveStore(invoice.storeId);
+    await assertActiveStore(invoice.storeId, tx);
     await assertPurchasePartyAccount(tx, invoice.debitAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
@@ -348,9 +355,17 @@ export async function updatePendingPurchaseInvoice(
       },
     });
     if (!existing) throw new AppError(404, 'Pending purchase invoice not found');
+    await assertActiveFinancialYear(tx, existing.financialYearId);
 
-    await getActiveFinancialYearId(tx);
-    await assertActiveStore(data.storeId);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
+    await assertActiveStore(data.storeId, tx);
     await assertPurchasePartyAccount(tx, data.supplierAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
@@ -378,9 +393,6 @@ export async function updatePendingPurchaseInvoice(
         ? (await ensurePurchaseMazduriAccount(tx)).id
         : null,
     );
-
-    const financialYearId = await getActiveFinancialYearId(tx);
-    const invoiceDate = new Date(data.invoiceDate);
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 

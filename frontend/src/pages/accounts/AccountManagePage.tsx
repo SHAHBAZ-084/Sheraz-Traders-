@@ -2,7 +2,15 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { formatLedgerBalance } from '../../lib/format';
 import { sanitizeDecimalInput } from '../../lib/numericInput';
 import { api, type Account, type AccountCategory } from '../../lib/api';
-import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import {
+  FieldLabel,
+  LegacyTable,
+  PageShell,
+  Panel,
+  PrimaryButton,
+  SecondaryButton,
+  TextInput,
+} from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
@@ -40,6 +48,8 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
   const [selectedId, setSelectedId] = useState<number | ''>('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState<number | ''>('');
 
   useEffect(() => {
     api.listCategories().then(setCategories).catch(() => setCategories([]));
@@ -66,6 +76,16 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     () => categories.find((c) => c.id === categoryId),
     [categories, categoryId],
   );
+
+  const filteredAccounts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (accounts ?? []).filter((a) => {
+      if (filterCategoryId !== '' && a.categoryId !== filterCategoryId) return false;
+      if (!q) return true;
+      const haystack = [a.name, a.code, a.category?.name ?? ''].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [accounts, search, filterCategoryId]);
 
   async function reload() {
     setCategories(await api.listCategories());
@@ -214,6 +234,70 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
           </div>
         </form>
       </Panel>
+
+      {mode === 'add' ? (
+        <Panel className="mt-4">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <h2 className="text-sm font-semibold text-textPrimary">Accounts</h2>
+            <div className="flex flex-wrap gap-2">
+              <div className="min-w-[12rem]">
+                <FieldLabel>Search</FieldLabel>
+                <TextInput
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, code…"
+                />
+              </div>
+              <div className="min-w-[10rem]">
+                <FieldLabel>Filter category</FieldLabel>
+                <select
+                  className="w-full rounded-sm border border-border px-2.5 py-2 text-sm"
+                  value={filterCategoryId === '' ? '' : String(filterCategoryId)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFilterCategoryId(v === '' ? '' : Number(v));
+                  }}
+                >
+                  <option value="">All categories</option>
+                  {(Array.isArray(categories) ? categories : []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <LegacyTable>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Code</th>
+                <th>Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAccounts.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-textMuted">
+                    {(accounts?.length ?? 0) === 0 ? 'No accounts yet.' : 'No accounts match the search/filter.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredAccounts.map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.name}</td>
+                    <td>{a.category?.name ?? '—'}</td>
+                    <td>{a.code}</td>
+                    <td>{formatLedgerBalance(a.ledger?.balance ?? 0)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </LegacyTable>
+        </Panel>
+      ) : null}
+
       <PageCloseBar />
     </PageShell>
   );

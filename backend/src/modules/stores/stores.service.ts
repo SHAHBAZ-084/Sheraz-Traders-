@@ -1,8 +1,10 @@
-import { InvoiceStatus, InvoiceType } from '@prisma/client';
+import { InvoiceStatus, InvoiceType, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { cancelInvoiceInTx } from '../invoices/invoices.service';
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 export async function listStores(pagination?: { limit: number; offset: number }) {
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
@@ -69,8 +71,8 @@ export async function setStoreActive(id: number, isActive: boolean) {
   });
 }
 
-export async function assertActiveStore(storeId: number) {
-  const store = await prisma.store.findFirst({
+export async function assertActiveStore(storeId: number, db: DbClient = prisma) {
+  const store = await db.store.findFirst({
     where: { id: storeId, isActive: true },
   });
   if (!store) throw new AppError(400, 'Select an active store');

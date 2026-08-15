@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import { voucherDateInActiveYear } from '../../test-helpers/financial-year';
-import { createVoucher, KACHI_MAAL_CATEGORY_NAMES } from '../accounting/accounting.service';
+import { createVoucher, KACHI_MAAL_CATEGORY_NAMES, bootstrapChartOfAccounts } from '../accounting/accounting.service';
 import { createProduct } from '../products/products.service';
 import { createStore } from '../stores/stores.service';
 import { createPurchaseInvoice } from '../invoices/purchase-invoice.service';
@@ -22,8 +22,13 @@ async function ensureAccountInCategory(
   type: AccountType,
   code: string,
 ) {
+  const targetCategoryName =
+    categoryName === 'Ext. Purchase Party' || categoryName === 'Int. Purchase Party'
+      ? KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY
+      : categoryName;
+
   const category = await prisma.accountCategory.findFirst({
-    where: { isActive: true, name: categoryName },
+    where: { isActive: true, name: targetCategoryName },
   });
   if (!category) throw new Error(`Category missing: ${categoryName}`);
 
@@ -55,6 +60,7 @@ describe('Pending approval workflow', () => {
   let invoiceDate: string;
 
   beforeAll(async () => {
+    await bootstrapChartOfAccounts();
     invoiceDate = await voucherDateInActiveYear();
     const admin = await prisma.user.findFirst({ where: { role: Role.ADMIN } });
     if (!admin) throw new Error('Seed admin first');

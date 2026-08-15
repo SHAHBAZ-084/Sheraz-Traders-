@@ -208,9 +208,8 @@ export async function getProfitLossReport(params: {
     }
   }
 
-  const includeDaami = params.productId == null && params.categoryId == null;
-
-  if (includeDaami) {
+  // Daami (Kachi Maal profit) always stays visible regardless of product/category filters.
+  {
     const kachiInvoices = await prisma.invoice.findMany({
       where: {
         type: InvoiceType.KACHI_MAAL,

@@ -9,11 +9,13 @@ import { AppError } from '../../utils/helpers';
 import {
   assertPartyAccount,
   assertActiveFinancialYear,
+  assertVoucherDateInActiveFinancialYear,
   createKachiVoucherInTx,
   ensureKachiMaalAccounts,
   getActiveFinancialYearId,
   type VoucherLeg,
 } from '../accounting/accounting.service';
+import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { getSystemPreferences } from '../preferences/preferences.service';
 import {
   computeKachiMaalInvoiceTotals,
@@ -248,7 +250,14 @@ export async function createKachiMaalInvoice(
   );
 
   return prisma.$transaction(async (tx) => {
-    await getActiveFinancialYearId(tx);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
     const systemAccounts = await ensureKachiMaalAccounts(tx);
     await assertDebitAccount(tx, data.debitAccountId);
     for (const line of computedLines) {
@@ -260,7 +269,6 @@ export async function createKachiMaalInvoice(
       gariNo: data.gariNo,
     };
 
-    const financialYearId = await getActiveFinancialYearId(tx);
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.KACHI_MAAL, financialYearId);
     const { legs, totalDebits, totalCredits, miscAmount } = buildLedgerLegs(
       data.debitAccountId,
@@ -274,8 +282,6 @@ export async function createKachiMaalInvoice(
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
       throw new AppError(500, 'Invoice debits and credits do not balance — save aborted');
     }
-
-    const invoiceDate = new Date(data.invoiceDate);
 
     const invoice = await tx.invoice.create({
       data: {
@@ -467,8 +473,16 @@ export async function updatePendingKachiMaalInvoice(
       },
     });
     if (!existing) throw new AppError(404, 'Pending kachi maal invoice not found');
+    await assertActiveFinancialYear(tx, existing.financialYearId);
 
-    await getActiveFinancialYearId(tx);
+    let invoiceDate: Date;
+    try {
+      invoiceDate = parseVoucherDateInput(data.invoiceDate);
+    } catch {
+      throw new AppError(400, 'Invalid invoice date');
+    }
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, invoiceDate, 'Invoice');
+
     const systemAccounts = await ensureKachiMaalAccounts(tx);
     await assertDebitAccount(tx, data.debitAccountId);
     for (const line of computedLines) {
@@ -480,7 +494,6 @@ export async function updatePendingKachiMaalInvoice(
       gariNo: data.gariNo,
     };
 
-    const financialYearId = await getActiveFinancialYearId(tx);
     const { legs, totalDebits, totalCredits, miscAmount } = buildLedgerLegs(
       data.debitAccountId,
       computedLines,
@@ -493,8 +506,6 @@ export async function updatePendingKachiMaalInvoice(
     if (Math.abs(totalDebits - totalCredits) > 0.01) {
       throw new AppError(500, 'Invoice debits and credits do not balance — save aborted');
     }
-
-    const invoiceDate = new Date(data.invoiceDate);
 
     await tx.kachiMaalLine.deleteMany({ where: { invoiceId } });
 

@@ -31,10 +31,11 @@ export function getBackendRoot(): string {
   return path.resolve(__dirname, '..');
 }
 
-/** Resolve the on-disk SQLite file from DATABASE_URL (file:…). */
+/** Resolve the on-disk SQLite file from DATABASE_URL (file:…). Strips query params (e.g. connection_limit). */
 export function getDatabaseFilePath(): string {
-  const url = process.env.DATABASE_URL ?? 'file:./data/sheraztrader.db';
-  const raw = url.replace(/^file:/, '');
+  const url = process.env.DATABASE_URL ?? 'file:./data/sheraztrader.db?connection_limit=1';
+  const withoutScheme = url.replace(/^file:/, '');
+  const raw = withoutScheme.split('?')[0] ?? withoutScheme;
   if (path.isAbsolute(raw)) return raw;
   // Match Prisma: relative SQLite paths resolve from the prisma/ schema directory.
   return path.resolve(getBackendRoot(), 'prisma', raw);

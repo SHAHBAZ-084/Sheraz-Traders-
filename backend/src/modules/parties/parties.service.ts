@@ -6,7 +6,9 @@ import {
   ensureCustomerAccount,
   ensureSupplierAccount,
   KACHI_MAAL_CATEGORY_NAMES,
+  postOpeningBalanceInTx,
 } from '../accounting/accounting.service';
+import { defaultOpeningSide } from '../accounting/ledger-utils';
 
 const SALE_PARTY_CATEGORY_NAMES = [KACHI_MAAL_CATEGORY_NAMES.SALE_PARTY] as const;
 
@@ -211,9 +213,14 @@ export async function createSaleParty(data: {
   phone?: string;
   email?: string;
   address?: string;
+  openingBalance?: number;
+  openingBalanceSide?: 'DR' | 'CR';
 }) {
   const name = data.name.trim();
   if (!name) throw new AppError(400, 'Name is required');
+
+  const amount = Math.abs(data.openingBalance ?? 0);
+  const side = data.openingBalanceSide ?? defaultOpeningSide('ASSET');
 
   const account = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.customer.create({
@@ -227,7 +234,21 @@ export async function createSaleParty(data: {
       },
     });
 
-    return ensureCustomerAccount(tx, { id: created.id, name: created.name });
+    const ensured = await ensureCustomerAccount(tx, { id: created.id, name: created.name });
+    if (amount > 0 && ensured.ledger) {
+      await postOpeningBalanceInTx(tx, {
+        ledgerId: ensured.ledger.id,
+        accountName: ensured.name,
+        amount,
+        side,
+        notes: 'Opening Balance',
+      });
+    }
+
+    return tx.account.findUniqueOrThrow({
+      where: { id: ensured.id },
+      include: { ledger: true },
+    });
   });
 
   return mapAccountParty({
@@ -314,9 +335,14 @@ export async function createPurchaseParty(data: {
   phone?: string;
   email?: string;
   address?: string;
+  openingBalance?: number;
+  openingBalanceSide?: 'DR' | 'CR';
 }) {
   const name = data.name.trim();
   if (!name) throw new AppError(400, 'Name is required');
+
+  const amount = Math.abs(data.openingBalance ?? 0);
+  const side = data.openingBalanceSide ?? defaultOpeningSide('LIABILITY');
 
   const account = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.supplier.create({
@@ -329,7 +355,21 @@ export async function createPurchaseParty(data: {
       },
     });
 
-    return ensureSupplierAccount(tx, { id: created.id, name: created.name });
+    const ensured = await ensureSupplierAccount(tx, { id: created.id, name: created.name });
+    if (amount > 0 && ensured.ledger) {
+      await postOpeningBalanceInTx(tx, {
+        ledgerId: ensured.ledger.id,
+        accountName: ensured.name,
+        amount,
+        side,
+        notes: 'Opening Balance',
+      });
+    }
+
+    return tx.account.findUniqueOrThrow({
+      where: { id: ensured.id },
+      include: { ledger: true },
+    });
   });
 
   return mapAccountParty({

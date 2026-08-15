@@ -9,6 +9,20 @@ import { logger } from './lib/logger';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', {
+    err: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', {
+    err: err.message,
+    stack: err.stack,
+  });
+});
+
 let startupStatus: Awaited<ReturnType<typeof initializeDatabase>> | null = null;
 
 async function main() {

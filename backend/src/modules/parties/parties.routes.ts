@@ -25,6 +25,8 @@ partiesRouter.post(
       phone: z.string().optional(),
       email: z.string().optional(),
       address: z.string().optional(),
+      openingBalance: z.number().min(0).optional(),
+      openingBalanceSide: z.enum(['DR', 'CR']).optional(),
     }),
   ),
   asyncHandler(async (req, res) => {
@@ -75,6 +77,8 @@ partiesRouter.post(
       phone: z.string().optional(),
       email: z.string().optional(),
       address: z.string().optional(),
+      openingBalance: z.number().min(0).optional(),
+      openingBalanceSide: z.enum(['DR', 'CR']).optional(),
     }),
   ),
   asyncHandler(async (req, res) => {

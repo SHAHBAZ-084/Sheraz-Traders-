@@ -39,9 +39,11 @@ export function QuickAddPartyModal({
     setError('');
 
     try {
-      const payload: Record<string, string> = { name: name.trim() };
-      if (phone.trim()) payload.phone = phone.trim();
-      if (address.trim()) payload.address = address.trim();
+      const payload = {
+        name: name.trim(),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(address.trim() ? { address: address.trim() } : {}),
+      };
 
       const party = isCustomer
         ? await api.createSaleParty(payload)

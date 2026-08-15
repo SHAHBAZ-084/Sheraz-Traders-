@@ -482,7 +482,16 @@ export const api = {
     });
     return fetchPaginatedPage<Party>(`/api/parties/sale-parties?${query}`);
   },
-  createSaleParty(data: Record<string, string | undefined>) {
+  createSaleParty(data: {
+    name: string;
+    phone?: string;
+    fatherName?: string;
+    cnic?: string;
+    email?: string;
+    address?: string;
+    openingBalance?: number;
+    openingBalanceSide?: 'DR' | 'CR';
+  }) {
     return request<Party>('/api/parties/sale-parties', { method: 'POST', body: JSON.stringify(data) });
   },
   removeSaleParty(id: number) {
@@ -499,7 +508,15 @@ export const api = {
     });
     return fetchPaginatedPage<Party>(`/api/parties/purchase-parties?${query}`);
   },
-  createPurchaseParty(data: Record<string, string | undefined>) {
+  createPurchaseParty(data: {
+    name: string;
+    phone?: string;
+    contactPerson?: string;
+    email?: string;
+    address?: string;
+    openingBalance?: number;
+    openingBalanceSide?: 'DR' | 'CR';
+  }) {
     return request<Party>('/api/parties/purchase-parties', { method: 'POST', body: JSON.stringify(data) });
   },
   removePurchaseParty(id: number) {

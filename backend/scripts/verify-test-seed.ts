@@ -1,6 +1,6 @@
 /**
  * Post-seed verification for test-seed-data.json (dev only).
- * Usage: DATABASE_URL=file:./data/sheraztrader.db npx tsx scripts/verify-test-seed.ts
+ * Usage: DATABASE_URL=file:./data/sheraztrader.db?connection_limit=1 npx tsx scripts/verify-test-seed.ts
  */
 import fs from 'fs';
 import path from 'path';

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight, LayoutDashboard, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { SIDEBAR_NAV, filterSidebarSectionsForRole, type NavItem } from '../../config/navigation';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import type { LucideIcon } from 'lucide-react';
@@ -111,24 +111,19 @@ function SidebarSectionBlock({
 export function Sidebar() {
   const location = useLocation();
   const isAdmin = useIsAdmin();
-  const dashboardActive = location.pathname === '/dashboard';
 
   const sections = filterSidebarSectionsForRole(SIDEBAR_NAV, isAdmin);
 
   return (
     <aside className="app-sidebar">
       <div className="app-sidebar-brand">
+        {/* Logo is the only Dashboard entry — no sidebar Dashboard link (blank home by default). */}
         <Link to="/dashboard" className="app-sidebar-brand-link" aria-label="Sheeraz Traders — Dashboard">
           <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="app-sidebar-brand-logo" />
         </Link>
       </div>
 
       <nav className="app-sidebar-nav">
-        <Link to="/dashboard" className={`app-sidebar-link app-sidebar-link-top ${dashboardActive ? 'is-active' : ''}`}>
-          <LayoutDashboard className="app-sidebar-nav-icon shrink-0" strokeWidth={2} />
-          <span>Dashboard</span>
-        </Link>
-
         {sections.map((section) => (
           <SidebarSectionBlock key={section.id} label={section.label} icon={section.icon} items={section.items} />
         ))}

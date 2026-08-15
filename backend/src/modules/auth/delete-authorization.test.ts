@@ -22,7 +22,10 @@ async function login(baseUrl: string, username: string, password: string): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  expect(response.status).toBe(200);
+  if (response.status !== 200) {
+    const body = await response.text();
+    throw new Error(`Login failed (${response.status}): ${body}`);
+  }
   return extractSessionCookie(response.headers.get('set-cookie'));
 }
 
