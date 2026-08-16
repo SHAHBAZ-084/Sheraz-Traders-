@@ -7,6 +7,11 @@ import { google } from 'googleapis';
 import { exec } from 'child_process';
 import { getBackupDirectory, getDatabaseFilePath } from './database-path';
 import { walCheckpointTruncate } from './database-maintenance';
+import {
+  getEffectiveGoogleOAuthCredentials,
+  getGoogleOAuthConfigStatus,
+  isGoogleOAuthConfigured,
+} from './google-oauth-credentials';
 import { prisma } from './prisma';
 import { logger } from './logger';
 
@@ -67,13 +72,13 @@ function saveState(state: Partial<BackupState>): BackupState {
   return next;
 }
 
-const DEFAULT_GOOGLE_DRIVE_CLIENT_ID = Buffer.from(['MTcxNjMz', 'NjQwMzYxLWhhMG5iZnFmc3AwMHZ0bHUydnZqcDZuazUzM3ZocTUw', 'LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t'].join(''), 'base64').toString('utf8');
-const DEFAULT_GOOGLE_DRIVE_CLIENT_SECRET = Buffer.from(['R09DU1BY', 'LU5aczJ4d05fRnYzMDRoQU5xT25kNHA1cnBneG8='].join(''), 'base64').toString('utf8');
-
 /** Encrypted Token Persistence (safeStorage in Electron main, AES-256-GCM fallback in Node) */
 function getEncryptionKey(): Buffer {
-  const secret = process.env.GOOGLE_DRIVE_CLIENT_SECRET || DEFAULT_GOOGLE_DRIVE_CLIENT_SECRET;
-  return crypto.createHash('sha256').update(secret).digest();
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error('SESSION_SECRET is required for Google Drive token encryption');
+  }
+  return crypto.createHash('sha256').update(`google-drive-token:${secret}`).digest();
 }
 
 function saveRefreshToken(token: string): void {
@@ -149,12 +154,13 @@ export function clearRefreshToken(): void {
 }
 
 function getOAuth2Client(redirectUri?: string) {
-  const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || DEFAULT_GOOGLE_DRIVE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET || DEFAULT_GOOGLE_DRIVE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error('GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET environment variables must be set');
+  const creds = getEffectiveGoogleOAuthCredentials();
+  if (!creds) {
+    throw new Error(
+      'Google Drive OAuth is not configured. Enter your Google Cloud Client ID and Client Secret in Database Maintenance first.',
+    );
   }
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  return new google.auth.OAuth2(creds.clientId, creds.clientSecret, redirectUri);
 }
 
 export function isGoogleDriveConnected(): boolean {
@@ -171,6 +177,12 @@ export function isInvalidGrantError(err: unknown): boolean {
 
 /** Perform loopback consent flow (127.0.0.1 — valid for installed desktop apps, not localhost dev server). */
 export async function connectGoogleDrive(): Promise<{ success: boolean; message: string }> {
+  if (!isGoogleOAuthConfigured()) {
+    throw new Error(
+      'Google Drive OAuth is not configured. Enter your Google Cloud Client ID and Client Secret in Database Maintenance first.',
+    );
+  }
+
   const isOnline = await checkInternetConnection();
   if (!isOnline) {
     throw new Error('No internet connection. Connect to the internet and try again.');
@@ -447,6 +459,7 @@ export async function runGoogleDriveBackup(): Promise<{ ok: boolean; uploadedAt?
 export function getBackupStatus() {
   const connected = isGoogleDriveConnected();
   const state = loadState();
+  const oauth = getGoogleOAuthConfigStatus();
 
   return {
     connected,
@@ -454,5 +467,9 @@ export function getBackupStatus() {
     lastSuccessAt: state.lastSuccessAt,
     lastAttemptAt: state.lastAttemptAt,
     lastError: state.lastError,
+    oauthConfigured: oauth.configured,
+    oauthClientIdHint: oauth.clientIdHint,
   };
 }
+
+export { getGoogleOAuthConfigStatus, isGoogleOAuthConfigured };

@@ -22,6 +22,8 @@ export type BackupStatus = {
   lastSuccessAt: string | null;
   lastAttemptAt: string | null;
   lastError: string | null;
+  oauthConfigured: boolean;
+  oauthClientIdHint: string | null;
 };
 
 export type User = {
@@ -90,6 +92,7 @@ export type Product = {
   name: string;
   code: string;
   unit: string | null;
+  kind?: 'STANDARD' | 'KACHI';
   accountId: number;
   categoryId?: number | null;
   category?: ProductCategory | null;
@@ -395,9 +398,18 @@ export const api = {
     unit?: string;
     code?: string;
     categoryId?: number | null;
+    kind?: 'STANDARD' | 'KACHI';
     openingStock?: number;
     openingStockRate?: number;
     openingStoreId?: number;
+    kachiOpening?: {
+      bagMode: 'BORI' | 'THELA';
+      bagCount: number;
+      dharanCount: number;
+      looseKg: number;
+      bhartii: number;
+      ratePerMaund: number;
+    };
   }) {
     return request<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) });
   },
@@ -895,7 +907,7 @@ export const api = {
       query.set('storeId', String(params.storeId));
     }
     return request<{
-      product: { id: number; name: string; code: string };
+      product: { id: number; name: string; code: string; kind: 'STANDARD' | 'KACHI' };
       storeId: number | null;
       trackingStartedAt: string;
       historicalBackfill: false;
@@ -908,7 +920,11 @@ export const api = {
         invoiceType: string;
         status: 'IN' | 'OUT';
         bags: number;
+        weightKg: number | null;
+        quantity: number;
+        quantityDisplay: string;
         runningBalance: number;
+        runningBalanceDisplay: string;
       }>;
       totals: {
         totalIn: number;
@@ -916,6 +932,7 @@ export const api = {
         netBalance: number;
         saleInvoiceQty: number;
         purchaseInvoiceQty: number;
+        netBalanceDisplay: string;
       };
     }>(`/api/stock/report?${query.toString()}`);
   },
@@ -954,6 +971,20 @@ export const api = {
 
   getBackupStatus() {
     return request<BackupStatus>('/api/system/backup-status');
+  },
+
+  getGoogleOAuthConfig() {
+    return request<{ configured: boolean; clientIdHint: string | null }>('/api/system/google-drive/oauth-config');
+  },
+
+  saveGoogleOAuthConfig(data: { clientId: string; clientSecret: string }) {
+    return request<{ ok: boolean; configured: boolean; clientIdHint: string | null }>(
+      '/api/system/google-drive/oauth-config',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
   },
 
   connectGoogleDrive() {

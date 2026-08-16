@@ -17,10 +17,16 @@ async function login(page) {
 }
 
 async function assertSearchClickable(page, path, placeholder) {
-  await page.goto(`${BASE}${path}`);
+  await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(400);
+  const actualPath = new URL(page.url()).pathname;
+  if (actualPath !== path) {
+    throw new Error(`Expected ${path} but landed on ${actualPath}`);
+  }
   const input = page.locator(`input[placeholder="${placeholder}"]`).first();
-  await input.waitFor({ state: 'visible', timeout: 15000 });
+  await input.waitFor({ state: 'attached', timeout: 15000 });
   await input.scrollIntoViewIfNeeded();
+  await input.waitFor({ state: 'visible', timeout: 5000 });
   const box = await input.boundingBox();
   if (!box) throw new Error(`No bounding box for ${placeholder} on ${path}`);
 

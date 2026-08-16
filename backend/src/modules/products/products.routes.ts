@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { ProductKind } from '@prisma/client';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { AppError, asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
@@ -41,18 +42,45 @@ productsRouter.get(
   }),
 );
 
+const kachiOpeningSchema = z.object({
+  bagMode: z.enum(['BORI', 'THELA']),
+  bagCount: z.number().min(0),
+  dharanCount: z.number().min(0),
+  looseKg: z.number().min(0),
+  bhartii: z.number().min(0),
+  ratePerMaund: z.number().min(0),
+});
+
 productsRouter.post(
   '/',
   validateBody(
-    z.object({
-      name: z.string().min(1),
-      unit: z.string().optional(),
-      code: z.string().optional(),
-      categoryId: z.number().int().positive().nullable().optional(),
-      openingStock: z.number().min(0).optional(),
-      openingStockRate: z.number().min(0).optional(),
-      openingStoreId: z.number().int().positive().optional(),
-    }),
+    z
+      .object({
+        name: z.string().min(1),
+        unit: z.string().optional(),
+        code: z.string().optional(),
+        categoryId: z.number().int().positive().nullable().optional(),
+        kind: z.nativeEnum(ProductKind).optional(),
+        openingStock: z.number().min(0).optional(),
+        openingStockRate: z.number().min(0).optional(),
+        openingStoreId: z.number().int().positive().optional(),
+        kachiOpening: kachiOpeningSchema.optional(),
+      })
+      .superRefine((body, ctx) => {
+        const kind = body.kind ?? ProductKind.STANDARD;
+        if (kind === ProductKind.STANDARD && body.kachiOpening) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'kachiOpening is only valid when kind is KACHI',
+          });
+        }
+        if (kind === ProductKind.KACHI && (body.openingStock != null || body.openingStockRate != null)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Use kachiOpening weight fields instead of openingStock for Kachi products',
+          });
+        }
+      }),
   ),
   asyncHandler(async (req, res) => {
     const product = await productsService.createProduct(req.body);

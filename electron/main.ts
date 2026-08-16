@@ -67,10 +67,6 @@ function configureStableUserDataPath(): void {
   app.setPath('userData', path.join(appData, APP_NAME));
 }
 
-function decodeConfig(chunks: string[]): string {
-  return Buffer.from(chunks.join(''), 'base64').toString('utf8');
-}
-
 /**
  * Persist a per-install session secret next to the database so packaged builds
  * never fall back to a shared hardcoded string.
@@ -127,11 +123,14 @@ async function startBackend(): Promise<void> {
   // Single connection so PRAGMA busy_timeout applies for the app lifetime (avoids intermittent SQLite locks).
   process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}?connection_limit=5`;
   process.env.SESSION_SECRET = process.env.SESSION_SECRET || ensurePersistedSessionSecret(dataDir);
-  process.env.GOOGLE_DRIVE_CLIENT_ID =
-    process.env.GOOGLE_DRIVE_CLIENT_ID ||
-    decodeConfig(['MTcxNjMz', 'NjQwMzYxLWhhMG5iZnFmc3AwMHZ0bHUydnZqcDZuazUzM3ZocTUw', 'LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t']);
-  process.env.GOOGLE_DRIVE_CLIENT_SECRET =
-    process.env.GOOGLE_DRIVE_CLIENT_SECRET || decodeConfig(['R09DU1BY', 'LU5aczJ4d05fRnYzMDRoQU5xT25kNHA1cnBneG8=']);
+
+  const credentialsModule = path.join(__dirname, '../backend/dist/lib/google-oauth-credentials.js');
+  if (fs.existsSync(credentialsModule)) {
+    const { applyGoogleOAuthCredentialsToEnv } = await import(credentialsModule) as {
+      applyGoogleOAuthCredentialsToEnv: () => boolean;
+    };
+    applyGoogleOAuthCredentialsToEnv();
+  }
 
   const backendEntry = path.join(__dirname, '../backend/dist/index.js');
   // Import kicks off backend startup; readiness is confirmed via /api/health polling.

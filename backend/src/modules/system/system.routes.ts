@@ -16,6 +16,10 @@ import {
   getBackupStatus,
   runGoogleDriveBackup,
 } from '../../lib/google-drive-backup';
+import {
+  getGoogleOAuthConfigStatus,
+  saveGoogleOAuthCredentials,
+} from '../../lib/google-oauth-credentials';
 
 export const systemRouter = Router();
 
@@ -37,6 +41,26 @@ systemRouter.get(
   asyncHandler(async (_req, res) => {
     const status = getBackupStatus();
     res.json(status);
+  }),
+);
+
+systemRouter.get(
+  '/google-drive/oauth-config',
+  asyncHandler(async (_req, res) => {
+    res.json(getGoogleOAuthConfigStatus());
+  }),
+);
+
+systemRouter.post(
+  '/google-drive/oauth-config',
+  asyncHandler(async (req, res) => {
+    const clientId = typeof req.body?.clientId === 'string' ? req.body.clientId.trim() : '';
+    const clientSecret = typeof req.body?.clientSecret === 'string' ? req.body.clientSecret.trim() : '';
+    if (!clientId || !clientSecret) {
+      throw new AppError(400, 'Google OAuth Client ID and Client Secret are required');
+    }
+    saveGoogleOAuthCredentials(clientId, clientSecret);
+    res.json({ ok: true, ...getGoogleOAuthConfigStatus() });
   }),
 );
 

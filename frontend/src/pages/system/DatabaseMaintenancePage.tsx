@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { PageShell, Panel, PrimaryButton, SecondaryButton, Tile } from '../../components/ui/PageShell';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { PageShell, Panel, PrimaryButton, SecondaryButton, Tile, FieldLabel, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, BackupStatus } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -15,6 +15,9 @@ export function DatabaseMaintenancePage() {
   const [dbChecking, setDbChecking] = useState(false);
   const [dbResult, setDbResult] = useState<{ ok: boolean; results: string[] } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
+  const [oauthSaving, setOauthSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -48,7 +51,33 @@ export function DatabaseMaintenancePage() {
     }
   }
 
+  async function onSaveGoogleOAuthConfig(event: FormEvent) {
+    event.preventDefault();
+    setOauthSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await api.saveGoogleOAuthConfig({
+        clientId: oauthClientId.trim(),
+        clientSecret: oauthClientSecret.trim(),
+      });
+      setOauthClientSecret('');
+      setMessage(
+        `Google OAuth credentials saved securely (${res.clientIdHint ?? 'configured'}). You can now connect Google Drive.`,
+      );
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save Google OAuth credentials');
+    } finally {
+      setOauthSaving(false);
+    }
+  }
+
   async function onConnectGoogleDrive() {
+    if (!status?.oauthConfigured) {
+      setError('Save your Google Cloud OAuth Client ID and Client Secret before connecting Google Drive.');
+      return;
+    }
     setActionLoading(true);
     setError('');
     setMessage('');
@@ -123,6 +152,57 @@ export function DatabaseMaintenancePage() {
         ) : null}
 
         <Tile>
+          <div className="border-b border-border pb-3">
+            <p className="text-sm font-semibold text-textPrimary">Google Cloud OAuth Setup</p>
+            <p className="mt-0.5 text-xs text-textMuted">
+              Enter your Google Cloud OAuth Client ID and Client Secret once. They are encrypted on this computer
+              (Electron safeStorage) and are never stored in the app source code.
+            </p>
+          </div>
+
+          {status?.oauthConfigured ? (
+            <p className="mt-3 text-xs text-success">
+              OAuth configured{status.oauthClientIdHint ? `: ${status.oauthClientIdHint}` : ''}. Enter new values below
+              only if you rotated the secret in Google Cloud Console.
+            </p>
+          ) : (
+            <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-textPrimary">
+              <span className="font-semibold">Action required before first Google Drive backup:</span> create a Desktop
+              OAuth client in Google Cloud Console, then paste the Client ID and Client Secret here. Because the old
+              secret was previously embedded in source code, regenerate/rotate the OAuth client secret in Google Cloud
+              before saving the new values.
+            </p>
+          )}
+
+          <form className="mt-4 space-y-3" onSubmit={onSaveGoogleOAuthConfig}>
+            <div>
+              <FieldLabel>OAuth Client ID</FieldLabel>
+              <TextInput
+                value={oauthClientId}
+                onChange={(e) => setOauthClientId(e.target.value)}
+                placeholder="xxxx.apps.googleusercontent.com"
+                autoComplete="off"
+                required
+              />
+            </div>
+            <div>
+              <FieldLabel>OAuth Client Secret</FieldLabel>
+              <TextInput
+                type="password"
+                value={oauthClientSecret}
+                onChange={(e) => setOauthClientSecret(e.target.value)}
+                placeholder="Enter client secret"
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <PrimaryButton type="submit" disabled={oauthSaving || !oauthClientId.trim() || !oauthClientSecret.trim()}>
+              {oauthSaving ? 'Saving…' : status?.oauthConfigured ? 'Update OAuth credentials' : 'Save OAuth credentials'}
+            </PrimaryButton>
+          </form>
+        </Tile>
+
+        <Tile>
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div>
               <p className="text-sm font-semibold text-textPrimary">Google Drive Backup</p>
@@ -172,7 +252,11 @@ export function DatabaseMaintenancePage() {
 
           <div className="mt-5 flex flex-wrap gap-2">
             {!status?.connected ? (
-              <PrimaryButton type="button" onClick={onConnectGoogleDrive} disabled={actionLoading}>
+              <PrimaryButton
+                type="button"
+                onClick={onConnectGoogleDrive}
+                disabled={actionLoading || !status?.oauthConfigured}
+              >
                 {actionLoading ? 'Connecting…' : 'Connect Google Drive'}
               </PrimaryButton>
             ) : (

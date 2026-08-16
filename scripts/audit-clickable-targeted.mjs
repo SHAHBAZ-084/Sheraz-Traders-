@@ -3,7 +3,7 @@
  */
 import { chromium } from 'playwright';
 
-const BASE = process.env.APP_URL ?? 'http://127.0.0.1:4173';
+const BASE = process.env.APP_URL ?? 'http://127.0.0.1:5173';
 
 async function login(page) {
   await page.goto(`${BASE}/login`);
@@ -15,8 +15,9 @@ async function login(page) {
 
 async function assertClickable(page, selector, label) {
   const el = page.locator(selector).first();
-  await el.waitFor({ state: 'visible', timeout: 15000 });
+  await el.waitFor({ state: 'attached', timeout: 15000 });
   await el.scrollIntoViewIfNeeded();
+  await el.waitFor({ state: 'visible', timeout: 5000 });
   const box = await el.boundingBox();
   if (!box) throw new Error(`${label}: no box`);
   const hit = await page.evaluate(({ x, y }) => {
@@ -37,11 +38,13 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 try {
   await login(page);
 
-  await page.goto(`${BASE}/products/add`);
+  await page.goto(`${BASE}/products/add`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(400);
   await assertClickable(page, 'input[placeholder="Search name, unit, ledger…"]', 'Products Search');
   await assertClickable(page, 'select >> nth=-1', 'Products Filter category');
 
-  await page.goto(`${BASE}/accounts/manage/add`);
+  await page.goto(`${BASE}/accounts/manage/add`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(400);
   await assertClickable(page, 'input[placeholder="Search name, code…"]', 'Add Account Search');
   await assertClickable(page, 'select >> nth=-1', 'Add Account Filter category');
 

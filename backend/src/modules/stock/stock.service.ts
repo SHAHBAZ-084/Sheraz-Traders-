@@ -2,15 +2,31 @@ import {
   InvoiceStatus,
   InvoiceType,
   Prisma,
+  ProductKind,
   StockDirection,
 } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
+import { formatWeightMaundKg } from '../invoices/kachi-maal.calculations';
 import { STOCK_TRACKING_STARTED_AT } from './stock.calculations';
 
 type Tx = Prisma.TransactionClient;
 
 type ActiveProductRef = { id: number; name: string };
+
+function movementDelta(
+  m: { direction: StockDirection; bags: unknown; weightKg: unknown | null },
+  kind: ProductKind,
+): number {
+  const qty =
+    kind === ProductKind.KACHI && m.weightKg != null ? Number(m.weightKg) : Number(m.bags);
+  return m.direction === StockDirection.IN ? qty : -qty;
+}
+
+function formatStockQuantity(qty: number, kind: ProductKind): string {
+  if (kind === ProductKind.KACHI) return formatWeightMaundKg(qty);
+  return String(qty);
+}
 
 async function loadActiveProductsForLines(
   tx: Tx,
@@ -42,6 +58,7 @@ export async function getStockReport(params: {
 }) {
   const product = await prisma.product.findFirst({
     where: { id: params.productId, isActive: true },
+    select: { id: true, name: true, code: true, kind: true },
   });
   if (!product) throw new AppError(404, 'Product not found');
 
@@ -71,20 +88,22 @@ export async function getStockReport(params: {
   let totalOut = 0;
   let saleInvoiceTotal = 0;
   let purchaseInvoiceTotal = 0;
+  const isKachi = product.kind === ProductKind.KACHI;
   const rows = movements.map((m) => {
-    const bags = Number(m.bags);
+    const qty =
+      isKachi && m.weightKg != null ? Number(m.weightKg) : Number(m.bags);
     if (m.direction === StockDirection.IN) {
-      running += bags;
-      totalIn += bags;
+      running += qty;
+      totalIn += qty;
     } else {
-      running -= bags;
-      totalOut += bags;
+      running -= qty;
+      totalOut += qty;
     }
     if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
-      saleInvoiceTotal += bags;
+      saleInvoiceTotal += qty;
     }
     if (m.invoiceType === InvoiceType.PURCHASE_INVOICE && m.direction === StockDirection.IN) {
-      purchaseInvoiceTotal += bags;
+      purchaseInvoiceTotal += qty;
     }
     return {
       id: m.id,
@@ -93,13 +112,17 @@ export async function getStockReport(params: {
       invoiceReference: m.invoiceReference,
       invoiceType: m.invoiceType,
       status: m.direction,
-      bags,
+      bags: Number(m.bags),
+      weightKg: m.weightKg != null ? Number(m.weightKg) : null,
+      quantity: qty,
+      quantityDisplay: formatStockQuantity(qty, product.kind),
       runningBalance: running,
+      runningBalanceDisplay: formatStockQuantity(running, product.kind),
     };
   });
 
   return {
-    product: { id: product.id, name: product.name, code: product.code },
+    product: { id: product.id, name: product.name, code: product.code, kind: product.kind },
     storeId: storeId ?? null,
     trackingStartedAt: STOCK_TRACKING_STARTED_AT.toISOString(),
     historicalBackfill: false as const,
@@ -112,6 +135,7 @@ export async function getStockReport(params: {
       netBalance: running,
       saleInvoiceQty: saleInvoiceTotal,
       purchaseInvoiceQty: purchaseInvoiceTotal,
+      netBalanceDisplay: formatStockQuantity(running, product.kind),
     },
   };
 }
@@ -281,19 +305,24 @@ export async function getCurrentStockBalance(
   storeId?: number | null,
   db: Tx | typeof prisma = prisma,
 ): Promise<number> {
+  const product = await db.product.findFirst({
+    where: { id: productId },
+    select: { kind: true },
+  });
+  const kind = product?.kind ?? ProductKind.STANDARD;
+
   const scopedStoreId = storeId != null && storeId > 0 ? storeId : undefined;
   const movements = await db.stockMovement.findMany({
     where: {
       productId,
       ...(scopedStoreId != null ? { storeId: scopedStoreId } : {}),
     },
-    select: { direction: true, bags: true },
+    select: { direction: true, bags: true, weightKg: true },
   });
 
   let balance = 0;
   for (const m of movements) {
-    const bags = Number(m.bags);
-    balance += m.direction === StockDirection.IN ? bags : -bags;
+    balance += movementDelta(m, kind);
   }
   return balance;
 }
@@ -507,6 +536,51 @@ export async function postOpeningStockIn(
       invoiceType: InvoiceType.OPENING_STOCK,
       invoiceReference: 'Opening Stock',
       description: 'Opening Stock',
+      isOpeningStock: true,
+    },
+  });
+}
+
+/** Opening stock IN for Kachi products — stores precise total kg in weightKg. */
+export async function postOpeningKachiStockIn(
+  tx: Tx,
+  data: {
+    productId: number;
+    storeId: number;
+    weightKg: number;
+    date?: Date;
+  },
+) {
+  const weightKg = Number(data.weightKg);
+  if (!(weightKg > 0)) return;
+
+  const product = await tx.product.findFirst({
+    where: { id: data.productId, isActive: true, kind: ProductKind.KACHI },
+  });
+  if (!product) throw new AppError(400, `Kachi product #${data.productId} not found`);
+
+  const store = await tx.store.findFirst({ where: { id: data.storeId, isActive: true } });
+  if (!store) throw new AppError(400, 'Store not found or inactive');
+
+  const existingOpening = await tx.stockMovement.findFirst({
+    where: { productId: product.id, storeId: store.id, isOpeningStock: true },
+  });
+  if (existingOpening) {
+    throw new AppError(400, 'Opening stock was already recorded for this product at this store');
+  }
+
+  await tx.stockMovement.create({
+    data: {
+      productId: product.id,
+      storeId: store.id,
+      direction: StockDirection.IN,
+      bags: 0,
+      weightKg,
+      date: data.date ?? new Date(),
+      invoiceId: null,
+      invoiceType: InvoiceType.OPENING_STOCK,
+      invoiceReference: 'Opening Stock',
+      description: 'Opening Stock (Kachi)',
       isOpeningStock: true,
     },
   });

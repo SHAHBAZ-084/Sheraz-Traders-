@@ -1,9 +1,13 @@
-import { AccountType, InvoiceStatus, InvoiceType, Prisma } from '@prisma/client';
+import { AccountType, InvoiceStatus, InvoiceType, Prisma, ProductKind } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { AppError } from '../../utils/helpers';
 import { postOpeningBalanceInTx } from '../accounting/accounting.service';
-import { getCurrentStockBalance, postOpeningStockIn } from '../stock/stock.service';
+import {
+  computeKachiOpeningStockValue,
+  type KachiBagMode,
+} from '../invoices/kachi-maal.calculations';
+import { getCurrentStockBalance, postOpeningKachiStockIn, postOpeningStockIn } from '../stock/stock.service';
 import {
   ensureMaalKhataCategoryInTx,
   generateNextMaalKhataCodeInTx,
@@ -76,6 +80,7 @@ export async function listProducts(
         name: true,
         code: true,
         unit: true,
+        kind: true,
         accountId: true,
         categoryId: true,
         isActive: true,
@@ -116,6 +121,7 @@ function mapListedProduct(product: {
   name: string;
   code: string;
   unit: string | null;
+  kind: ProductKind;
   accountId: number;
   categoryId: number | null;
   isActive: boolean;
@@ -144,18 +150,50 @@ function mapListedProduct(product: {
   };
 }
 
+export type KachiOpeningStockInput = {
+  bagMode: KachiBagMode;
+  bagCount: number;
+  dharanCount: number;
+  looseKg: number;
+  bhartii: number;
+  ratePerMaund: number;
+};
+
 export async function createProduct(data: {
   name: string;
   unit?: string;
   code?: string;
   categoryId?: number | null;
+  kind?: ProductKind;
   openingStock?: number;
   openingStockRate?: number;
   openingStoreId?: number;
+  kachiOpening?: KachiOpeningStockInput;
 }) {
   const name = data.name.trim();
   if (!name) throw new AppError(400, 'Product name is required');
 
+  const kind = data.kind ?? ProductKind.STANDARD;
+
+  if (kind === ProductKind.KACHI) {
+    return createKachiProduct(data, name);
+  }
+
+  return createStandardProduct(data, name);
+}
+
+async function createStandardProduct(
+  data: {
+    name: string;
+    unit?: string;
+    code?: string;
+    categoryId?: number | null;
+    openingStock?: number;
+    openingStockRate?: number;
+    openingStoreId?: number;
+  },
+  name: string,
+) {
   const openingStockRaw =
     data.openingStock != null && data.openingStock !== undefined ? Number(data.openingStock) : 0;
   const openingStockRateRaw =
@@ -230,6 +268,7 @@ export async function createProduct(data: {
         name,
         code,
         unit: data.unit?.trim() || null,
+        kind: ProductKind.STANDARD,
         accountId: account.id,
         categoryId,
       },
@@ -252,6 +291,154 @@ export async function createProduct(data: {
         ledgerId: ledger.id,
         accountName,
         amount: openingStockValue,
+        side: 'DR',
+        notes: 'Opening Stock',
+      });
+    }
+
+    return tx.product.findUniqueOrThrow({
+      where: { id: product.id },
+      include: {
+        account: { include: { ledger: true } },
+        category: true,
+      },
+    });
+  });
+}
+
+async function createKachiProduct(
+  data: {
+    unit?: string;
+    code?: string;
+    categoryId?: number | null;
+    openingStock?: number;
+    openingStockRate?: number;
+    openingStoreId?: number;
+    kachiOpening?: KachiOpeningStockInput;
+  },
+  name: string,
+) {
+  if (data.openingStock != null || data.openingStockRate != null) {
+    throw new AppError(
+      400,
+      'Standard opening stock quantity/rate cannot be used with Kachi products — use kachiOpening weight fields',
+    );
+  }
+
+  const opening = data.kachiOpening;
+  const hasOpeningInput =
+    opening != null
+    && (
+      Number(opening.bagCount) > 0
+      || Number(opening.dharanCount) > 0
+      || Number(opening.looseKg) > 0
+      || Number(opening.ratePerMaund) > 0
+    );
+
+  let openingValue = 0;
+  let openingWeightKg = 0;
+
+  if (hasOpeningInput) {
+    if (!opening) {
+      throw new AppError(400, 'Kachi opening weight details are required');
+    }
+    if (opening.bagMode !== 'BORI' && opening.bagMode !== 'THELA') {
+      throw new AppError(400, 'bagMode must be BORI or THELA');
+    }
+    if (data.openingStoreId == null || data.openingStoreId <= 0) {
+      throw new AppError(400, 'Store is required when kachi opening stock is entered');
+    }
+    if (!(Number(opening.ratePerMaund) > 0)) {
+      throw new AppError(400, 'Purchase rate per maund is required for kachi opening stock');
+    }
+    if (Number(opening.bagCount) > 0 && !(Number(opening.bhartii) > 0)) {
+      throw new AppError(400, 'Bhartii must be greater than zero when bag count is entered');
+    }
+
+    const computed = computeKachiOpeningStockValue({
+      bagMode: opening.bagMode,
+      bagCount: Number(opening.bagCount) || 0,
+      dharanCount: Number(opening.dharanCount) || 0,
+      looseKg: Number(opening.looseKg) || 0,
+      bhartii: Number(opening.bhartii) || 0,
+      ratePerMaund: Number(opening.ratePerMaund),
+    });
+
+    openingWeightKg = computed.totalWeightKg;
+    openingValue = computed.amount;
+
+    if (!(openingWeightKg > 0)) {
+      throw new AppError(400, 'Kachi opening weight must be greater than zero');
+    }
+    if (!(openingValue > 0)) {
+      throw new AppError(400, 'Kachi opening stock value must be greater than zero');
+    }
+  }
+
+  const existing = await prisma.product.findFirst({
+    where: { isActive: true, name },
+  });
+  if (existing) throw new AppError(400, `Product "${name}" already exists`);
+
+  let categoryId: number | null = null;
+  if (data.categoryId != null && data.categoryId !== undefined) {
+    const businessCategory = await prisma.productCategory.findFirst({
+      where: { id: data.categoryId, isActive: true },
+    });
+    if (!businessCategory) throw new AppError(400, 'Product category not found or inactive');
+    categoryId = businessCategory.id;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const category = await ensureMaalKhataCategoryInTx(tx);
+    const accountName = maalKhataAccountName(name);
+    const code = data.code?.trim() || (await generateNextMaalKhataCodeInTx(tx));
+
+    const codeTaken = await tx.account.findFirst({ where: { code } });
+    if (codeTaken) throw new AppError(400, `Account code "${code}" already exists`);
+
+    const nameTaken = await tx.account.findFirst({
+      where: { isActive: true, name: accountName, categoryId: category.id },
+    });
+    if (nameTaken) throw new AppError(400, `Product ledger "${accountName}" already exists`);
+
+    const account = await tx.account.create({
+      data: {
+        categoryId: category.id,
+        name: accountName,
+        code,
+        type: AccountType.ASSET,
+      },
+    });
+
+    const ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
+
+    const product = await tx.product.create({
+      data: {
+        name,
+        code,
+        unit: data.unit?.trim() || 'Kg',
+        kind: ProductKind.KACHI,
+        accountId: account.id,
+        categoryId,
+      },
+      include: {
+        account: { include: { ledger: true } },
+        category: true,
+      },
+    });
+
+    if (openingWeightKg > 0) {
+      await postOpeningKachiStockIn(tx, {
+        productId: product.id,
+        storeId: data.openingStoreId!,
+        weightKg: openingWeightKg,
+      });
+
+      await postOpeningBalanceInTx(tx, {
+        ledgerId: ledger.id,
+        accountName,
+        amount: openingValue,
         side: 'DR',
         notes: 'Opening Stock',
       });

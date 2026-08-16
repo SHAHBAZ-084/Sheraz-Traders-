@@ -645,7 +645,9 @@ export function StockReportPage() {
               {!report.historicalBackfill
                 ? ' Invoices saved before stock tracking started are not included.'
                 : null}
-              {' '}Carried loose remainder: {report.carriedRemainderKg} kg.
+              {report.product.kind === 'KACHI'
+                ? ' Kachi products show stock as Maund + Kg (same format as Kachi Maal total weight) — underlying balance is stored in precise kg.'
+                : ` Carried loose remainder: ${report.carriedRemainderKg} kg.`}
               {report.storeId
                 ? ` Filtered to store: ${stores.find((s) => s.id === report.storeId)?.name ?? `#${report.storeId}`}.`
                 : null}
@@ -676,8 +678,10 @@ export function StockReportPage() {
                       <td className={`pr-3 font-medium ${row.status === 'IN' ? 'text-success' : 'text-danger'}`}>
                         {row.status}
                       </td>
-                      <td className="pr-3 text-right tabular-nums">{row.bags}</td>
-                      <td className="text-right font-medium tabular-nums">{row.runningBalance}</td>
+                      <td className="pr-3 text-right tabular-nums">{row.quantityDisplay ?? row.bags}</td>
+                      <td className="text-right font-medium tabular-nums">
+                        {row.runningBalanceDisplay ?? row.runningBalance}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -691,7 +695,7 @@ export function StockReportPage() {
                   </td>
                   <td className="pr-3 text-right tabular-nums" />
                   <td className="text-right tabular-nums">
-                    Net {report.totals.netBalance}
+                    Net {report.totals.netBalanceDisplay ?? report.totals.netBalance}
                   </td>
                 </tr>
               </tfoot>

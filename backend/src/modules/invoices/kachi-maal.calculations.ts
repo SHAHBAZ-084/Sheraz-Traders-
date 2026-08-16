@@ -1,5 +1,48 @@
 export const DHARAN_KG = 5;
 export const MAUND_KG = 40;
+/** Thela input mode: each thela counts as 50 kg in weight entry (not used for stock report display). */
+/** Common thela weight in kg (informational only — Bhartii is always user-entered). */
+export const THELA_KG = 50;
+
+export type KachiBagMode = 'BORI' | 'THELA';
+
+export type KachiWeightInput = {
+  bagCount: number;
+  bagMode: KachiBagMode;
+  bhartii: number;
+  dharanCount: number;
+  looseKg: number;
+};
+
+export function resolveKachiBhartii(_mode: KachiBagMode, bhartii: number): number {
+  const n = Number(bhartii);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Total kg from bags/thela + dharan + loose — same formula as Kachi Maal row weight. */
+export function computeKachiWeightKg(input: KachiWeightInput): number {
+  const bhartii = resolveKachiBhartii(input.bagMode, input.bhartii);
+  return (
+    Math.max(0, Number(input.bagCount) || 0) * bhartii
+    + Math.max(0, Number(input.dharanCount) || 0) * DHARAN_KG
+    + Math.max(0, Number(input.looseKg) || 0)
+  );
+}
+
+export type KachiOpeningStockInput = KachiWeightInput & { ratePerMaund: number };
+
+/** Opening stock value for kachi products — amount only (no party deductions). */
+export function computeKachiOpeningStockValue(input: KachiOpeningStockInput): {
+  totalWeightKg: number;
+  amount: number;
+  bhartiiUsed: number;
+} {
+  const bhartiiUsed = resolveKachiBhartii(input.bagMode, input.bhartii);
+  const totalWeightKg = computeKachiWeightKg(input);
+  const ratePerKg = Math.max(0, Number(input.ratePerMaund) || 0) / MAUND_KG;
+  const amount = roundMoney(totalWeightKg * ratePerKg);
+  return { totalWeightKg, amount, bhartiiUsed };
+}
 
 export type KachiMaalPreferenceRates = {
   daamiPercent: number;

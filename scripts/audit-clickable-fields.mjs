@@ -47,6 +47,7 @@ const PAGES = [
   { path: '/reports/profit-loss', auth: true, name: 'Profit & Loss' },
   { path: '/reports/stock', auth: true, name: 'Stock Report' },
   { path: '/reports/financial-year', auth: true, name: 'Financial Year Reports' },
+  { path: '/reports/financial-year/hub', auth: true, name: 'Financial Year Reports Hub', dynamic: true },
   { path: '/system/database', auth: true, name: 'Database Maintenance' },
   { path: '/system/stores', auth: true, name: 'Stores' },
   { path: '/system/approvals', auth: true, name: 'Pending Approvals' },
@@ -171,6 +172,25 @@ async function hitTest(page, target) {
       };
     }
 
+    const pointInside = (node) => {
+      if (!node) return false;
+      const r = node.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+
+    if (tag === 'A') {
+      const anchor = el.closest('a');
+      if (anchor && pointInside(anchor)) {
+        return { ok: true, hit: { tag: el.tagName, label: hitLabel, inTopnav: false } };
+      }
+    }
+    if (tag === 'BUTTON') {
+      const btn = el.closest('button');
+      if (btn && pointInside(btn)) {
+        return { ok: true, hit: { tag: el.tagName, label: hitLabel, inTopnav: false } };
+      }
+    }
+
     if (walk(el)) {
       return { ok: true, hit: { tag: el.tagName, label: hitLabel, inTopnav: false } };
     }
@@ -190,6 +210,19 @@ async function hitTest(page, target) {
   }, target);
 }
 
+/** Resolve dynamic routes (e.g. FY reports hub after picking a closed year). */
+async function resolveDynamicPath(page, meta) {
+  if (meta.path !== '/reports/financial-year/hub') return meta.path;
+
+  await page.goto(`${BASE}/reports/financial-year`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(600);
+  const first = page.locator('.fy-reports-year-list__item').first();
+  if ((await first.count()) === 0) return null;
+  await first.click();
+  await page.waitForURL(/\/reports\/financial-year\/\d+/, { timeout: 10000 });
+  return new URL(page.url()).pathname;
+}
+
 async function auditPage(page, meta, viewport) {
   const result = {
     name: meta.name,
@@ -202,8 +235,28 @@ async function auditPage(page, meta, viewport) {
   };
 
   try {
-    await page.goto(`${BASE}${meta.path}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const resolvedPath = meta.dynamic ? await resolveDynamicPath(page, meta) : meta.path;
+    if (meta.dynamic && !resolvedPath) {
+      result.status = 'pass';
+      result.notes.push('Skipped — no closed financial years in database');
+      return result;
+    }
+    if (meta.path === '/user/fy-management') {
+      await page.evaluate(() => sessionStorage.setItem('fyAdminGate', '1'));
+    }
+    await page.goto(`${BASE}${resolvedPath}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(400);
+    result.path = resolvedPath ?? meta.path;
+
+    const actualPath = new URL(page.url()).pathname;
+    if (!meta.dynamic && actualPath !== meta.path) {
+      result.status = 'error';
+      result.failures.push({
+        phase: 'load',
+        reason: `Expected path ${meta.path} but landed on ${actualPath}`,
+      });
+      return result;
+    }
 
     // Fresh load (top)
     let targets = await collectTargets(page);

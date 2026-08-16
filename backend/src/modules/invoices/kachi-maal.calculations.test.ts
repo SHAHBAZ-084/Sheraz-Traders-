@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
+  computeKachiOpeningStockValue,
   DHARAN_KG,
   formatWeightMaundKg,
   MAUND_KG,
@@ -20,6 +21,25 @@ describe('Kachi Maal calculations', () => {
     expect(formatWeightMaundKg(420)).toBe('10 Maund 20 Kg');
     expect(formatWeightMaundKg(10)).toBe('10 Kg');
     expect(formatWeightMaundKg(40)).toBe('1 Maund');
+  });
+
+  it('computes kachi opening stock value without party deductions', () => {
+    const result = computeKachiOpeningStockValue({
+      bagMode: 'THELA',
+      bagCount: 10,
+      dharanCount: 2,
+      looseKg: 10,
+      bhartii: 40,
+      ratePerMaund: 4000,
+    });
+    expect(result.bhartiiUsed).toBe(40);
+    expect(result.totalWeightKg).toBe(420);
+    expect(result.amount).toBe(42_000);
+  });
+
+  it('formats kachi stock report kg as maund and remaining kg (same as Kachi Maal weight display)', () => {
+    expect(formatWeightMaundKg(1250)).toBe('31 Maund 10 Kg');
+    expect(formatWeightMaundKg(520)).toBe('13 Maund');
   });
 
   it('computes row weight and amount', () => {

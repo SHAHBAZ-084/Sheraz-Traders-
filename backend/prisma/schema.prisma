@@ -272,13 +272,14 @@ model TrialBalanceApproval {
 }
 
 model Product {
-  id         Int      @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   name       String
-  code       String   @unique
+  code       String      @unique
   unit       String?
-  accountId  Int      @unique
+  kind       ProductKind @default(STANDARD)
+  accountId  Int         @unique
   categoryId Int?
-  isActive   Boolean  @default(true)
+  isActive   Boolean     @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -419,6 +420,11 @@ model InvoiceVoucher {
   @@index([invoiceId])
 }
 
+enum ProductKind {
+  STANDARD
+  KACHI
+}
+
 enum StockDirection {
   IN
   OUT
@@ -458,6 +464,8 @@ model StockMovement {
   storeId          Int?
   direction        StockDirection
   bags             Decimal
+  /** Kachi products track precise kg here; STANDARD products leave null and use bags. */
+  weightKg         Decimal?
   date             DateTime
   invoiceId        Int?
   invoiceType      InvoiceType
