@@ -27,4 +27,4 @@ jobs:
         run: npm test -w backend
         env:
           SKIP_MIGRATIONS: '1'
-          DATABASE_URL: 'file:./data/sheraztrader-ci.db?connection_limit=1'
+          DATABASE_URL: 'file:./data/sheraztrader-ci.db?connection_limit=5'

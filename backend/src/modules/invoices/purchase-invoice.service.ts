@@ -18,7 +18,7 @@ import {
   type VoucherLeg,
 } from '../accounting/accounting.service';
 import { parseVoucherDateInput } from '../accounting/ledger-utils';
-import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
+import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postPurchaseInvoiceStockIn } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
@@ -193,9 +193,13 @@ export async function createPurchaseInvoice(
     await assertPurchasePartyAccount(tx, data.supplierAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      totals.lines.map((line) => line.productId),
+    );
 
     for (const line of totals.lines) {
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, line.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(line.productId)!;
       resolvedLines.push({
         productId: product.id,
         productName: product.name,
@@ -287,9 +291,16 @@ export async function approvePurchaseInvoice(invoiceId: number) {
     await assertPurchasePartyAccount(tx, invoice.debitAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      invoice.items.map((item) => {
+        if (item.productId == null) throw new AppError(400, 'Purchase invoice line missing product');
+        return item.productId;
+      }),
+    );
     for (const item of invoice.items) {
       if (item.productId == null) throw new AppError(400, 'Purchase invoice line missing product');
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, item.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(item.productId)!;
       const goodsTotal = Number(item.total);
       const mazduriAmount = Number(item.mazduriAmount ?? 0);
       resolvedLines.push({
@@ -369,8 +380,12 @@ export async function updatePendingPurchaseInvoice(
     await assertPurchasePartyAccount(tx, data.supplierAccountId);
 
     const resolvedLines: ResolvedPurchaseLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      totals.lines.map((line) => line.productId),
+    );
     for (const line of totals.lines) {
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, line.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(line.productId)!;
       resolvedLines.push({
         productId: product.id,
         productName: product.name,

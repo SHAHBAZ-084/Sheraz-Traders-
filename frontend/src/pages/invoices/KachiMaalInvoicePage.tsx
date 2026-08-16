@@ -28,11 +28,15 @@ import { formatLedgerAmount } from '../../lib/format';
 import {
   computeKachiMaalInvoiceTotals,
   computeKachiMaalRow,
-  DEBIT_ACCOUNT_CATEGORIES,
   formatWeightMaundKg,
   parseNum,
 } from '../../lib/kachiMaalCalculations';
-import { PARTY_ACCOUNT_CATEGORIES } from '../../lib/partyAccounts';
+import {
+  flatPartyAccountOptions,
+  partyAccountOptionsForPrimaryCategory,
+  primaryPartyCategoryIdForAccount,
+  primaryPartyCategorySelectOptions,
+} from '../../lib/partyAccounts';
 import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
 
 type GridRow = {
@@ -66,6 +70,7 @@ type KachiMaalDraft = {
   dharanCount: string;
   looseKg: string;
   ratePerMaund: string;
+  debitCategoryId: string;
   debitAccountId: string;
   miscAmount: string;
 };
@@ -73,26 +78,6 @@ type KachiMaalDraft = {
 function todayInputValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function filterCategories(all: AccountCategory[], allowed: readonly string[]) {
-  const safeAll = Array.isArray(all) ? all : [];
-  const set = new Set(allowed);
-  return safeAll.filter((c) => set.has(c.name));
-}
-
-function flatAccountOptions(
-  categories: AccountCategory[],
-  accounts: Account[],
-  categoryNames: readonly string[],
-) {
-  const safeCats = Array.isArray(categories) ? categories : [];
-  const safeAccs = Array.isArray(accounts) ? accounts : [];
-  const allowedIds = new Set(filterCategories(safeCats, categoryNames).map((c) => c.id));
-  return safeAccs
-    .filter((a) => allowedIds.has(a.categoryId))
-    .map((a) => ({ value: String(a.id), label: a.name }))
-    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 }
 
 export function KachiMaalInvoicePage() {
@@ -130,6 +115,7 @@ export function KachiMaalInvoicePage() {
   const [looseKg, setLooseKg] = useState(() => restoredState?.looseKg ?? '');
   const [ratePerMaund, setRatePerMaund] = useState(() => restoredState?.ratePerMaund ?? '');
 
+  const [debitCategoryId, setDebitCategoryId] = useState(() => restoredState?.debitCategoryId ?? '');
   const [debitAccountId, setDebitAccountId] = useState(() => restoredState?.debitAccountId ?? '');
   const [miscAmount, setMiscAmount] = useState(() => restoredState?.miscAmount ?? '');
 
@@ -161,6 +147,7 @@ export function KachiMaalInvoicePage() {
       if (restoredState.productId) setProductId(restoredState.productId);
       if (restoredState.jins) setJins(restoredState.jins);
       if (restoredState.tafseel) setTafseel(restoredState.tafseel);
+      if (restoredState.debitCategoryId) setDebitCategoryId(restoredState.debitCategoryId);
       if (restoredState.debitAccountId) setDebitAccountId(restoredState.debitAccountId);
       if (restoredState.gridRows) setGridRows(restoredState.gridRows);
       if (restoredState.partyAccountId) setPartyAccountId(restoredState.partyAccountId);
@@ -271,17 +258,47 @@ export function KachiMaalInvoicePage() {
   }, [gridRows, prefRates, miscAmount]);
 
   const partyOptions = useMemo(
-    () => flatAccountOptions(categories, accounts, PARTY_ACCOUNT_CATEGORIES),
+    () => flatPartyAccountOptions(categories, accounts),
     [categories, accounts],
   );
+  const debitCategoryOptions = useMemo(
+    () => primaryPartyCategorySelectOptions(categories),
+    [categories],
+  );
   const debitAccountOptions = useMemo(
-    () => flatAccountOptions(categories, accounts, DEBIT_ACCOUNT_CATEGORIES),
-    [categories, accounts],
+    () => partyAccountOptionsForPrimaryCategory(categories, accounts, debitCategoryId),
+    [categories, accounts, debitCategoryId],
   );
   const productOptions = useMemo(
     () => products.map((p) => ({ value: String(p.id), label: p.name })),
     [products],
   );
+
+  useEffect(() => {
+    if (!debitAccountId || debitCategoryId || accounts.length === 0 || categories.length === 0) return;
+    const derived = primaryPartyCategoryIdForAccount(categories, accounts, debitAccountId);
+    if (derived) setDebitCategoryId(derived);
+  }, [accounts, categories, debitAccountId, debitCategoryId]);
+
+  useEffect(() => {
+    if (!debitCategoryId || categories.length === 0) return;
+    const valid = debitCategoryOptions.some((o) => o.value === debitCategoryId);
+    if (!valid) {
+      setDebitCategoryId('');
+      setDebitAccountId('');
+    }
+  }, [debitCategoryId, categories, debitCategoryOptions]);
+
+  useEffect(() => {
+    if (!debitCategoryId || !debitAccountId) return;
+    const allowed = debitAccountOptions.some((o) => o.value === debitAccountId);
+    if (!allowed) setDebitAccountId('');
+  }, [debitCategoryId, debitAccountId, debitAccountOptions]);
+
+  function onDebitCategoryChange(nextCategoryId: string) {
+    setDebitCategoryId(nextCategoryId);
+    setDebitAccountId('');
+  }
 
   function addRow() {
     setError('');
@@ -341,6 +358,10 @@ export function KachiMaalInvoicePage() {
     setMessage('');
     if (gridRows.length === 0) {
       setError('Add at least one row to the grid');
+      return;
+    }
+    if (!debitCategoryId || !debitAccountId) {
+      setError('Select a Sale Party or Purchase Party debit account');
       return;
     }
 
@@ -544,16 +565,28 @@ export function KachiMaalInvoicePage() {
             <InvoiceFormSection label="Settlement (debit side)">
               <InvoiceFieldStack>
                 <InvoiceFieldGroup label="Debit account & totals">
-                  <InvoiceFieldRow cols={4}>
-                    <InvoiceField wide>
+                  <InvoiceFieldRow cols={2}>
+                    <InvoiceField>
+                      <FieldLabel>Party category</FieldLabel>
+                      <SearchSelect
+                        options={debitCategoryOptions}
+                        value={debitCategoryId}
+                        onChange={onDebitCategoryChange}
+                        placeholder="Sale Party or Purchase Party…"
+                      />
+                    </InvoiceField>
+                    <InvoiceField>
                       <FieldLabel>Debit account</FieldLabel>
                       <SearchSelect
                         options={debitAccountOptions}
                         value={debitAccountId}
                         onChange={setDebitAccountId}
-                        placeholder="Search account…"
+                        placeholder={debitCategoryId ? 'Search party…' : 'Select a category first'}
+                        disabled={!debitCategoryId}
                       />
                     </InvoiceField>
+                  </InvoiceFieldRow>
+                  <InvoiceFieldRow cols={3}>
                     <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
                     <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
                     <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
@@ -625,6 +658,7 @@ export function KachiMaalInvoicePage() {
                           dharanCount,
                           looseKg,
                           ratePerMaund,
+                          debitCategoryId,
                           debitAccountId,
                           miscAmount,
                         },

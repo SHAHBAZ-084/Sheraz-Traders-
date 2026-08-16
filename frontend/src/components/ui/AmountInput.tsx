@@ -1,11 +1,15 @@
-import { forwardRef, useCallback, useRef, type InputHTMLAttributes, type Ref } from 'react';
-import { formatAmountInputDisplay, sanitizeAmountInput } from '../../lib/format';
+import { forwardRef, useLayoutEffect, useRef, type InputHTMLAttributes, type Ref } from 'react';
+import { formatAmountInputDisplay } from '../../lib/format';
 import {
-  caretPositionForRawCount,
   countRawNumericCharsBefore,
   isAllowedDecimalKey,
   mergePastedInput,
 } from '../../lib/numericInput';
+import {
+  caretIndexForAmountValue,
+  resolveAmountInputChange,
+  warnAmountInputSanity,
+} from './amountInputLogic';
 import { TextInput } from './PageShell';
 
 type AmountInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type' | 'inputMode'> & {
@@ -23,32 +27,37 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   };
 }
 
-/** Monetary amount field — comma thousands-separators while typing; state stays numeric-only. */
+/**
+ * Monetary amount field — comma thousands-separators while typing; state stays numeric-only.
+ *
+ * Caret is restored in useLayoutEffect (before paint / before the next keystroke), never via
+ * requestAnimationFrame — which raced against fast typing and scrambled digits.
+ */
 export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(function AmountInput(
   { value, onChange, onFocus, onKeyDown, onPaste, className = '', ...rest },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const restoreCaret = useCallback((nextValue: string, rawCharsBefore: number) => {
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      const display = formatAmountInputDisplay(nextValue);
-      const caret = caretPositionForRawCount(display, rawCharsBefore);
-      el.setSelectionRange(caret, caret);
-    });
-  }, []);
-
-  const applyValue = useCallback(
-    (next: string, rawCharsBefore: number) => {
-      onChange(next);
-      restoreCaret(next, rawCharsBefore);
-    },
-    [onChange, restoreCaret],
-  );
+  /** Raw digit/dot count before caret; applied after React commits the formatted value. */
+  const pendingCaretRawRef = useRef<number | null>(null);
 
   const displayValue = formatAmountInputDisplay(value);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    const rawCount = pendingCaretRawRef.current;
+    if (!el || rawCount == null) return;
+    const caret = caretIndexForAmountValue(value, rawCount);
+    el.setSelectionRange(caret, caret);
+    pendingCaretRawRef.current = null;
+  }, [value, displayValue]);
+
+  function commit(incomingDisplay: string, selectionStart: number | null, isPaste: boolean) {
+    const { nextValue, caretRawCount } = resolveAmountInputChange(incomingDisplay, selectionStart);
+    warnAmountInputSanity(value, nextValue, { isPaste });
+    pendingCaretRawRef.current = caretRawCount;
+    onChange(nextValue);
+  }
 
   return (
     <TextInput
@@ -58,9 +67,8 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(functi
       value={displayValue}
       onChange={(e) => {
         const input = e.currentTarget;
-        const caret = input.selectionStart ?? displayValue.length;
-        const rawBefore = countRawNumericCharsBefore(displayValue, caret);
-        applyValue(sanitizeAmountInput(e.target.value), rawBefore);
+        // Use the browser's post-edit string + caret — not the previous React displayValue.
+        commit(e.target.value, input.selectionStart, false);
       }}
       onKeyDown={(e) => {
         if (!isAllowedDecimalKey(e.key, value, e)) {
@@ -74,9 +82,13 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(functi
         const input = e.currentTarget;
         const start = input.selectionStart ?? displayValue.length;
         const end = input.selectionEnd ?? displayValue.length;
-        const rawBefore = countRawNumericCharsBefore(displayValue, start);
         const merged = mergePastedInput(displayValue, pasted, start, end);
-        applyValue(sanitizeAmountInput(merged), rawBefore);
+        const { nextValue } = resolveAmountInputChange(merged, null);
+        const rawBefore = countRawNumericCharsBefore(displayValue, start);
+        const pastedRawLen = resolveAmountInputChange(pasted, pasted.length).nextValue.length;
+        warnAmountInputSanity(value, nextValue, { isPaste: true });
+        pendingCaretRawRef.current = rawBefore + pastedRawLen;
+        onChange(nextValue);
         onPaste?.(e);
       }}
       onFocus={(e) => {

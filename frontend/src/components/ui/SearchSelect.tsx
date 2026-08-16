@@ -156,6 +156,13 @@ export function SearchSelect({
 
     if (e.key === 'Tab') {
       if (!open) return;
+
+      // Shift+Tab must use native backward focus — never preventDefault or jump forward.
+      if (e.shiftKey) {
+        closeWithoutChange();
+        return;
+      }
+
       const option = resolveSelection(filtered, highlightIndex, highlightMovedByKeyboard, 'tab');
       if (option) {
         e.preventDefault();

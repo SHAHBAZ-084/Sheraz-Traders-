@@ -6,12 +6,15 @@ export const PURCHASE_PARTY_CATEGORIES = [
   'Int. Purchase Party',
   'Ext. Purchase Party',
 ] as const;
+/** Debit-side settlement account — Sale Party or Purchase Party (legacy purchase names included). */
 export const DEBIT_ACCOUNT_CATEGORIES = [
   'Sale Party',
   'Purchase Party',
   'Int. Purchase Party',
   'Ext. Purchase Party',
 ] as const;
+
+export const KACHI_MAAL_DEBIT_PARTY_CATEGORY_NAMES = ['Sale Party', 'Purchase Party'] as const;
 
 export type KachiMaalPreferenceRates = {
   daamiPercent: number;

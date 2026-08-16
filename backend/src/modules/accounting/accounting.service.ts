@@ -1,5 +1,6 @@
 import { AccountType, FinancialYearStatus, LedgerEntryType, Prisma, VoucherStatus, VoucherType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import { generateNextAccountCode, isAccountCodeConflict } from '../../lib/account-code';
 import { logger } from '../../lib/logger';
 import { AppError } from '../../utils/helpers';
 import { DEFAULT_PAGE_SIZE, PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
@@ -21,7 +22,7 @@ import { getStockSummary } from '../stock/stock.service';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
-/** Voucher posting recomputes full ledger chains — allow more time with connection_limit=1. */
+/** Voucher posting recomputes full ledger chains — allow longer interactive transactions. */
 export const WRITE_TRANSACTION_OPTIONS = { maxWait: 30_000, timeout: 120_000 } as const;
 
 export function fiscalYearLabelForDate(date: Date): { label: string; startDate: Date } {
@@ -245,6 +246,8 @@ export async function changeFinancialYear(
     });
 
     const computedAt = new Date();
+    // Per-account closing balances are independent, but each upsert carries a distinct balance value;
+    // Prisma has no batch upsert — sequential upserts kept for correctness.
     for (const account of accounts) {
       const balance = account.ledger ? Number(account.ledger.balance) : 0;
       await tx.financialYearClosingBalance.upsert({
@@ -321,16 +324,15 @@ async function loadAccounts(
     throw new AppError(400, 'Debit and credit accounts must be different');
   }
 
-  const [debitAccount, creditAccount] = await Promise.all([
-    tx.account.findFirst({
-      where: { id: debitAccountId, isActive: true },
-      include: { category: true },
-    }),
-    tx.account.findFirst({
-      where: { id: creditAccountId, isActive: true },
-      include: { category: true },
-    }),
-  ]);
+  // Parallel reads inside $transaction are safe with connection_limit=5; kept sequential for clarity.
+  const debitAccount = await tx.account.findFirst({
+    where: { id: debitAccountId, isActive: true },
+    include: { category: true },
+  });
+  const creditAccount = await tx.account.findFirst({
+    where: { id: creditAccountId, isActive: true },
+    include: { category: true },
+  });
 
   if (!debitAccount || !creditAccount) {
     throw new AppError(400, 'One or both accounts are invalid');
@@ -413,6 +415,7 @@ export async function recomputeLedgerRunningBalancesInTx(
 
   entries.sort(compareLedgerEntries);
 
+  // Sequential: each entry balance depends on the running total from prior entries.
   let running = opening;
   for (const entry of entries) {
     const debit = entry.type === LedgerEntryType.DEBIT ? Number(entry.amount) : 0;
@@ -539,6 +542,7 @@ async function applyPostedLedgerEntriesInTx(
     const credit = entry.type === LedgerEntryType.CREDIT ? Number(entry.amount) : 0;
     liveBalance = computeLedgerBalance(liveBalance, debit, credit);
     fyRunning = computeLedgerBalance(fyRunning, debit, credit);
+    // Sequential: FY running balance on each new entry depends on the previous entry in sort order.
     await tx.ledgerEntry.update({
       where: { id: entry.id },
       data: { balance: fyRunning },
@@ -705,19 +709,10 @@ export async function softDeleteAccountCategory(id: number) {
   });
 }
 
-async function generateNextAccountCode(): Promise<string> {
-  const accounts = await prisma.account.findMany({
-    where: {},
-    select: { code: true },
-  });
-
-  let max = 0;
-  for (const { code } of accounts) {
-    if (!/^\d+$/.test(code)) continue;
-    const num = parseInt(code, 10);
-    if (!Number.isNaN(num) && num > max) max = num;
-  }
-  return String(max + 1);
+async function generateNextAccountCodeInTx(
+  tx: Prisma.TransactionClient,
+): Promise<string> {
+  return generateNextAccountCode(tx);
 }
 
 async function resolveAccountType(
@@ -731,19 +726,6 @@ async function resolveAccountType(
     select: { type: true },
   });
   return sibling?.type ?? AccountType.ASSET;
-}
-
-async function generateNextAccountCodeInTx(
-  tx: Prisma.TransactionClient,
-  ): Promise<string> {
-  const accounts = await tx.account.findMany({ where: {}, select: { code: true } });
-  let max = 0;
-  for (const { code } of accounts) {
-    if (!/^\d+$/.test(code)) continue;
-    const num = parseInt(code, 10);
-    if (!Number.isNaN(num) && num > max) max = num;
-  }
-  return String(max + 1);
 }
 
 export const OPENING_BALANCE_EQUITY_ACCOUNT_NAME = 'Opening Balance Equity';
@@ -893,46 +875,60 @@ export async function createAccount(data: {
   }
 
   const type = await resolveAccountType(data.categoryId, data.type);
-  const trimmedCode = data.code
-    ? await assertUniqueAccountCode(data.code)
-    : await generateNextAccountCode();
+  const useAutoCode = !data.code?.trim();
+  if (!useAutoCode) {
+    await assertUniqueAccountCode(data.code!);
+  }
 
   const amount = Math.abs(data.openingBalance ?? 0);
   // Dr or Cr is always allowed — openingBalanceSide overrides category default when provided.
   const side = data.openingBalanceSide ?? defaultOpeningSide(type);
   const signedBalance = amount === 0 ? 0 : side === 'DR' ? amount : -amount;
 
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const account = await tx.account.create({
-      data: {
-        categoryId: data.categoryId,
-        name: trimmedName,
-        code: trimmedCode,
-        type,
-      },
-    });
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const trimmedCode = useAutoCode
+          ? await generateNextAccountCode(tx)
+          : normalizeLabel(data.code!);
 
-    const ledger = await tx.ledger.create({
-      data: { accountId: account.id, balance: 0 },
-    });
+        const account = await tx.account.create({
+          data: {
+            categoryId: data.categoryId,
+            name: trimmedName,
+            code: trimmedCode,
+            type,
+          },
+        });
 
-    if (amount > 0 && trimmedName.toLowerCase() !== 'opening balance equity') {
-      await postOpeningBalanceInTx(tx, {
-        ledgerId: ledger.id,
-        accountName: trimmedName,
-        amount,
-        side,
-        notes: 'Opening Balance',
-      });
-    } else if (amount > 0) {
-      await tx.ledger.update({ where: { id: ledger.id }, data: { balance: signedBalance } });
+        const ledger = await tx.ledger.create({
+          data: { accountId: account.id, balance: 0 },
+        });
+
+        if (amount > 0 && trimmedName.toLowerCase() !== 'opening balance equity') {
+          await postOpeningBalanceInTx(tx, {
+            ledgerId: ledger.id,
+            accountName: trimmedName,
+            amount,
+            side,
+            notes: 'Opening Balance',
+          });
+        } else if (amount > 0) {
+          await tx.ledger.update({ where: { id: ledger.id }, data: { balance: signedBalance } });
+        }
+
+        return tx.account.findUniqueOrThrow({
+          where: { id: account.id },
+          include: { category: true, ledger: true },
+        });
+      }, WRITE_TRANSACTION_OPTIONS);
+    } catch (error) {
+      if (useAutoCode && isAccountCodeConflict(error) && attempt < 5) continue;
+      throw error;
     }
+  }
 
-    return tx.account.findUniqueOrThrow({
-      where: { id: account.id },
-      include: { category: true, ledger: true },
-    });
-  });
+  throw new AppError(500, 'Could not allocate a unique account code — try again');
 }
 
 function defaultOpeningSide(type: AccountType): 'DR' | 'CR' {
@@ -1517,16 +1513,14 @@ export async function ensurePurchaseMazduriAccount(
 }
 
 async function syncCustomerSupplierAccountsInTx(tx: Prisma.TransactionClient) {
-  const [customers, suppliers] = await Promise.all([
-    tx.customer.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-    }),
-    tx.supplier.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-    }),
-  ]);
+  const customers = await tx.customer.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  });
+  const suppliers = await tx.supplier.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  });
 
   for (const customer of customers) {
     await ensureCustomerAccount(tx, customer);
@@ -1616,6 +1610,7 @@ async function mergeInventoryAccountIntoCanonical(
     });
 
     let balance = 0;
+    // Sequential: each entry balance is a cumulative running total after ledger merge.
     for (const entry of entries) {
       balance +=
         entry.type === LedgerEntryType.DEBIT ? Number(entry.amount) : -Number(entry.amount);
@@ -1764,13 +1759,13 @@ async function cleanupRemovedAutoCategories(tx: Prisma.TransactionClient) {
 
       if (partyTarget) {
         const target = await ensureCategoryInTx(tx, partyTarget.category);
-        for (const account of category.accounts) {
-          if (account.categoryId !== target.id) {
-            await tx.account.update({
-              where: { id: account.id },
-              data: { categoryId: target.id, type: partyTarget.type },
-            });
-          }
+        const toMigrate = category.accounts.filter((account) => account.categoryId !== target.id);
+        if (toMigrate.length > 0) {
+          // Independent rows — same target category/type for all accounts in this batch.
+          await tx.account.updateMany({
+            where: { id: { in: toMigrate.map((account) => account.id) } },
+            data: { categoryId: target.id, type: partyTarget.type },
+          });
         }
         await tx.accountCategory.update({
           where: { id: category.id },
@@ -1787,6 +1782,7 @@ async function cleanupRemovedAutoCategories(tx: Prisma.TransactionClient) {
       const unusedAccounts = [];
 
       for (const account of category.accounts) {
+        // Sequential: usage check is per account (ledger/voucher links differ per row).
         const used = await accountHasLinkedUsage(tx, account.id, account.ledger?.id);
         if (used) usedAccountNames.push(account.name);
         else unusedAccounts.push(account);
@@ -1800,9 +1796,10 @@ async function cleanupRemovedAutoCategories(tx: Prisma.TransactionClient) {
         continue;
       }
 
-      for (const account of unusedAccounts) {
-        await tx.account.update({
-          where: { id: account.id },
+      if (unusedAccounts.length > 0) {
+        // Independent deactivations — batch by id list.
+        await tx.account.updateMany({
+          where: { id: { in: unusedAccounts.map((account) => account.id) } },
           data: { isActive: false },
         });
       }

@@ -279,11 +279,9 @@ export async function removeProduct(id: number) {
     throw new AppError(400, 'Product ledger has a balance and cannot be removed');
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.product.update({ where: { id }, data: { isActive: false } });
-    await tx.account.update({ where: { id: product.accountId }, data: { isActive: false } });
-    return { ok: true };
-  });
+  await prisma.product.update({ where: { id }, data: { isActive: false } });
+  await prisma.account.update({ where: { id: product.accountId }, data: { isActive: false } });
+  return { ok: true };
 }
 
 export async function updateProduct(

@@ -85,11 +85,12 @@ export function LegacyTable({
   );
 }
 
+/** Visual field caption — not a <label>, so it never steals clicks from sibling controls. */
 export function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="app-field-label">
+    <div className="app-field-label">
       <span className="app-field-label-text">{children}</span>
-    </label>
+    </div>
   );
 }
 

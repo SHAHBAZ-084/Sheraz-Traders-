@@ -1,7 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react';
+import { useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { FieldLabel, FinancialButton, PageShell, Panel } from '../ui/PageShell';
 import { FormActionFooter } from '../ui/FormActionFooter';
 import { formatLedgerAmount } from '../../lib/format';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 /** Centered title band + white invoice/voucher form panel (app theme). */
 export function FormPageShell({
@@ -17,6 +18,10 @@ export function FormPageShell({
   children: ReactNode;
   panelClassName?: string;
 }) {
+  const trapRef = useRef<HTMLDivElement>(null);
+  // Page forms: trap Tab inside the panel; skip auto-focus if user already clicked a field.
+  useFocusTrap(trapRef, { containTab: true });
+
   return (
     <PageShell
       centerTitle
@@ -24,11 +29,19 @@ export function FormPageShell({
       titleRef={titleRef}
       title={titleNode ?? title}
     >
-      <Panel
-        className={`inv-form-panel mx-auto w-full overflow-visible bg-white ${panelClassName}`.trim()}
+      <div
+        ref={trapRef}
+        data-focus-trap="form"
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' && title.trim() ? title : 'Form'}
       >
-        {children}
-      </Panel>
+        <Panel
+          className={`inv-form-panel mx-auto w-full overflow-visible bg-white ${panelClassName}`.trim()}
+        >
+          {children}
+        </Panel>
+      </div>
     </PageShell>
   );
 }

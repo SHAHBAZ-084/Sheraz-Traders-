@@ -21,6 +21,9 @@ process.on('uncaughtException', (err) => {
     err: err.message,
     stack: err.stack,
   });
+  if (env.isProduction) {
+    void prisma.$disconnect().finally(() => process.exit(1));
+  }
 });
 
 let startupStatus: Awaited<ReturnType<typeof initializeDatabase>> | null = null;
@@ -31,7 +34,7 @@ async function main() {
   const server = app.listen(env.port, '127.0.0.1');
   await new Promise<void>((resolve, reject) => {
     server.once('listening', () => {
-      logger.info(`Grain Market POS API listening on http://127.0.0.1:${env.port}`);
+      logger.info(`Sheeraz Traders API listening on http://127.0.0.1:${env.port}`);
       resolve();
     });
     server.once('error', reject);
@@ -43,9 +46,12 @@ async function main() {
     process.exit(1);
   }
 
-  void runAccountingMaintenance().catch((err) => {
-    logger.warn('Accounting maintenance on startup failed', {
-      err: err instanceof Error ? err.message : String(err),
+  // Defer maintenance so startup + first user actions are not competing for the single SQLite connection.
+  setImmediate(() => {
+    void runAccountingMaintenance().catch((err) => {
+      logger.warn('Accounting maintenance on startup failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
   });
 

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  FormPageShell,
   InvoiceAddRowAction,
   InvoiceField,
   InvoiceFieldGroup,
@@ -9,7 +10,7 @@ import {
   InvoiceFormSection,
   InvoiceHeaderRow,
 } from '../../components/invoices/InvoiceFormLayout';
-import { FieldLabel, PageShell, Panel, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, TextInput } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useMinimizableForm } from '../../hooks/useMinimizableForm';
@@ -383,14 +384,12 @@ export function PurchaseInvoicePage() {
   }
 
   return (
-    <PageShell
-      centerTitle
-      invoiceTitleBand
+    <FormPageShell
       title={isEditingPending ? 'Edit Pending Purchase Invoice' : 'Purchase Invoice'}
+      panelClassName="inv-sp-invoice-panel"
     >
-      <Panel className="inv-form-panel inv-sp-invoice-panel mx-auto w-full overflow-visible bg-white">
-        <form onSubmit={onSubmit}>
-          <div className="inv-sp-invoice-form">
+      <form onSubmit={onSubmit}>
+        <div className="inv-sp-invoice-form">
               <InvoiceFormSection label="Header">
                 <InvoiceHeaderRow>
                   <InvoiceField>
@@ -540,7 +539,6 @@ export function PurchaseInvoicePage() {
               />
           </div>
         </form>
-      </Panel>
-    </PageShell>
+    </FormPageShell>
   );
 }

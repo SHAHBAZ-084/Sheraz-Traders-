@@ -343,7 +343,7 @@ export function AddProductPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3 relative z-[1]">
           <h2 className="text-sm font-semibold text-textPrimary">Products</h2>
           <div className="flex flex-wrap gap-2">
             <div className="min-w-[12rem]">

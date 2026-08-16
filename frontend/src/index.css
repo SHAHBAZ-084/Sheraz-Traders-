@@ -137,6 +137,10 @@
 
   .app-main {
 
+    position: relative;
+
+    z-index: 0;
+
     display: flex;
 
     min-width: 0;
@@ -155,6 +159,10 @@
 
   .app-main-scroll {
 
+    position: relative;
+
+    z-index: 0;
+
     flex: 1;
 
     min-width: 0;
@@ -171,11 +179,19 @@
 
   /* ── Top nav ── */
 
+  /*
+   * Header sits as a flex sibling ABOVE .app-main (not inside the scrollport).
+   * Do not use position:sticky here — sticky + high z-index can create an
+   * invisible hit-target over the top of page content when the nav wraps or
+   * compositing layers misalign (unclickable Search/Filter fields).
+   * pointer-events: none on the chrome + auto on children lets any accidental
+   * overlap pass clicks through to content underneath.
+   */
   .app-topnav {
 
     position: relative;
 
-    z-index: 100;
+    z-index: 30;
 
     box-sizing: border-box;
 
@@ -186,6 +202,8 @@
     flex-shrink: 0;
 
     overflow: visible;
+
+    pointer-events: none;
 
     background-color: var(--nav-bg, #1b4332);
 
@@ -214,6 +232,8 @@
     gap: 0.25rem;
 
     padding: 0 1rem;
+
+    pointer-events: auto;
 
   }
 
@@ -919,7 +939,13 @@
 
   .app-content-header {
 
+    position: relative;
+
+    z-index: 1;
+
     display: flex;
+
+    flex-shrink: 0;
 
     align-items: center;
 

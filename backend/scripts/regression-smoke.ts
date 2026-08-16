@@ -1,5 +1,5 @@
 /**
- * Regression smoke: party opening balances + concurrent writes under connection_limit=1.
+ * Regression smoke: party opening balances + concurrent writes under connection_limit=5 + retry.
  * Usage: npx tsx scripts/regression-smoke.ts
  */
 import { AccountType, Role } from '@prisma/client';
@@ -81,6 +81,26 @@ async function main() {
 
   const bankCat = await prisma.accountCategory.findFirst({ where: { name: 'Bank', isActive: true } });
   if (!bankCat) throw new Error('Bank category missing');
+
+  console.log('Concurrent writes (parallel account creates)…');
+  const concurrentCreates = await Promise.allSettled(
+    Array.from({ length: 5 }, (_, i) =>
+      createAccount({
+        categoryId: bankCat.id,
+        name: `Regress Bank Parallel ${stamp}-${i}`,
+        openingBalance: 2000 + i,
+        openingBalanceSide: 'DR',
+      }),
+    ),
+  );
+  const parallelFailed = concurrentCreates.filter((r) => r.status === 'rejected');
+  if (parallelFailed.length > 0) {
+    console.error(
+      'Parallel account create failures:',
+      parallelFailed.map((f) => (f as PromiseRejectedResult).reason),
+    );
+    throw new Error(`${parallelFailed.length} parallel account create(s) failed`);
+  }
 
   console.log('Rapid-fire sequential creates (accounts + invoices)…');
   const results: PromiseSettledResult<unknown>[] = [];

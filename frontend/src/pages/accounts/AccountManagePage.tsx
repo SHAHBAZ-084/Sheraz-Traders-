@@ -87,7 +87,11 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     });
   }, [accounts, search, filterCategoryId]);
 
-  async function reload() {
+  async function reload(modeHint: Mode = mode) {
+    if (modeHint === 'remove' || modeHint === 'edit') {
+      setAccounts(await api.listAccounts({ forSelectors: false }));
+      return;
+    }
     setCategories(await api.listCategories());
     setAccounts(await api.listAccounts({ forSelectors: false }));
   }
@@ -136,7 +140,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
         setMessage('Account removed.');
         setSelectedId('');
       }
-      await reload();
+      await reload(mode);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -237,7 +241,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
 
       {mode === 'add' ? (
         <Panel className="mt-4">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3 relative z-[1]">
             <h2 className="text-sm font-semibold text-textPrimary">Accounts</h2>
             <div className="flex flex-wrap gap-2">
               <div className="min-w-[12rem]">

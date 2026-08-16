@@ -125,7 +125,7 @@ async function startBackend(): Promise<void> {
   process.env.PORT = BACKEND_PORT;
   process.env.NODE_ENV = 'production';
   // Single connection so PRAGMA busy_timeout applies for the app lifetime (avoids intermittent SQLite locks).
-  process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}?connection_limit=1`;
+  process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}?connection_limit=5`;
   process.env.SESSION_SECRET = process.env.SESSION_SECRET || ensurePersistedSessionSecret(dataDir);
   process.env.GOOGLE_DRIVE_CLIENT_ID =
     process.env.GOOGLE_DRIVE_CLIENT_ID ||

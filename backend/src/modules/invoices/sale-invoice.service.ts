@@ -17,7 +17,7 @@ import {
   type VoucherLeg,
 } from '../accounting/accounting.service';
 import { parseVoucherDateInput } from '../accounting/ledger-utils';
-import { resolveMaalKhataAccountForProduct } from '../products/maal-khata';
+import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
@@ -171,9 +171,13 @@ export async function createSaleInvoice(
     await assertSalePartyAccount(tx, data.customerAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      totals.lines.map((line) => line.productId),
+    );
 
     for (const line of totals.lines) {
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, line.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(line.productId)!;
       resolvedLines.push({
         productId: product.id,
         productName: product.name,
@@ -254,9 +258,16 @@ export async function approveSaleInvoice(invoiceId: number) {
     await assertSalePartyAccount(tx, invoice.debitAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      invoice.items.map((item) => {
+        if (item.productId == null) throw new AppError(400, 'Sale invoice line missing product');
+        return item.productId;
+      }),
+    );
     for (const item of invoice.items) {
       if (item.productId == null) throw new AppError(400, 'Sale invoice line missing product');
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, item.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(item.productId)!;
       resolvedLines.push({
         productId: product.id,
         productName: product.name,
@@ -333,8 +344,12 @@ export async function updatePendingSaleInvoice(
     await assertSalePartyAccount(tx, data.customerAccountId);
 
     const resolvedLines: ResolvedSaleLine[] = [];
+    const maalKhataByProductId = await resolveMaalKhataAccountsForProductIds(
+      tx,
+      totals.lines.map((line) => line.productId),
+    );
     for (const line of totals.lines) {
-      const { product, maalKhataAccountId } = await resolveMaalKhataAccountForProduct(tx, line.productId);
+      const { product, maalKhataAccountId } = maalKhataByProductId.get(line.productId)!;
       resolvedLines.push({
         productId: product.id,
         productName: product.name,

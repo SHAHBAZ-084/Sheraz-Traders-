@@ -220,12 +220,27 @@ export type Voucher = {
 
 type ApiError = { error: string };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    credentials: 'include',
-  });
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      credentials: 'include',
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out — the server may be busy. Wait a moment and try again.');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status} ${response.statusText}`.trim();

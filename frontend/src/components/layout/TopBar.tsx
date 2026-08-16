@@ -177,7 +177,7 @@ export function TopBar() {
   const isUserRole = user?.role === 'USER';
 
   return (
-    <header className="app-topnav sticky top-0 isolate shadow-md">
+    <header className="app-topnav shadow-md">
       <div className="app-topnav-inner">
         <Link to="/dashboard" className="app-topnav-brand shrink-0" aria-label="Sheeraz Traders — Dashboard">
           <img src="/sheeraz-traders-logo.png" alt="Sheeraz Traders" className="app-topnav-logo" />

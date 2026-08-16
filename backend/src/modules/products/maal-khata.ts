@@ -5,6 +5,21 @@ import { AppError } from '../../utils/helpers';
 /** Dedicated inventory category — one ledger per product. */
 export const MAAL_KHATA_CATEGORY_NAME = 'Products';
 
+const maalKhataProductInclude = {
+  account: {
+    include: { category: true, ledger: true },
+  },
+} as const;
+
+export type MaalKhataProduct = Prisma.ProductGetPayload<{
+  include: typeof maalKhataProductInclude;
+}>;
+
+export type ResolvedMaalKhataAccount = {
+  product: MaalKhataProduct;
+  maalKhataAccountId: number;
+};
+
 /** Account name equals the product name (no prefix). */
 export function maalKhataAccountName(productName: string) {
   return productName.trim();
@@ -36,18 +51,7 @@ export async function generateNextMaalKhataCodeInTx(tx: Prisma.TransactionClient
   return `MK${String(max + 1).padStart(4, '0')}`;
 }
 
-export async function resolveMaalKhataAccountForProduct(
-  tx: Prisma.TransactionClient,
-  productId: number,
-) {
-  const product = await tx.product.findFirst({
-    where: { id: productId, isActive: true },
-    include: {
-      account: {
-        include: { category: true, ledger: true },
-      },
-    },
-  });
+function assertMaalKhataProduct(product: MaalKhataProduct | undefined): MaalKhataProduct {
   if (!product) throw new AppError(400, 'Product is required for purchase posting');
 
   if (!isMaalKhataCategoryName(product.account.category.name)) {
@@ -61,14 +65,56 @@ export async function resolveMaalKhataAccountForProduct(
     throw new AppError(400, `Product "${product.name}" ledger is inactive`);
   }
 
-  if (!product.account.ledger) {
-    await tx.ledger.create({ data: { accountId: product.accountId, balance: 0 } });
+  return product;
+}
+
+/**
+ * Batch-resolve Products-ledger accounts for invoice lines.
+ * Validates in line order (same errors as per-line resolveMaalKhataAccountForProduct).
+ */
+export async function resolveMaalKhataAccountsForProductIds(
+  tx: Prisma.TransactionClient,
+  orderedProductIds: number[],
+): Promise<Map<number, ResolvedMaalKhataAccount>> {
+  if (orderedProductIds.length === 0) {
+    return new Map();
   }
 
-  return {
-    product,
-    maalKhataAccountId: product.accountId,
-  };
+  const uniqueIds = [...new Set(orderedProductIds)];
+  const products = await tx.product.findMany({
+    where: { id: { in: uniqueIds }, isActive: true },
+    include: maalKhataProductInclude,
+  });
+  const byId = new Map(products.map((product) => [product.id, product]));
+
+  for (const productId of orderedProductIds) {
+    assertMaalKhataProduct(byId.get(productId));
+  }
+
+  for (const productId of uniqueIds) {
+    const product = byId.get(productId)!;
+    if (!product.account.ledger) {
+      await tx.ledger.create({ data: { accountId: product.accountId, balance: 0 } });
+    }
+  }
+
+  const resolved = new Map<number, ResolvedMaalKhataAccount>();
+  for (const productId of uniqueIds) {
+    const product = byId.get(productId)!;
+    resolved.set(productId, {
+      product,
+      maalKhataAccountId: product.accountId,
+    });
+  }
+  return resolved;
+}
+
+export async function resolveMaalKhataAccountForProduct(
+  tx: Prisma.TransactionClient,
+  productId: number,
+) {
+  const resolved = await resolveMaalKhataAccountsForProductIds(tx, [productId]);
+  return resolved.get(productId)!;
 }
 
 export async function assertMaalKhataAccount(tx: Prisma.TransactionClient, accountId: number) {

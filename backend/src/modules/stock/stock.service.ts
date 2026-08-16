@@ -10,6 +10,30 @@ import { STOCK_TRACKING_STARTED_AT } from './stock.calculations';
 
 type Tx = Prisma.TransactionClient;
 
+type ActiveProductRef = { id: number; name: string };
+
+async function loadActiveProductsForLines(
+  tx: Tx,
+  lines: Array<{ productId: number; quantity: number }>,
+): Promise<Map<number, ActiveProductRef>> {
+  const productIds = [
+    ...new Set(
+      lines
+        .filter((line) => Number(line.quantity) > 0)
+        .map((line) => line.productId),
+    ),
+  ];
+  if (productIds.length === 0) {
+    return new Map();
+  }
+
+  const products = await tx.product.findMany({
+    where: { id: { in: productIds }, isActive: true },
+    select: { id: true, name: true },
+  });
+  return new Map(products.map((product) => [product.id, product]));
+}
+
 export async function getStockReport(params: {
   productId: number;
   storeId?: number | null;
@@ -285,11 +309,13 @@ export async function postSaleInvoiceStockOut(
     lines: Array<{ productId: number; quantity: number }>;
   },
 ) {
+  const productsById = await loadActiveProductsForLines(tx, data.lines);
+
   for (const line of data.lines) {
     const bagsOut = Number(line.quantity);
     if (!(bagsOut > 0)) continue;
 
-    const product = await tx.product.findFirst({ where: { id: line.productId, isActive: true } });
+    const product = productsById.get(line.productId);
     if (!product) throw new AppError(400, `Product #${line.productId} not found`);
 
     await tx.stockMovement.create({
@@ -497,11 +523,13 @@ export async function postPurchaseInvoiceStockIn(
     lines: Array<{ productId: number; quantity: number }>;
   },
 ) {
+  const productsById = await loadActiveProductsForLines(tx, data.lines);
+
   for (const line of data.lines) {
     const bagsIn = Number(line.quantity);
     if (!(bagsIn > 0)) continue;
 
-    const product = await tx.product.findFirst({ where: { id: line.productId, isActive: true } });
+    const product = productsById.get(line.productId);
     if (!product) throw new AppError(400, `Product #${line.productId} not found`);
 
     await tx.stockMovement.create({

@@ -43,13 +43,22 @@ type UseFocusTrapOptions = {
   escapeFocusRef?: RefObject<HTMLElement | null>;
   initialFocusRef?: RefObject<HTMLElement | null>;
   disabled?: boolean;
+  /**
+   * When true, trap Tab without requiring role="dialog" (full-page invoice/voucher forms).
+   * Also redirects Tab back into the region if focus somehow leaves (e.g. top nav).
+   */
+  containTab?: boolean;
 };
+
+function isTrapContainer(container: HTMLElement, containTab: boolean): boolean {
+  return containTab || isModalContainer(container);
+}
 
 export function useFocusTrap(
   containerRef: RefObject<HTMLElement | null>,
   options: UseFocusTrapOptions = {},
 ) {
-  const { initialFocusRef, disabled = false } = options;
+  const { initialFocusRef, disabled = false, containTab = false } = options;
   const didInitialFocusRef = useRef(false);
 
   useEffect(() => {
@@ -60,12 +69,13 @@ export function useFocusTrap(
     if (!containerRef.current || didInitialFocusRef.current) return;
 
     const container = containerRef.current;
-    if (!isModalContainer(container)) return;
+    if (!isTrapContainer(container, containTab)) return;
 
     const timer = requestAnimationFrame(() => {
       const liveContainer = containerRef.current;
       if (!liveContainer || !liveContainer.isConnected || didInitialFocusRef.current) return;
 
+      // Never yank focus if the user already clicked/focused a field inside the trap.
       const active = document.activeElement as HTMLElement | null;
       if (active && liveContainer.contains(active) && isFocusableCandidate(active, liveContainer)) {
         didInitialFocusRef.current = true;
@@ -82,7 +92,7 @@ export function useFocusTrap(
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [containerRef, initialFocusRef, disabled]);
+  }, [containerRef, initialFocusRef, disabled, containTab]);
 
   useEffect(() => {
     if (disabled) return;
@@ -90,16 +100,23 @@ export function useFocusTrap(
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Tab') return;
       const container = containerRef.current;
-      if (!container || !container.isConnected || !isModalContainer(container)) return;
-
-      const active = document.activeElement as HTMLElement | null;
-      if (!active || !container.contains(active)) return;
+      if (!container || !container.isConnected || !isTrapContainer(container, containTab)) return;
 
       const focusables = getFocusableElements(container);
       if (focusables.length === 0) return;
 
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      const inside = Boolean(active && container.contains(active));
+
+      // Focus left the form (top nav, etc.) — pull Tab/Shift+Tab back inside.
+      if (!inside) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
+
       const currentIndex = findFocusableIndex(active, focusables);
 
       if (e.shiftKey) {
@@ -115,7 +132,7 @@ export function useFocusTrap(
 
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [containerRef, disabled]);
+  }, [containerRef, disabled, containTab]);
 
   return { trapped: !disabled };
 }
