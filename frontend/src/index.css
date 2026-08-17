@@ -3047,6 +3047,18 @@
     font-weight: 500;
   }
 
+  .report-table td.report-amount-cell {
+    white-space: nowrap;
+  }
+
+  .report-table .report-amount-col {
+    min-width: 110px;
+  }
+
+  .report-table .report-balance-col {
+    min-width: 130px;
+  }
+
   .report-table tfoot .report-amount-cell {
     font-weight: 600;
   }
@@ -3062,6 +3074,20 @@
   .report-table tbody tr.report-table-row--selected {
     background: #fff;
     box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  .report-table tbody tr.report-table-row--total {
+    background: #f5f5f5;
+    border-top: 2px solid var(--border);
+    font-weight: 600;
+  }
+
+  .report-table tbody tr.report-table-row--total:hover {
+    background: #f5f5f5;
+  }
+
+  .report-table tbody tr.report-table-row--total .report-amount-cell {
+    font-weight: 600;
   }
 
 
@@ -3986,6 +4012,14 @@
   .report-table tbody tr.report-table-row--selected {
     background: #fff !important;
     box-shadow: none !important;
+  }
+
+  .report-table tbody tr.report-table-row--total {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .sale-purchase-report-print {

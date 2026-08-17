@@ -1,0 +1,1348 @@
+{
+  "meta": {
+    "description": "Big seed dataset — 2 banks, 2 purchase parties, 2 sale parties, 100 dedicated ledger entries on Meezan Bank Chishtian, 10 receipt/payment/journal vouchers covering all account-pair combos, 10 Kachi Maal invoices, 10 purchase invoices, 10 sale invoices.",
+    "targetAccount": "Meezan Bank Chishtian"
+  },
+  "bankAccounts": [
+    {
+      "name": "Meezan Bank Chishtian",
+      "category": "Bank",
+      "openingBalance": 150000
+    },
+    {
+      "name": "Faysal Bank Bahawalnagar",
+      "category": "Bank",
+      "openingBalance": 150000
+    }
+  ],
+  "purchaseParties": [
+    {
+      "name": "Ahmad Traders",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Rana Agro Supplies",
+      "location": "Bahawalnagar"
+    }
+  ],
+  "saleParties": [
+    {
+      "name": "Iqbal Farm House",
+      "location": "Chishtian"
+    },
+    {
+      "name": "Chaudhry Traders",
+      "location": "Bahawalnagar"
+    }
+  ],
+  "products": {
+    "fertilizers": [
+      {
+        "name": "Urea",
+        "unit": "Bags",
+        "openingStock": 200,
+        "openingStockRate": 4500
+      },
+      {
+        "name": "DAP",
+        "unit": "Bags",
+        "openingStock": 150,
+        "openingStockRate": 11000
+      },
+      {
+        "name": "SOP",
+        "unit": "Bags",
+        "openingStock": 100,
+        "openingStockRate": 9500
+      },
+      {
+        "name": "NPK",
+        "unit": "Bags",
+        "openingStock": 120,
+        "openingStockRate": 8800
+      },
+      {
+        "name": "Zinc Sulphate",
+        "unit": "Bags",
+        "openingStock": 60,
+        "openingStockRate": 3200
+      }
+    ],
+    "pesticides": [
+      {
+        "name": "Confidor",
+        "unit": "Ltr",
+        "openingStock": 80,
+        "openingStockRate": 2200
+      },
+      {
+        "name": "Karate",
+        "unit": "Ltr",
+        "openingStock": 70,
+        "openingStockRate": 1800
+      },
+      {
+        "name": "Actara",
+        "unit": "Kg",
+        "openingStock": 50,
+        "openingStockRate": 5500
+      },
+      {
+        "name": "Roundup",
+        "unit": "Ltr",
+        "openingStock": 90,
+        "openingStockRate": 1500
+      },
+      {
+        "name": "Polo",
+        "unit": "Ltr",
+        "openingStock": 40,
+        "openingStockRate": 6200
+      }
+    ]
+  },
+  "receiptVouchers": [
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 55000,
+      "reference": "RCPT-1"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 22000,
+      "reference": "RCPT-2"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Iqbal Farm House",
+      "amount": 16000,
+      "reference": "RCPT-3"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Chaudhry Traders",
+      "amount": 32000,
+      "reference": "RCPT-4"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 30000,
+      "reference": "RCPT-5"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 29000,
+      "reference": "RCPT-6"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Iqbal Farm House",
+      "amount": 23000,
+      "reference": "RCPT-7"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Chaudhry Traders",
+      "amount": 21000,
+      "reference": "RCPT-8"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 58000,
+      "reference": "RCPT-9"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 49000,
+      "reference": "RCPT-10"
+    }
+  ],
+  "paymentVouchers": [
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 15000,
+      "reference": "PYMT-1"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 47000,
+      "reference": "PYMT-2"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 37000,
+      "reference": "PYMT-3"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 12000,
+      "reference": "PYMT-4"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 11000,
+      "reference": "PYMT-5"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 15000,
+      "reference": "PYMT-6"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 23000,
+      "reference": "PYMT-7"
+    },
+    {
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 24000,
+      "reference": "PYMT-8"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 42000,
+      "reference": "PYMT-9"
+    },
+    {
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 48000,
+      "reference": "PYMT-10"
+    }
+  ],
+  "journalVouchers": [
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 21000,
+      "reference": "JRNL-1"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 55000,
+      "reference": "JRNL-2"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 32000,
+      "reference": "JRNL-3"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 65000,
+      "reference": "JRNL-4"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 61000,
+      "reference": "JRNL-5"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 64000,
+      "reference": "JRNL-6"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 54000,
+      "reference": "JRNL-7"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 46000,
+      "reference": "JRNL-8"
+    },
+    {
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 34000,
+      "reference": "JRNL-9"
+    },
+    {
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 48000,
+      "reference": "JRNL-10"
+    }
+  ],
+  "targetAccountLedgerVouchers": [
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 22000,
+      "reference": "BIG-LDG-1"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 5000,
+      "reference": "BIG-LDG-2"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 15000,
+      "reference": "BIG-LDG-3"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 32000,
+      "reference": "BIG-LDG-4"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 26000,
+      "reference": "BIG-LDG-5"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 22000,
+      "reference": "BIG-LDG-6"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 14000,
+      "reference": "BIG-LDG-7"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 18000,
+      "reference": "BIG-LDG-8"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 26000,
+      "reference": "BIG-LDG-9"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 11000,
+      "reference": "BIG-LDG-10"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 10000,
+      "reference": "BIG-LDG-11"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 29000,
+      "reference": "BIG-LDG-12"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 11000,
+      "reference": "BIG-LDG-13"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 27000,
+      "reference": "BIG-LDG-14"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 27000,
+      "reference": "BIG-LDG-15"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 21000,
+      "reference": "BIG-LDG-16"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 7000,
+      "reference": "BIG-LDG-17"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 34000,
+      "reference": "BIG-LDG-18"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 39000,
+      "reference": "BIG-LDG-19"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 12000,
+      "reference": "BIG-LDG-20"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 29000,
+      "reference": "BIG-LDG-21"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 10000,
+      "reference": "BIG-LDG-22"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 40000,
+      "reference": "BIG-LDG-23"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 23000,
+      "reference": "BIG-LDG-24"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 28000,
+      "reference": "BIG-LDG-25"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 17000,
+      "reference": "BIG-LDG-26"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 9000,
+      "reference": "BIG-LDG-27"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 7000,
+      "reference": "BIG-LDG-28"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 19000,
+      "reference": "BIG-LDG-29"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 23000,
+      "reference": "BIG-LDG-30"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 10000,
+      "reference": "BIG-LDG-31"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 19000,
+      "reference": "BIG-LDG-32"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 11000,
+      "reference": "BIG-LDG-33"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 29000,
+      "reference": "BIG-LDG-34"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 22000,
+      "reference": "BIG-LDG-35"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 34000,
+      "reference": "BIG-LDG-36"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 28000,
+      "reference": "BIG-LDG-37"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 15000,
+      "reference": "BIG-LDG-38"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 28000,
+      "reference": "BIG-LDG-39"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 27000,
+      "reference": "BIG-LDG-40"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 18000,
+      "reference": "BIG-LDG-41"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 22000,
+      "reference": "BIG-LDG-42"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 9000,
+      "reference": "BIG-LDG-43"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 15000,
+      "reference": "BIG-LDG-44"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 39000,
+      "reference": "BIG-LDG-45"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 20000,
+      "reference": "BIG-LDG-46"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 15000,
+      "reference": "BIG-LDG-47"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 34000,
+      "reference": "BIG-LDG-48"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 29000,
+      "reference": "BIG-LDG-49"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 22000,
+      "reference": "BIG-LDG-50"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 40000,
+      "reference": "BIG-LDG-51"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 19000,
+      "reference": "BIG-LDG-52"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 25000,
+      "reference": "BIG-LDG-53"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 8000,
+      "reference": "BIG-LDG-54"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 19000,
+      "reference": "BIG-LDG-55"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 7000,
+      "reference": "BIG-LDG-56"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 25000,
+      "reference": "BIG-LDG-57"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 30000,
+      "reference": "BIG-LDG-58"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 22000,
+      "reference": "BIG-LDG-59"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 9000,
+      "reference": "BIG-LDG-60"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 18000,
+      "reference": "BIG-LDG-61"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 25000,
+      "reference": "BIG-LDG-62"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 18000,
+      "reference": "BIG-LDG-63"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 36000,
+      "reference": "BIG-LDG-64"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 30000,
+      "reference": "BIG-LDG-65"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 34000,
+      "reference": "BIG-LDG-66"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 14000,
+      "reference": "BIG-LDG-67"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 21000,
+      "reference": "BIG-LDG-68"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 13000,
+      "reference": "BIG-LDG-69"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 20000,
+      "reference": "BIG-LDG-70"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 40000,
+      "reference": "BIG-LDG-71"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 39000,
+      "reference": "BIG-LDG-72"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 21000,
+      "reference": "BIG-LDG-73"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 32000,
+      "reference": "BIG-LDG-74"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 30000,
+      "reference": "BIG-LDG-75"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 28000,
+      "reference": "BIG-LDG-76"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 19000,
+      "reference": "BIG-LDG-77"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 13000,
+      "reference": "BIG-LDG-78"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 37000,
+      "reference": "BIG-LDG-79"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 36000,
+      "reference": "BIG-LDG-80"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 10000,
+      "reference": "BIG-LDG-81"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 8000,
+      "reference": "BIG-LDG-82"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 12000,
+      "reference": "BIG-LDG-83"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 14000,
+      "reference": "BIG-LDG-84"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 15000,
+      "reference": "BIG-LDG-85"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 32000,
+      "reference": "BIG-LDG-86"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 9000,
+      "reference": "BIG-LDG-87"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 29000,
+      "reference": "BIG-LDG-88"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 29000,
+      "reference": "BIG-LDG-89"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 34000,
+      "reference": "BIG-LDG-90"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 38000,
+      "reference": "BIG-LDG-91"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 21000,
+      "reference": "BIG-LDG-92"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 40000,
+      "reference": "BIG-LDG-93"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 5000,
+      "reference": "BIG-LDG-94"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Ahmad Traders",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 12000,
+      "reference": "BIG-LDG-95"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Faysal Bank Bahawalnagar",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 39000,
+      "reference": "BIG-LDG-96"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Iqbal Farm House",
+      "amount": 22000,
+      "reference": "BIG-LDG-97"
+    },
+    {
+      "type": "PAYMENT",
+      "date": "today",
+      "debit": "Rana Agro Supplies",
+      "credit": "Meezan Bank Chishtian",
+      "amount": 26000,
+      "reference": "BIG-LDG-98"
+    },
+    {
+      "type": "JOURNAL",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Faysal Bank Bahawalnagar",
+      "amount": 12000,
+      "reference": "BIG-LDG-99"
+    },
+    {
+      "type": "RECEIPT",
+      "date": "today",
+      "debit": "Meezan Bank Chishtian",
+      "credit": "Chaudhry Traders",
+      "amount": 23000,
+      "reference": "BIG-LDG-100"
+    }
+  ],
+  "kachiMaalInvoices": [
+    {
+      "date": "today",
+      "jins": "Cotton",
+      "party": "Ahmad Traders",
+      "boriCount": 47,
+      "ratePerMaund": 4295,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Wheat",
+      "party": "Rana Agro Supplies",
+      "boriCount": 49,
+      "ratePerMaund": 3026,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Rice",
+      "party": "Ahmad Traders",
+      "boriCount": 66,
+      "ratePerMaund": 8895,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Maize",
+      "party": "Rana Agro Supplies",
+      "boriCount": 36,
+      "ratePerMaund": 7100,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Gram",
+      "party": "Ahmad Traders",
+      "boriCount": 68,
+      "ratePerMaund": 4463,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Cotton",
+      "party": "Rana Agro Supplies",
+      "boriCount": 52,
+      "ratePerMaund": 3871,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Wheat",
+      "party": "Ahmad Traders",
+      "boriCount": 75,
+      "ratePerMaund": 8122,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Rice",
+      "party": "Rana Agro Supplies",
+      "boriCount": 39,
+      "ratePerMaund": 8234,
+      "debitAccount": "Rana Agro Supplies"
+    },
+    {
+      "date": "today",
+      "jins": "Maize",
+      "party": "Ahmad Traders",
+      "boriCount": 52,
+      "ratePerMaund": 7988,
+      "debitAccount": "Ahmad Traders"
+    },
+    {
+      "date": "today",
+      "jins": "Gram",
+      "party": "Rana Agro Supplies",
+      "boriCount": 32,
+      "ratePerMaund": 4252,
+      "debitAccount": "Rana Agro Supplies"
+    }
+  ],
+  "purchaseInvoices": [
+    {
+      "date": "today",
+      "product": "Urea",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 33,
+      "rate": 4146
+    },
+    {
+      "date": "today",
+      "product": "DAP",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 44,
+      "rate": 10189
+    },
+    {
+      "date": "today",
+      "product": "SOP",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 10,
+      "rate": 11313
+    },
+    {
+      "date": "today",
+      "product": "NPK",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 30,
+      "rate": 9505
+    },
+    {
+      "date": "today",
+      "product": "Zinc Sulphate",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 11,
+      "rate": 3332
+    },
+    {
+      "date": "today",
+      "product": "Confidor",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 33,
+      "rate": 6538
+    },
+    {
+      "date": "today",
+      "product": "Karate",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 25,
+      "rate": 2449
+    },
+    {
+      "date": "today",
+      "product": "Actara",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 25,
+      "rate": 10795
+    },
+    {
+      "date": "today",
+      "product": "Roundup",
+      "purchaseParty": "Ahmad Traders",
+      "qty": 15,
+      "rate": 2903
+    },
+    {
+      "date": "today",
+      "product": "Polo",
+      "purchaseParty": "Rana Agro Supplies",
+      "qty": 41,
+      "rate": 2633
+    }
+  ],
+  "saleInvoices": [
+    {
+      "date": "today",
+      "product": "NPK",
+      "saleParty": "Iqbal Farm House",
+      "qty": 29,
+      "rate": 10727
+    },
+    {
+      "date": "today",
+      "product": "Zinc Sulphate",
+      "saleParty": "Chaudhry Traders",
+      "qty": 29,
+      "rate": 4060
+    },
+    {
+      "date": "today",
+      "product": "Confidor",
+      "saleParty": "Iqbal Farm House",
+      "qty": 9,
+      "rate": 12809
+    },
+    {
+      "date": "today",
+      "product": "Karate",
+      "saleParty": "Chaudhry Traders",
+      "qty": 20,
+      "rate": 11007
+    },
+    {
+      "date": "today",
+      "product": "Actara",
+      "saleParty": "Iqbal Farm House",
+      "qty": 10,
+      "rate": 6342
+    },
+    {
+      "date": "today",
+      "product": "Roundup",
+      "saleParty": "Chaudhry Traders",
+      "qty": 21,
+      "rate": 11938
+    },
+    {
+      "date": "today",
+      "product": "Polo",
+      "saleParty": "Iqbal Farm House",
+      "qty": 18,
+      "rate": 5470
+    },
+    {
+      "date": "today",
+      "product": "Urea",
+      "saleParty": "Chaudhry Traders",
+      "qty": 22,
+      "rate": 5295
+    },
+    {
+      "date": "today",
+      "product": "DAP",
+      "saleParty": "Iqbal Farm House",
+      "qty": 27,
+      "rate": 7107
+    },
+    {
+      "date": "today",
+      "product": "SOP",
+      "saleParty": "Chaudhry Traders",
+      "qty": 17,
+      "rate": 12647
+    }
+  ]
+}

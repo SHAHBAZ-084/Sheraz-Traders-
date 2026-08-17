@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
+import { SELECTABLE_ACCOUNT, SELECTABLE_PRODUCT } from '../../lib/record-status';
 
 /** Dedicated inventory category — one ledger per product. */
 export const MAAL_KHATA_CATEGORY_NAME = 'Products';
@@ -82,7 +83,7 @@ export async function resolveMaalKhataAccountsForProductIds(
 
   const uniqueIds = [...new Set(orderedProductIds)];
   const products = await tx.product.findMany({
-    where: { id: { in: uniqueIds }, isActive: true },
+    where: { id: { in: uniqueIds }, ...SELECTABLE_PRODUCT },
     include: maalKhataProductInclude,
   });
   const byId = new Map(products.map((product) => [product.id, product]));
@@ -119,7 +120,7 @@ export async function resolveMaalKhataAccountForProduct(
 
 export async function assertMaalKhataAccount(tx: Prisma.TransactionClient, accountId: number) {
   const account = await tx.account.findFirst({
-    where: { id: accountId, isActive: true },
+    where: { id: accountId, ...SELECTABLE_ACCOUNT },
     include: { category: true, ledger: true },
   });
   if (!account) throw new AppError(400, 'Invalid product ledger account');
@@ -134,7 +135,7 @@ export async function assertMaalKhataAccount(tx: Prisma.TransactionClient, accou
 
 export async function assertNotMaalKhataLinkedAccount(accountId: number) {
   const product = await prisma.product.findFirst({
-    where: { accountId, isActive: true },
+    where: { accountId, ...SELECTABLE_PRODUCT },
     select: { name: true },
   });
   if (product) {

@@ -16,6 +16,13 @@ async function fetchPaginatedPage<T>(path: string): Promise<Paginated<T>> {
   return request<Paginated<T>>(path);
 }
 
+export type LocalBackupStatus = {
+  path: string | null;
+  lastSuccessAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+};
+
 export type BackupStatus = {
   connected: boolean;
   needsReconnect: boolean;
@@ -24,6 +31,7 @@ export type BackupStatus = {
   lastError: string | null;
   oauthConfigured: boolean;
   oauthClientIdHint: string | null;
+  local: LocalBackupStatus;
 };
 
 export type User = {
@@ -56,6 +64,7 @@ export type Account = {
   code: string;
   type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
   isActive: boolean;
+  status?: 'ACTIVE' | 'PENDING_APPROVAL' | 'REJECTED';
   category?: AccountCategory | null;
   ledger?: Ledger | null;
 };
@@ -96,6 +105,7 @@ export type Product = {
   accountId: number;
   categoryId?: number | null;
   category?: ProductCategory | null;
+  status?: 'ACTIVE' | 'PENDING_APPROVAL' | 'REJECTED';
   /** Net stock quantity (bags for standard, kg for kachi). */
   stockBalance?: number;
   account?: { id: number; name: string; code: string; ledger?: { balance: number | string } | null };
@@ -242,6 +252,9 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error('Request timed out — the server may be busy. Wait a moment and try again.');
     }
+    if (err instanceof TypeError && err.message === 'Failed to fetch') {
+      throw new Error('Cannot reach the server — make sure the app backend is running.');
+    }
     throw err;
   } finally {
     window.clearTimeout(timer);
@@ -303,7 +316,7 @@ export const api = {
   listPendingApprovals() {
     return request<
       Array<{
-        kind: 'voucher' | 'invoice';
+        kind: 'voucher' | 'invoice' | 'account' | 'product' | 'account_adjustment' | 'stock_adjustment';
         id: number;
         type: string;
         reference: string | null;
@@ -369,6 +382,30 @@ export const api = {
   },
   rejectPendingInvoice(id: number) {
     return request(`/api/approvals/invoices/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  approvePendingAccount(id: number) {
+    return request(`/api/approvals/accounts/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  rejectPendingAccount(id: number) {
+    return request(`/api/approvals/accounts/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  approvePendingProduct(id: number) {
+    return request(`/api/approvals/products/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  rejectPendingProduct(id: number) {
+    return request(`/api/approvals/products/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  approvePendingAccountAdjustment(id: number) {
+    return request(`/api/approvals/account-adjustments/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  rejectPendingAccountAdjustment(id: number) {
+    return request(`/api/approvals/account-adjustments/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  approvePendingStockAdjustment(id: number) {
+    return request(`/api/approvals/stock-adjustments/${id}/approve`, { method: 'POST', body: '{}' });
+  },
+  rejectPendingStockAdjustment(id: number) {
+    return request(`/api/approvals/stock-adjustments/${id}/reject`, { method: 'POST', body: '{}' });
   },
 
   listCategories() {
@@ -484,6 +521,7 @@ export const api = {
         productId: number;
         name: string;
         code: string;
+        unit?: string | null;
         totalQty: number;
         saleInvoiceQty: number;
         purchaseInvoiceQty: number;
@@ -526,7 +564,14 @@ export const api = {
       ratePerMaund: number;
     };
   }) {
-    return request<{ productId: number; storeId: number; balance: number; productName: string }>(
+    return request<{
+      productId: number;
+      storeId: number;
+      balance: number;
+      productName: string;
+      pendingApproval?: boolean;
+      id?: number;
+    }>(
       '/api/stock/adjustment',
       { method: 'POST', body: JSON.stringify(data) },
     );
@@ -829,7 +874,13 @@ export const api = {
     amount: number;
     side: 'DR' | 'CR';
   }) {
-    return request<{ accountId: number; accountName: string; balance: number }>(
+    return request<{
+      accountId: number;
+      accountName: string;
+      balance: number;
+      pendingApproval?: boolean;
+      id?: number;
+    }>(
       '/api/accounting/account-adjustment',
       { method: 'POST', body: JSON.stringify(data) },
     );
@@ -1007,6 +1058,46 @@ export const api = {
     }>(`/api/stock/report?${query.toString()}`);
   },
 
+  getStockValueReport(params: { date: string; storeId?: number | null; categoryId?: number | null }) {
+    const query = new URLSearchParams({ date: params.date });
+    if (params.storeId != null && params.storeId > 0) query.set('storeId', String(params.storeId));
+    if (params.categoryId != null && params.categoryId > 0) query.set('categoryId', String(params.categoryId));
+    return request<{
+      date: string;
+      storeId: number | null;
+      categoryId: number | null;
+      rows: Array<{
+        productId: number;
+        code: string;
+        name: string;
+        category: string;
+        value: number;
+      }>;
+      totalValue: number;
+    }>(`/api/stock/value-report?${query.toString()}`);
+  },
+
+  getStockQuantityReport(params?: { storeId?: number | null; categoryId?: number | null }) {
+    const query = new URLSearchParams();
+    if (params?.storeId != null && params.storeId > 0) query.set('storeId', String(params.storeId));
+    if (params?.categoryId != null && params.categoryId > 0) query.set('categoryId', String(params.categoryId));
+    const suffix = query.toString() ? `?${query}` : '';
+    return request<{
+      storeId: number | null;
+      storeName: string | null;
+      categoryId: number | null;
+      products: Array<{
+        productId: number;
+        name: string;
+        code: string;
+        unit: string | null;
+        totalQty: number;
+        saleInvoiceQty: number;
+        purchaseInvoiceQty: number;
+      }>;
+    }>(`/api/stock/quantity-report${suffix}`);
+  },
+
   getProfitLossReport(params: {
     financialYearId: number;
     fromDate?: string;
@@ -1072,6 +1163,20 @@ export const api = {
   triggerGoogleDriveBackup() {
     return request<{ ok: boolean; uploadedAt?: string }>('/api/system/google-drive/backup-now', {
       method: 'POST',
+    });
+  },
+
+  saveLocalBackupPath(path: string) {
+    return request<{ ok: boolean; path: string }>('/api/system/backup/local/config', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+  },
+
+  triggerLocalBackup(path?: string) {
+    return request<{ ok: boolean; path?: string; backedUpAt?: string }>('/api/system/backup/local', {
+      method: 'POST',
+      body: JSON.stringify(path ? { path } : {}),
     });
   },
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -120,6 +120,7 @@ async function startBackend(): Promise<void> {
 
   process.env.PORT = BACKEND_PORT;
   process.env.NODE_ENV = 'production';
+  process.env.SHERAZ_TRADERS_PACKAGED = '1';
   // Single connection so PRAGMA busy_timeout applies for the app lifetime (avoids intermittent SQLite locks).
   process.env.DATABASE_URL = `file:${path.join(dataDir, 'sheraztrader.db')}?connection_limit=5`;
   process.env.SESSION_SECRET = process.env.SESSION_SECRET || ensurePersistedSessionSecret(dataDir);
@@ -315,6 +316,16 @@ async function showStartupError(message: string): Promise<void> {
 }
 
 configureStableUserDataPath();
+
+ipcMain.handle('dialog:selectDirectory', async () => {
+  const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  if (!win) return null;
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0] ?? null;
+});
 
 app.whenReady().then(async () => {
   const backendPromise = !isDev ? ensureBackendStarting() : Promise.resolve();

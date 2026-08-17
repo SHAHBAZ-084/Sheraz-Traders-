@@ -1,11 +1,11 @@
 /**
- * DEV/TEST ONLY — sample data for end-to-end app testing.
+ * DEV/TEST ONLY — large sample dataset for pagination, reports, and ledger stress testing.
  *
- * Data source: prisma/test-seed-data.json
+ * Data source: prisma/big-seed-data.json
  *
  * Does NOT run automatically. Invoke manually after the normal seed:
  *   npm run db:seed -w backend
- *   npm run db:seed:test -w backend
+ *   npm run db:seed:big -w backend
  *
  * Refuses to run when SHERAZ_TRADERS_PACKAGED=1 (packaged desktop app).
  */
@@ -14,7 +14,7 @@ import { runDevSeed } from './dev-seed-lib';
 
 function assertSafeToRun() {
   if (process.env.SHERAZ_TRADERS_PACKAGED === '1') {
-    console.error('Test seed cannot run inside the packaged Sheeraz Traders application.');
+    console.error('Big seed cannot run inside the packaged Sheeraz Traders application.');
     process.exit(1);
   }
 }
@@ -22,11 +22,11 @@ function assertSafeToRun() {
 async function main() {
   assertSafeToRun();
   await runDevSeed({
-    dataFile: 'test-seed-data.json',
-    markerAccount: 'HBL Main Branch',
-    billPrefix: 'TEST',
-    seedLabel: 'Test seed',
-    forceEnvVar: 'FORCE_TEST_SEED',
+    dataFile: 'big-seed-data.json',
+    markerAccount: 'Meezan Bank Chishtian',
+    billPrefix: 'BIG',
+    seedLabel: 'Big seed',
+    forceEnvVar: 'FORCE_BIG_SEED',
   });
 }
 

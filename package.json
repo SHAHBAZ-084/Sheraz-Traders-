@@ -44,7 +44,13 @@
       "build/icon.ico",
       "build/icon.png",
       "package.json",
-      "!backend/prisma/data/**"
+      "!backend/prisma/data/**",
+      "!backend/prisma/test-seed.ts",
+      "!backend/prisma/test-seed-data.json",
+      "!backend/prisma/big-seed.ts",
+      "!backend/prisma/big-seed-data.json",
+      "!backend/prisma/dev-seed-lib.ts",
+      "!backend/prisma/user-seed-data.json"
     ],
     "asarUnpack": [
       "backend/prisma/schema.prisma",

@@ -38,6 +38,63 @@ stockRouter.get(
 );
 
 stockRouter.get(
+  '/value-report',
+  requireReportsAccess,
+  asyncHandler(async (req, res) => {
+    const date = String(req.query.date ?? '').trim();
+    if (!date) {
+      res.status(400).json({ error: 'date is required' });
+      return;
+    }
+    const storeIdRaw = req.query.storeId;
+    const storeId =
+      storeIdRaw != null && String(storeIdRaw).trim() !== ''
+        ? Number(storeIdRaw)
+        : undefined;
+    if (storeId != null && (!Number.isFinite(storeId) || storeId < 1)) {
+      res.status(400).json({ error: 'storeId must be a positive integer' });
+      return;
+    }
+    const categoryIdRaw = req.query.categoryId;
+    const categoryId =
+      categoryIdRaw != null && String(categoryIdRaw).trim() !== ''
+        ? Number(categoryIdRaw)
+        : undefined;
+    if (categoryId != null && (!Number.isFinite(categoryId) || categoryId < 1)) {
+      res.status(400).json({ error: 'categoryId must be a positive integer' });
+      return;
+    }
+    res.json(await stockService.getStockValueReport({ date, storeId, categoryId }));
+  }),
+);
+
+stockRouter.get(
+  '/quantity-report',
+  requireReportsAccess,
+  asyncHandler(async (req, res) => {
+    const storeIdRaw = req.query.storeId;
+    const storeId =
+      storeIdRaw != null && String(storeIdRaw).trim() !== ''
+        ? Number(storeIdRaw)
+        : undefined;
+    if (storeId != null && (!Number.isFinite(storeId) || storeId < 1)) {
+      res.status(400).json({ error: 'storeId must be a positive integer' });
+      return;
+    }
+    const categoryIdRaw = req.query.categoryId;
+    const categoryId =
+      categoryIdRaw != null && String(categoryIdRaw).trim() !== ''
+        ? Number(categoryIdRaw)
+        : undefined;
+    if (categoryId != null && (!Number.isFinite(categoryId) || categoryId < 1)) {
+      res.status(400).json({ error: 'categoryId must be a positive integer' });
+      return;
+    }
+    res.json(await stockService.getStockQuantityReport({ storeId, categoryId }));
+  }),
+);
+
+stockRouter.get(
   '/products-by-store',
   asyncHandler(async (req, res) => {
     const storeId = Number(req.query.storeId);
@@ -141,7 +198,11 @@ stockRouter.post(
       });
 
     const body = schema.parse(req.body);
-    const result = await createStockAdjustment(body);
+    const result = await createStockAdjustment({
+      ...body,
+      createdById: req.session.userId!,
+      postImmediately: false,
+    });
     res.status(201).json(result);
   }),
 );

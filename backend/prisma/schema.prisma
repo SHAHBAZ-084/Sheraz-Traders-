@@ -55,6 +55,17 @@ enum InvoiceStatus {
   PENDING_APPROVAL
 }
 
+enum RecordStatus {
+  ACTIVE
+  PENDING_APPROVAL
+  REJECTED
+}
+
+enum PendingAdjustmentKind {
+  ACCOUNT
+  STOCK
+}
+
 enum JamaNaamDirection {
   JAMA
   NAAM
@@ -81,6 +92,9 @@ model User {
   financialYearsChanged FinancialYear[]   @relation("FinancialYearChangedBy")
   trialBalanceApprovals TrialBalanceApproval[]
   invoicesCreated       Invoice[]
+  accountsCreated       Account[]              @relation("AccountCreatedBy")
+  productsCreated       Product[]              @relation("ProductCreatedBy")
+  pendingAdjustments    PendingAdjustment[]
 }
 
 model Supplier {
@@ -128,16 +142,21 @@ model AccountCategory {
 }
 
 model Account {
-  id                   Int         @id @default(autoincrement())
+  id                   Int          @id @default(autoincrement())
   categoryId           Int
   name                 String
-  code                 String      @unique
+  code                 String       @unique
   type                 AccountType
-  isActive             Boolean     @default(true)
-  excludeFromSelectors Boolean     @default(false)
-  createdAt            DateTime    @default(now())
+  isActive             Boolean      @default(true)
+  excludeFromSelectors Boolean      @default(false)
+  status               RecordStatus @default(ACTIVE)
+  createdById          Int?
+  pendingOpeningBalance Decimal?
+  pendingOpeningSide   String?
+  createdAt            DateTime     @default(now())
 
   category        AccountCategory               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy       User?                         @relation("AccountCreatedBy", fields: [createdById], references: [id])
   ledger          Ledger?
   debitVouchers   Voucher[]                     @relation("DebitAccount")
   creditVouchers  Voucher[]                     @relation("CreditAccount")
@@ -146,9 +165,11 @@ model Account {
   kachiMaalLines         KachiMaalLine[]   @relation("KachiMaalPartyAccount")
   kachiMaalDebitInvoices   Invoice[]         @relation("KachiMaalDebitAccount")
   jamaNaamEntries        JamaNaamEntry[]
+  pendingAdjustments     PendingAdjustment[]
 
   @@index([categoryId])
   @@index([isActive, categoryId])
+  @@index([status])
 }
 
 model Ledger {
@@ -272,27 +293,36 @@ model TrialBalanceApproval {
 }
 
 model Product {
-  id         Int         @id @default(autoincrement())
+  id         Int          @id @default(autoincrement())
   name       String
-  code       String      @unique
+  code       String       @unique
   unit       String?
-  kind       ProductKind @default(STANDARD)
-  accountId  Int         @unique
+  kind       ProductKind  @default(STANDARD)
+  accountId  Int          @unique
   categoryId Int?
-  isActive   Boolean     @default(true)
+  isActive   Boolean      @default(true)
+  status     RecordStatus @default(ACTIVE)
+  createdById Int?
+  pendingOpeningStoreId Int?
+  pendingOpeningQty     Decimal?
+  pendingOpeningRate    Decimal?
+  pendingKachiOpening   Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   account         Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category        ProductCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy       User?             @relation("ProductCreatedBy", fields: [createdById], references: [id])
   invoiceItems    InvoiceItem[]
   invoices        Invoice[]
   stockMovements  StockMovement[]
   stockRemainders StockRemainder[]
   jamaNaamEntries JamaNaamEntry[]
+  pendingAdjustments PendingAdjustment[]
 
   @@index([categoryId])
   @@index([isActive, name])
+  @@index([status])
 }
 
 model ProductCategory {
@@ -441,6 +471,32 @@ model Store {
   stockRemainders StockRemainder[]
   invoicesFrom    Invoice[] @relation("InvoiceStore")
   invoicesTo      Invoice[] @relation("InvoiceToStore")
+  pendingAdjustments PendingAdjustment[]
+}
+
+model PendingAdjustment {
+  id             Int                   @id @default(autoincrement())
+  kind           PendingAdjustmentKind
+  status         RecordStatus          @default(PENDING_APPROVAL)
+  adjustmentDate DateTime
+  createdById    Int
+  createdAt      DateTime              @default(now())
+  accountId      Int?
+  amount         Decimal?
+  side           String?
+  productId      Int?
+  storeId        Int?
+  quantity       Decimal?
+  rate           Decimal?
+  kachiOpening   Json?
+
+  createdBy User     @relation(fields: [createdById], references: [id])
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store     Store?   @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([kind, status])
 }
 
 model StockRemainder {

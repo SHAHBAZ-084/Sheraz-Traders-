@@ -79,7 +79,11 @@ accountingRouter.post(
     }),
   ),
   asyncHandler(async (req, res) => {
-    const account = await accountingService.createAccount({ ...req.body });
+    const account = await accountingService.createAccount({
+      ...req.body,
+      createdById: req.session.userId!,
+      postImmediately: false,
+    });
     res.status(201).json(account);
   }),
 );
@@ -95,7 +99,11 @@ accountingRouter.post(
     }),
   ),
   asyncHandler(async (req, res) => {
-    const result = await accountingService.createAccountAdjustment(req.body);
+    const result = await accountingService.createAccountAdjustment({
+      ...req.body,
+      createdById: req.session.userId!,
+      postImmediately: false,
+    });
     res.status(201).json(result);
   }),
 );

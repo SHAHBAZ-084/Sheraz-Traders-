@@ -47,7 +47,7 @@ function ReportPanel({
   );
 }
 
-function reportFilterClass(embedded?: boolean, variant: 'ledger' | 'balance' | 'vouchers' | 'profitLoss' = 'ledger') {
+function reportFilterClass(embedded?: boolean, variant: 'ledger' | 'balance' | 'vouchers' | 'profitLoss' | 'stockValue' | 'stockQuantity' = 'ledger') {
   if (embedded) return 'fy-report-filters print:hidden';
 
   const standalone = {
@@ -57,6 +57,8 @@ function reportFilterClass(embedded?: boolean, variant: 'ledger' | 'balance' | '
     vouchers: 'mb-4 grid gap-4 print:hidden lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end',
     profitLoss:
       'grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] lg:items-end',
+    stockValue: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end',
+    stockQuantity: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end',
   };
 
   return standalone[variant];
@@ -70,6 +72,8 @@ type LedgerResult = Awaited<ReturnType<typeof api.getLedger>>;
 type AccountBalanceResult = Awaited<ReturnType<typeof api.getAccountBalanceReport>>;
 
 const REPORT_AMOUNT_CELL = 'report-amount-cell';
+const REPORT_AMOUNT_COL = 'report-amount-col';
+const REPORT_BALANCE_COL = 'report-amount-col report-balance-col';
 
 function todayInputValue() {
   const d = new Date();
@@ -721,52 +725,64 @@ type BalanceSideFilter = 'both' | 'debit' | 'credit';
 type AccountBalanceFilterMode = 'account' | 'product';
 type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI';
 
+function AccountBalanceTableHeader() {
+  return (
+    <thead>
+      <tr>
+        <th className="pr-3">Account Code</th>
+        <th className="pr-3">Account Name</th>
+        <th className={`pr-3 text-right ${REPORT_AMOUNT_COL}`}>Debit</th>
+        <th className={`pr-3 text-right ${REPORT_AMOUNT_COL}`}>Credit</th>
+        <th className={`text-right ${REPORT_BALANCE_COL}`}>Balance</th>
+      </tr>
+    </thead>
+  );
+}
+
 function BalanceTable({
   rows,
   totalDebit,
   totalCredit,
+  categoryName,
 }: {
   rows: AccountBalanceResult['accounts'];
   totalDebit: number;
   totalCredit: number;
+  categoryName?: string;
 }) {
   return (
-    <ReportTable>
-      <thead>
+    <tbody>
+      {categoryName ? (
         <tr>
-          <th className="pr-3">Account Code</th>
-          <th className="pr-3">Account Name</th>
-          <th className="pr-3 text-right">Debit</th>
-          <th className="pr-3 text-right">Credit</th>
-          <th className="text-right">Balance</th>
+          <td colSpan={5} className="border-b border-border pb-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
+              {categoryName}
+            </p>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.accountId}>
-            <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
-            <td className="pr-3">{row.accountName}</td>
-            <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(row.debit > 0)}`}>
-              {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
-            </td>
-            <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(row.credit > 0)}`}>
-              {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
-            </td>
-            <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL}`}>
-              {formatLedgerBalance(row.balance)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td colSpan={2}>Total</td>
-          <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
-          <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
-          <td />
+      ) : null}
+      {rows.map((row) => (
+        <tr key={row.accountId}>
+          <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
+          <td className="pr-3">{row.accountName}</td>
+          <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(row.debit > 0)}`}>
+            {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
+          </td>
+          <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(row.credit > 0)}`}>
+            {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
+          </td>
+          <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>
+            {formatLedgerBalance(row.balance)}
+          </td>
         </tr>
-      </tfoot>
-    </ReportTable>
+      ))}
+      <tr className="report-table-row--total">
+        <td colSpan={2}>Total</td>
+        <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
+        <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
+        <td className={REPORT_BALANCE_COL} />
+      </tr>
+    </tbody>
   );
 }
 
@@ -989,47 +1005,35 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
               <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             {showGrouped ? (
-              <div className="space-y-6">
+              <ReportTable>
+                <AccountBalanceTableHeader />
                 {(report.groups ?? []).map((group) => (
-                  <div key={group.categoryId}>
-                    <div className="mb-2 border-b border-border pb-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
-                        {group.categoryName}
-                      </p>
-                    </div>
-                    <BalanceTable
-                      rows={group.accounts}
-                      totalDebit={group.totalDebit}
-                      totalCredit={group.totalCredit}
-                    />
-                  </div>
+                  <BalanceTable
+                    key={group.categoryId}
+                    categoryName={group.categoryName}
+                    rows={group.accounts}
+                    totalDebit={group.totalDebit}
+                    totalCredit={group.totalCredit}
+                  />
                 ))}
-                <ReportTable>
-                  <thead>
-                    <tr>
-                      <th className="pr-3">Account Code</th>
-                      <th className="pr-3">Account Name</th>
-                      <th className="pr-3 text-right">Debit</th>
-                      <th className="pr-3 text-right">Credit</th>
-                      <th className="text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={2}>Grand Total</td>
-                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
-                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </ReportTable>
-              </div>
+                <tbody>
+                  <tr className="report-table-row--total">
+                    <td colSpan={2}>Grand Total</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
+                    <td className={REPORT_BALANCE_COL} />
+                  </tr>
+                </tbody>
+              </ReportTable>
             ) : (
-              <BalanceTable
-                rows={report.accounts}
-                totalDebit={report.totalDebit}
-                totalCredit={report.totalCredit}
-              />
+              <ReportTable>
+                <AccountBalanceTableHeader />
+                <BalanceTable
+                  rows={report.accounts}
+                  totalDebit={report.totalDebit}
+                  totalCredit={report.totalCredit}
+                />
+              </ReportTable>
             )}
             <ListPagination
               total={total}
@@ -1611,6 +1615,356 @@ export function ProfitLossStatementPage() {
                   </td>
                 </tr>
               </tfoot>
+            </ReportTable>
+          </div>
+        ) : null}
+      </Panel>
+      <PageCloseBar />
+    </PageShell>
+  );
+}
+
+function formatStockQty(qty: number) {
+  return qty.toLocaleString('en-PK', { maximumFractionDigits: 3 });
+}
+
+function quantityUnitTotals(products: Array<{ unit: string | null; totalQty: number }>) {
+  const totals = new Map<string, number>();
+  for (const row of products) {
+    const unit = row.unit?.trim() || '—';
+    totals.set(unit, (totals.get(unit) ?? 0) + row.totalQty);
+  }
+  return Array.from(totals.entries()).map(([unit, quantity]) => ({ unit, quantity }));
+}
+
+export function StockValueReportPage() {
+  const [stores, setStores] = useState<Array<{ id: number; name: string }>>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [datedOn, setDatedOn] = useState(todayInputValue);
+  const [storeId, setStoreId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockValueReport>> | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const letterheadRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    api.listActiveStores()
+      .then((rows) => setStores(rows.map((s) => ({ id: s.id, name: s.name }))))
+      .catch(() => setStores([]));
+    api.listProductCategories()
+      .then((rows) => setProductCategories(Array.isArray(rows) ? rows : []))
+      .catch(() => setProductCategories([]));
+  }, []);
+
+  async function loadReport() {
+    if (!datedOn) {
+      setError('Select a date');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const selectedStoreId = Number(storeId);
+      const selectedCategoryId = Number(categoryId);
+      const result = await api.getStockValueReport({
+        date: datedOn,
+        storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+        categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
+      });
+      setReport(result);
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load report');
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportReport(format: 'pdf' | 'excel') {
+    if (!report) return;
+    void (async () => {
+      const headers = ['Code', 'Product Name', 'Value'];
+      const rows = report.rows.map((row) => [
+        row.code,
+        row.name,
+        formatLedgerBalance(row.value),
+      ]);
+      const totalRow = ['Total', '', formatLedgerBalance(report.totalValue)];
+      const safeDate = datedOn.replace(/[^\d-]/g, '');
+      const base = `stock-value-${safeDate}`;
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Stock Value', headers, [...rows, totalRow]);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Stock Value Report', headers, rows, {
+          letterheadElement: letterheadRef.current,
+          orientation: 'landscape',
+          footerRows: [totalRow],
+        });
+      }
+    })();
+  }
+
+  const storeName = stores.find((s) => String(s.id) === storeId)?.name;
+  const categoryName = productCategories.find((c) => String(c.id) === categoryId)?.name;
+  const subtitle = [
+    `As of ${formatDate(datedOn)}`,
+    storeName ?? 'All stores',
+    categoryName ? `Category: ${categoryName}` : 'All categories',
+  ].join(' · ');
+
+  return (
+    <PageShell title="Stock Value Report" subtitle="Product stock value from ledger ending balances">
+      <Panel>
+        <div className={reportFilterClass(false, 'stockValue')}>
+          <div>
+            <FieldLabel>Dated On</FieldLabel>
+            <TextInput type="date" value={datedOn} onChange={(e) => setDatedOn(e.target.value)} />
+          </div>
+          <div>
+            <FieldLabel>Store</FieldLabel>
+            <SearchSelect
+              value={storeId}
+              onChange={setStoreId}
+              options={[
+                { value: '', label: 'All stores' },
+                ...stores.map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+              placeholder="All stores"
+            />
+          </div>
+          <div>
+            <FieldLabel>Product Category</FieldLabel>
+            <select
+              className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              <option value="">All categories</option>
+              {productCategories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <FinancialButton type="button" onClick={() => void loadReport()} disabled={loading}>
+            {loading ? 'Loading…' : 'View'}
+          </FinancialButton>
+        </div>
+
+        {error ? <p className="mb-4 text-sm text-danger">{error}</p> : null}
+
+        {!loaded ? (
+          <p className={reportEmptyClass()}>Set filters and click View</p>
+        ) : report && report.rows.length === 0 ? (
+          <p className={reportEmptyClass()}>No products match these filters</p>
+        ) : report ? (
+          <div className="report-print-area">
+            <ReportLetterhead ref={letterheadRef} title="Stock Value Report" subtitle={subtitle} />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+              <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
+              <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
+            </div>
+            <ReportTable>
+              <thead>
+                <tr>
+                  <th className="pr-3">Code</th>
+                  <th className="pr-3">Product Name</th>
+                  <th className={`text-right ${REPORT_BALANCE_COL}`}>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.rows.map((row) => (
+                  <tr key={row.productId}>
+                    <td className="pr-3 font-mono text-xs text-textSecondary">{row.code}</td>
+                    <td className="pr-3">{row.name}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>
+                      {formatLedgerBalance(row.value)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="report-table-row--total">
+                  <td colSpan={2}>Total</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>
+                    {formatLedgerBalance(report.totalValue)}
+                  </td>
+                </tr>
+              </tbody>
+            </ReportTable>
+          </div>
+        ) : null}
+      </Panel>
+      <PageCloseBar />
+    </PageShell>
+  );
+}
+
+export function StockQuantityReportPage() {
+  const [stores, setStores] = useState<Array<{ id: number; name: string }>>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [storeId, setStoreId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockQuantityReport>> | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const letterheadRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    api.listActiveStores()
+      .then((rows) => setStores(rows.map((s) => ({ id: s.id, name: s.name }))))
+      .catch(() => setStores([]));
+    api.listProductCategories()
+      .then((rows) => setProductCategories(Array.isArray(rows) ? rows : []))
+      .catch(() => setProductCategories([]));
+  }, []);
+
+  async function loadReport() {
+    setError('');
+    setLoading(true);
+    try {
+      const selectedStoreId = Number(storeId);
+      const selectedCategoryId = Number(categoryId);
+      const result = await api.getStockQuantityReport({
+        storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+        categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
+      });
+      setReport(result);
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load report');
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const unitTotals = report ? quantityUnitTotals(report.products) : [];
+  const mixedUnits = unitTotals.length > 1;
+
+  function exportReport(format: 'pdf' | 'excel') {
+    if (!report) return;
+    void (async () => {
+      const headers = ['Code', 'Product Name', 'Unit', 'Quantity'];
+      const rows = report.products.map((row) => [
+        row.code,
+        row.name,
+        row.unit?.trim() || '—',
+        formatStockQty(row.totalQty),
+      ]);
+      const totalRows = mixedUnits
+        ? unitTotals.map((row) => ['Total', '', row.unit, formatStockQty(row.quantity)])
+        : [['Total', '', unitTotals[0]?.unit ?? '', formatStockQty(unitTotals[0]?.quantity ?? 0)]];
+      const base = 'stock-quantity';
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Stock Quantity', headers, [...rows, ...totalRows]);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Stock Quantity Report', headers, rows, {
+          letterheadElement: letterheadRef.current,
+          orientation: 'landscape',
+          footerRows: totalRows,
+        });
+      }
+    })();
+  }
+
+  const storeName = report?.storeName ?? stores.find((s) => String(s.id) === storeId)?.name;
+  const categoryName = productCategories.find((c) => String(c.id) === categoryId)?.name;
+  const subtitle = [
+    storeName ?? 'All stores',
+    categoryName ? `Category: ${categoryName}` : 'All categories',
+  ].join(' · ');
+
+  return (
+    <PageShell title="Stock Quantity Report" subtitle="On-hand quantity by store and product">
+      <Panel>
+        <div className={reportFilterClass(false, 'stockQuantity')}>
+          <div>
+            <FieldLabel>Store</FieldLabel>
+            <SearchSelect
+              value={storeId}
+              onChange={setStoreId}
+              options={[
+                { value: '', label: 'All stores' },
+                ...stores.map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+              placeholder="All stores"
+            />
+          </div>
+          <div>
+            <FieldLabel>Product Category</FieldLabel>
+            <select
+              className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              <option value="">All categories</option>
+              {productCategories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <FinancialButton type="button" onClick={() => void loadReport()} disabled={loading}>
+            {loading ? 'Loading…' : 'View'}
+          </FinancialButton>
+        </div>
+
+        {error ? <p className="mb-4 text-sm text-danger">{error}</p> : null}
+
+        {!loaded ? (
+          <p className={reportEmptyClass()}>Set filters and click View</p>
+        ) : report && report.products.length === 0 ? (
+          <p className={reportEmptyClass()}>No stock quantities match these filters</p>
+        ) : report ? (
+          <div className="report-print-area">
+            <ReportLetterhead ref={letterheadRef} title="Stock Quantity Report" subtitle={subtitle} />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+              <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
+              <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
+            </div>
+            <ReportTable>
+              <thead>
+                <tr>
+                  <th className="pr-3">Code</th>
+                  <th className="pr-3">Product Name</th>
+                  <th className="pr-3">Unit</th>
+                  <th className={`text-right ${REPORT_AMOUNT_COL}`}>Quantity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.products.map((row) => (
+                  <tr key={row.productId}>
+                    <td className="pr-3 font-mono text-xs text-textSecondary">{row.code}</td>
+                    <td className="pr-3">{row.name}</td>
+                    <td className="pr-3">{row.unit?.trim() || '—'}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                      {formatStockQty(row.totalQty)}
+                    </td>
+                  </tr>
+                ))}
+                {mixedUnits
+                  ? unitTotals.map((row) => (
+                      <tr key={row.unit} className="report-table-row--total">
+                        <td colSpan={2}>Total</td>
+                        <td className="pr-3">{row.unit}</td>
+                        <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                          {formatStockQty(row.quantity)}
+                        </td>
+                      </tr>
+                    ))
+                  : (
+                    <tr className="report-table-row--total">
+                      <td colSpan={2}>Total</td>
+                      <td className="pr-3">{unitTotals[0]?.unit ?? ''}</td>
+                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                        {formatStockQty(unitTotals[0]?.quantity ?? 0)}
+                      </td>
+                    </tr>
+                  )}
+              </tbody>
             </ReportTable>
           </div>
         ) : null}

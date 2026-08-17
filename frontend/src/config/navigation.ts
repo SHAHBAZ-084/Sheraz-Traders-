@@ -103,6 +103,8 @@ export const SIDEBAR_NAV: SidebarSection[] = [
       { kind: 'link', label: 'Profit & Loss Statement', to: '/reports/profit-loss' },
       { kind: 'link', label: 'Financial Year Reports', to: '/reports/financial-year' },
       { kind: 'link', label: 'Stock Report', to: '/reports/stock' },
+      { kind: 'link', label: 'Stock Value Report', to: '/reports/stock-value' },
+      { kind: 'link', label: 'Stock Quantity Report', to: '/reports/stock-quantity' },
     ],
   },
   {

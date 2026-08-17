@@ -196,7 +196,7 @@ export async function downloadPdf(
   autoTable(doc, {
     head: [headers],
     body: rows.map((row) => row.map(String)),
-    ...(footerRows?.length ? { foot: footerRows, showFoot: 'everyPage' as const } : {}),
+    ...(footerRows?.length ? { foot: footerRows, showFoot: 'lastPage' as const } : {}),
     startY: y + 2,
     margin: { top: 14, right: 14, bottom: 14, left: 14 },
     theme: 'plain',

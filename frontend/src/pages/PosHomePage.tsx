@@ -8,6 +8,7 @@ import {
   BarChart3,
   BookOpen,
   Eye,
+  Layers,
   Package,
   Receipt,
   ScrollText,
@@ -42,6 +43,8 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
   '/reports/vouchers': { variant: 'report', icon: Receipt },
   '/reports/trial-balance': { variant: 'report', icon: BarChart3 },
   '/reports/stock': { variant: 'report', icon: Package },
+  '/reports/stock-value': { variant: 'report', icon: Package },
+  '/reports/stock-quantity': { variant: 'report', icon: Layers },
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {

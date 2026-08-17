@@ -1,6 +1,7 @@
-import { AccountType, FinancialYearStatus, LedgerEntryType, Prisma, VoucherStatus, VoucherType } from '@prisma/client';
+import { AccountType, FinancialYearStatus, LedgerEntryType, Prisma, RecordStatus, VoucherStatus, VoucherType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateNextAccountCode, isAccountCodeConflict } from '../../lib/account-code';
+import { SELECTABLE_ACCOUNT } from '../../lib/record-status';
 import { logger } from '../../lib/logger';
 import { AppError } from '../../utils/helpers';
 import { DEFAULT_PAGE_SIZE, PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
@@ -326,12 +327,12 @@ async function loadAccounts(
 
   // Parallel reads inside $transaction are safe with connection_limit=5; kept sequential for clarity.
   const debitAccount = await tx.account.findFirst({
-    where: { id: debitAccountId, isActive: true },
-    include: { category: true },
+    where: { id: debitAccountId, ...SELECTABLE_ACCOUNT },
+      include: { category: true },
   });
   const creditAccount = await tx.account.findFirst({
-    where: { id: creditAccountId, isActive: true },
-    include: { category: true },
+    where: { id: creditAccountId, ...SELECTABLE_ACCOUNT },
+      include: { category: true },
   });
 
   if (!debitAccount || !creditAccount) {
@@ -903,6 +904,8 @@ export async function createAccountAdjustment(data: {
   accountId: number;
   amount: number;
   side: 'DR' | 'CR';
+  createdById?: number;
+  postImmediately?: boolean;
 }) {
   const amount = Math.abs(Number(data.amount));
   if (!(amount > 0)) throw new AppError(400, 'Amount must be greater than zero');
@@ -913,13 +916,39 @@ export async function createAccountAdjustment(data: {
   const adjustmentDate = parseAdjustmentDate(data.adjustmentDate);
 
   const account = await prisma.account.findFirst({
-    where: { id: data.accountId, isActive: true },
+    where: { id: data.accountId, ...SELECTABLE_ACCOUNT },
     include: { category: true, ledger: true },
   });
   if (!account) throw new AppError(404, 'Account not found');
   if (!account.ledger) throw new AppError(400, 'Account ledger not found');
   if (isMaalKhataCategoryName(account.category?.name ?? '')) {
     throw new AppError(400, 'Product accounts must be adjusted using Stock Adjustment');
+  }
+
+  const postImmediately = data.postImmediately !== false;
+  if (!postImmediately) {
+    if (data.createdById == null) throw new AppError(400, 'createdById is required for pending adjustments');
+    await prisma.$transaction(async (tx) => {
+      await assertVoucherDateInActiveFinancialYear(tx, adjustmentDate, 'Invoice');
+    });
+    const pending = await prisma.pendingAdjustment.create({
+      data: {
+        kind: 'ACCOUNT',
+        status: RecordStatus.PENDING_APPROVAL,
+        adjustmentDate,
+        createdById: data.createdById,
+        accountId: account.id,
+        amount,
+        side: data.side,
+      },
+    });
+    return {
+      pendingApproval: true as const,
+      id: pending.id,
+      accountId: account.id,
+      accountName: account.name,
+      balance: Number(account.ledger.balance),
+    };
   }
 
   return prisma.$transaction(async (tx) => {
@@ -935,11 +964,56 @@ export async function createAccountAdjustment(data: {
 
     const ledger = await tx.ledger.findUnique({ where: { id: account.ledger!.id } });
     return {
+      pendingApproval: false as const,
       accountId: account.id,
       accountName: account.name,
       balance: ledger ? Number(ledger.balance) : 0,
     };
   });
+}
+
+export async function approveAccountAdjustment(id: number, _approvedById: number) {
+  return prisma.$transaction(async (tx) => {
+    const pending = await tx.pendingAdjustment.findFirst({
+      where: { id, kind: 'ACCOUNT', status: RecordStatus.PENDING_APPROVAL },
+      include: { account: { include: { ledger: true } } },
+    });
+    if (!pending) throw new AppError(404, 'Pending account adjustment not found');
+    if (!pending.account?.ledger) throw new AppError(400, 'Account ledger not found');
+    if (pending.account.status !== RecordStatus.ACTIVE || !pending.account.isActive) {
+      throw new AppError(400, 'Account is not active');
+    }
+
+    const amount = Math.abs(Number(pending.amount ?? 0));
+    const side = pending.side === 'CR' ? 'CR' : 'DR';
+    await assertVoucherDateInActiveFinancialYear(tx, pending.adjustmentDate, 'Invoice');
+    await postOpeningBalanceInTx(tx, {
+      ledgerId: pending.account.ledger.id,
+      accountName: pending.account.name,
+      amount,
+      side,
+      notes: 'Account Adjustment',
+    });
+    await tx.pendingAdjustment.update({
+      where: { id: pending.id },
+      data: { status: RecordStatus.ACTIVE },
+    });
+    const ledger = await tx.ledger.findUnique({ where: { id: pending.account.ledger.id } });
+    return {
+      accountId: pending.account.id,
+      accountName: pending.account.name,
+      balance: ledger ? Number(ledger.balance) : 0,
+    };
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+export async function rejectAccountAdjustment(id: number) {
+  const pending = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'ACCOUNT', status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!pending) throw new AppError(404, 'Pending account adjustment not found');
+  await prisma.pendingAdjustment.delete({ where: { id } });
+  return { ok: true, id };
 }
 
 export async function createAccount(data: {
@@ -949,6 +1023,8 @@ export async function createAccount(data: {
   type?: AccountType;
   openingBalance?: number;
   openingBalanceSide?: 'DR' | 'CR';
+  createdById?: number;
+  postImmediately?: boolean;
 }) {
   const trimmedName = await assertUniqueAccountName(data.name);
 
@@ -988,6 +1064,10 @@ export async function createAccount(data: {
   // Dr or Cr is always allowed — openingBalanceSide overrides category default when provided.
   const side = data.openingBalanceSide ?? defaultOpeningSide(type);
   const signedBalance = amount === 0 ? 0 : side === 'DR' ? amount : -amount;
+  const postImmediately = data.postImmediately !== false;
+  if (!postImmediately && data.createdById == null) {
+    throw new AppError(400, 'createdById is required for pending accounts');
+  }
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     try {
@@ -996,26 +1076,37 @@ export async function createAccount(data: {
           ? await generateNextAccountCode(tx)
           : normalizeLabel(data.code!);
 
-        const account = await tx.account.create({
-          data: {
-            categoryId: data.categoryId,
-            name: trimmedName,
-            code: trimmedCode,
-            type,
-          },
-        });
+    const account = await tx.account.create({
+      data: {
+        categoryId: data.categoryId,
+        name: trimmedName,
+        code: trimmedCode,
+        type,
+            status: postImmediately ? RecordStatus.ACTIVE : RecordStatus.PENDING_APPROVAL,
+            createdById: data.createdById ?? null,
+            pendingOpeningBalance: postImmediately || amount === 0 ? null : amount,
+            pendingOpeningSide: postImmediately || amount === 0 ? null : side,
+      },
+    });
 
-        const ledger = await tx.ledger.create({
+        if (!postImmediately) {
+          return tx.account.findUniqueOrThrow({
+            where: { id: account.id },
+            include: { category: true, ledger: true },
+          });
+        }
+
+    const ledger = await tx.ledger.create({
           data: { accountId: account.id, balance: 0 },
-        });
+    });
 
-        if (amount > 0 && trimmedName.toLowerCase() !== 'opening balance equity') {
+    if (amount > 0 && trimmedName.toLowerCase() !== 'opening balance equity') {
           await postOpeningBalanceInTx(tx, {
-            ledgerId: ledger.id,
+          ledgerId: ledger.id,
             accountName: trimmedName,
-            amount,
+          amount,
             side,
-            notes: 'Opening Balance',
+          notes: 'Opening Balance',
           });
         } else if (amount > 0) {
           await tx.ledger.update({ where: { id: ledger.id }, data: { balance: signedBalance } });
@@ -1033,6 +1124,67 @@ export async function createAccount(data: {
   }
 
   throw new AppError(500, 'Could not allocate a unique account code — try again');
+}
+
+export async function approveAccount(accountId: number, _approvedById: number) {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const account = await tx.account.findFirst({
+      where: { id: accountId, status: RecordStatus.PENDING_APPROVAL },
+      include: { product: true, category: true, ledger: true },
+    });
+    if (!account) throw new AppError(404, 'Pending account not found');
+    if (account.product) {
+      throw new AppError(400, 'Approve the product to activate this account');
+    }
+
+    let ledger = account.ledger;
+    if (!ledger) {
+      ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
+    }
+
+    const amount = Math.abs(Number(account.pendingOpeningBalance ?? 0));
+    const side = account.pendingOpeningSide === 'CR' ? 'CR' : 'DR';
+
+    await tx.account.update({
+      where: { id: account.id },
+      data: {
+        status: RecordStatus.ACTIVE,
+        pendingOpeningBalance: null,
+        pendingOpeningSide: null,
+        },
+      });
+
+    if (amount > 0 && account.name.toLowerCase() !== 'opening balance equity') {
+      await postOpeningBalanceInTx(tx, {
+        ledgerId: ledger.id,
+        accountName: account.name,
+        amount,
+        side,
+        notes: 'Opening Balance',
+      });
+    } else if (amount > 0) {
+      const signedBalance = side === 'DR' ? amount : -amount;
+      await tx.ledger.update({ where: { id: ledger.id }, data: { balance: signedBalance } });
+    }
+
+    return tx.account.findUniqueOrThrow({
+      where: { id: account.id },
+      include: { category: true, ledger: true },
+    });
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+export async function rejectAccount(accountId: number) {
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, status: RecordStatus.PENDING_APPROVAL },
+    include: { product: true },
+  });
+  if (!account) throw new AppError(404, 'Pending account not found');
+  if (account.product) {
+    throw new AppError(400, 'Reject the product to remove this account');
+  }
+  await prisma.account.delete({ where: { id: accountId } });
+  return { ok: true, id: accountId };
 }
 
 function defaultOpeningSide(type: AccountType): 'DR' | 'CR' {
@@ -1350,7 +1502,7 @@ export async function listAccounts(
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
   const where: Prisma.AccountWhereInput = {
-    isActive: true,
+    ...SELECTABLE_ACCOUNT,
     ...(forSelectors ? { excludeFromSelectors: false } : {}),
   };
 
@@ -1383,7 +1535,7 @@ export async function listAccounts(
           ? { ledger: { select: { id: true, accountId: true, balance: true, updatedAt: true } } }
           : {}),
       },
-      orderBy: { code: 'asc' },
+    orderBy: { code: 'asc' },
       take: limit,
       skip: offset,
     }),
@@ -1636,12 +1788,12 @@ export async function ensurePurchaseMazduriAccount(
 
 async function syncCustomerSupplierAccountsInTx(tx: Prisma.TransactionClient) {
   const customers = await tx.customer.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true },
+      where: { isActive: true },
+      select: { id: true, name: true },
   });
   const suppliers = await tx.supplier.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true },
+      where: { isActive: true },
+      select: { id: true, name: true },
   });
 
   for (const customer of customers) {
@@ -1886,8 +2038,8 @@ async function cleanupRemovedAutoCategories(tx: Prisma.TransactionClient) {
           // Independent rows — same target category/type for all accounts in this batch.
           await tx.account.updateMany({
             where: { id: { in: toMigrate.map((account) => account.id) } },
-            data: { categoryId: target.id, type: partyTarget.type },
-          });
+              data: { categoryId: target.id, type: partyTarget.type },
+            });
         }
         await tx.accountCategory.update({
           where: { id: category.id },
@@ -2206,27 +2358,27 @@ async function postVoucherLedgerEntries(
 
   const debitEntry = await tx.ledgerEntry.create({
     data: {
-      ledgerId: debitLedger.id,
-      voucherId,
+        ledgerId: debitLedger.id,
+        voucherId,
       financialYearId,
-      type: LedgerEntryType.DEBIT,
-      amount,
-      balance: 0,
-      notes: notes ?? undefined,
-      isReversal: false,
-    },
+        type: LedgerEntryType.DEBIT,
+        amount,
+        balance: 0,
+        notes: notes ?? undefined,
+        isReversal: false,
+      },
   });
   const creditEntry = await tx.ledgerEntry.create({
     data: {
-      ledgerId: creditLedger.id,
-      voucherId,
+        ledgerId: creditLedger.id,
+        voucherId,
       financialYearId,
-      type: LedgerEntryType.CREDIT,
-      amount,
-      balance: 0,
-      notes: notes ?? undefined,
-      isReversal: false,
-    },
+        type: LedgerEntryType.CREDIT,
+        amount,
+        balance: 0,
+        notes: notes ?? undefined,
+        isReversal: false,
+      },
   });
 
   await applyPostedLedgerEntriesInTx(tx, debitLedger.id, financialYearId, [debitEntry.id]);
@@ -2551,10 +2703,10 @@ export async function listVouchers(
 ): Promise<PaginatedResult<Awaited<ReturnType<typeof fetchVoucherListPage>>[number]>> {
   let financialYearId = filters?.financialYearId;
   if (financialYearId == null) {
-    try {
-      financialYearId = await getActiveFinancialYearId(prisma);
-    } catch {
-      financialYearId = undefined;
+  try {
+    financialYearId = await getActiveFinancialYearId(prisma);
+  } catch {
+    financialYearId = undefined;
     }
   }
 
@@ -2928,7 +3080,7 @@ export async function getAccountBalancesAsOf(params: {
   }
 
   const where = {
-    isActive: true,
+    ...SELECTABLE_ACCOUNT,
     excludeFromSelectors: false,
     ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
     ...(productLinkedAccountIds != null ? { id: { in: productLinkedAccountIds } } : {}),

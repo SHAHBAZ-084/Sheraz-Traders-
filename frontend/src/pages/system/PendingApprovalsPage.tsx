@@ -6,8 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { formatDate, formatLedgerAmount } from '../../lib/format';
 
+type PendingKind = 'voucher' | 'invoice' | 'account' | 'product' | 'account_adjustment' | 'stock_adjustment';
+
 type PendingItem = {
-  kind: 'voucher' | 'invoice';
+  kind: PendingKind;
   id: number;
   type: string;
   reference: string | null;
@@ -27,10 +29,29 @@ function editPathForPending(item: PendingItem): string | null {
     if (item.type === 'JOURNAL') return `/vouchers/journal?${q}`;
     return null;
   }
+  if (item.kind !== 'invoice') return null;
   if (item.type === 'SALE_INVOICE') return `/invoices/sale-invoice?${q}`;
   if (item.type === 'PURCHASE_INVOICE') return `/invoices/purchase-invoice?${q}`;
   if (item.type === 'KACHI_MAAL') return `/invoices/kachi-maal?${q}`;
   return null;
+}
+
+async function approvePendingItem(item: PendingItem) {
+  if (item.kind === 'voucher') return api.approvePendingVoucher(item.id);
+  if (item.kind === 'invoice') return api.approvePendingInvoice(item.id);
+  if (item.kind === 'account') return api.approvePendingAccount(item.id);
+  if (item.kind === 'product') return api.approvePendingProduct(item.id);
+  if (item.kind === 'account_adjustment') return api.approvePendingAccountAdjustment(item.id);
+  return api.approvePendingStockAdjustment(item.id);
+}
+
+async function rejectPendingItem(item: PendingItem) {
+  if (item.kind === 'voucher') return api.rejectPendingVoucher(item.id);
+  if (item.kind === 'invoice') return api.rejectPendingInvoice(item.id);
+  if (item.kind === 'account') return api.rejectPendingAccount(item.id);
+  if (item.kind === 'product') return api.rejectPendingProduct(item.id);
+  if (item.kind === 'account_adjustment') return api.rejectPendingAccountAdjustment(item.id);
+  return api.rejectPendingStockAdjustment(item.id);
 }
 
 export function PendingApprovalsPage() {

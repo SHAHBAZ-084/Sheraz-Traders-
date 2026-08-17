@@ -17,6 +17,11 @@ import {
   runGoogleDriveBackup,
 } from '../../lib/google-drive-backup';
 import {
+  getLocalBackupStatus,
+  runLocalBackup,
+  saveLocalBackupPath,
+} from '../../lib/local-backup';
+import {
   getGoogleOAuthConfigStatus,
   saveGoogleOAuthCredentials,
 } from '../../lib/google-oauth-credentials';
@@ -39,8 +44,10 @@ systemRouter.get(
 systemRouter.get(
   '/backup-status',
   asyncHandler(async (_req, res) => {
-    const status = getBackupStatus();
-    res.json(status);
+    res.json({
+      ...getBackupStatus(),
+      local: getLocalBackupStatus(),
+    });
   }),
 );
 
@@ -88,6 +95,30 @@ systemRouter.post(
       throw new AppError(400, result.error ?? 'Backup failed');
     }
     res.json({ ok: true, uploadedAt: result.uploadedAt ?? new Date().toISOString() });
+  }),
+);
+
+systemRouter.post(
+  '/backup/local/config',
+  asyncHandler(async (req, res) => {
+    const backupPath = typeof req.body?.path === 'string' ? req.body.path : '';
+    if (!backupPath.trim()) {
+      throw new AppError(400, 'Backup folder path is required');
+    }
+    const saved = await saveLocalBackupPath(backupPath);
+    res.json({ ok: true, path: saved.path });
+  }),
+);
+
+systemRouter.post(
+  '/backup/local',
+  asyncHandler(async (req, res) => {
+    const pathOverride = typeof req.body?.path === 'string' ? req.body.path : undefined;
+    const result = await runLocalBackup(pathOverride);
+    if (!result.ok) {
+      throw new AppError(400, result.error ?? 'Local backup failed');
+    }
+    res.json({ ok: true, path: result.path, backedUpAt: result.backedUpAt ?? new Date().toISOString() });
   }),
 );
 

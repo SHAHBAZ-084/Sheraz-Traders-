@@ -1,12 +1,7 @@
-import {
-  InvoiceStatus,
-  InvoiceType,
-  Prisma,
-  ProductKind,
-  StockDirection,
-} from '@prisma/client';
+import { InvoiceStatus, InvoiceType, Prisma, ProductKind, StockDirection } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
+import { SELECTABLE_PRODUCT } from '../../lib/record-status';
 import { formatWeightMaundKg } from '../invoices/kachi-maal.calculations';
 import { STOCK_TRACKING_STARTED_AT } from './stock.calculations';
 
@@ -75,7 +70,7 @@ async function loadActiveProductsForLines(
   }
 
   const products = await tx.product.findMany({
-    where: { id: { in: productIds }, isActive: true },
+    where: { id: { in: productIds }, ...SELECTABLE_PRODUCT },
     select: { id: true, name: true },
   });
   return new Map(products.map((product) => [product.id, product]));
@@ -88,7 +83,7 @@ export async function getStockReport(params: {
   offset?: number;
 }) {
   const product = await prisma.product.findFirst({
-    where: { id: params.productId, isActive: true },
+    where: { id: params.productId, ...SELECTABLE_PRODUCT },
     select: { id: true, name: true, code: true, kind: true },
   });
   if (!product) throw new AppError(404, 'Product not found');
@@ -185,7 +180,7 @@ export async function listProductsByStore(storeId: number) {
 
   const productIds = grouped.map((g) => g.productId);
   return prisma.product.findMany({
-    where: { id: { in: productIds }, isActive: true },
+    where: { id: { in: productIds }, ...SELECTABLE_PRODUCT },
     select: { id: true, name: true, code: true },
     orderBy: { name: 'asc' },
   });
@@ -193,7 +188,7 @@ export async function listProductsByStore(storeId: number) {
 
 export async function getStockSummary() {
   const products = await prisma.product.findMany({
-    where: { isActive: true },
+    where: { ...SELECTABLE_PRODUCT },
     select: { id: true, name: true, code: true },
     orderBy: { name: 'asc' },
   });
@@ -253,23 +248,33 @@ export async function getStockSummary() {
     );
 }
 
-/** Store-scoped bag balances for Sale Invoice / Purchase Invoice stock only. */
-export async function getStockByStore(storeId: number) {
-  const store = await prisma.store.findFirst({ where: { id: storeId } });
-  if (!store) throw new AppError(404, 'Store not found');
+export type StockQuantityProductRow = {
+  productId: number;
+  name: string;
+  code: string;
+  unit: string | null;
+  totalQty: number;
+  saleInvoiceQty: number;
+  purchaseInvoiceQty: number;
+};
 
+async function loadSalePurchaseStockRows(options: {
+  storeId?: number;
+  categoryId?: number;
+}): Promise<StockQuantityProductRow[]> {
   const products = await prisma.product.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true, code: true },
+    where: {
+      ...SELECTABLE_PRODUCT,
+      ...(options.categoryId != null ? { categoryId: options.categoryId } : {}),
+    },
+    select: { id: true, name: true, code: true, unit: true },
     orderBy: { name: 'asc' },
   });
-  if (products.length === 0) {
-    return { store: { id: store.id, name: store.name }, products: [] };
-  }
+  if (products.length === 0) return [];
 
   const movements = await prisma.stockMovement.findMany({
     where: {
-      storeId,
+      ...(options.storeId != null ? { storeId: options.storeId } : {}),
       productId: { in: products.map((p) => p.id) },
       invoiceType: { in: [InvoiceType.SALE_INVOICE, InvoiceType.PURCHASE_INVOICE] },
     },
@@ -298,30 +303,139 @@ export async function getStockByStore(storeId: number) {
     nets.set(m.productId, row);
   }
 
+  return products
+    .map((p) => {
+      const net = nets.get(p.id) ?? {
+        totalQty: 0,
+        saleInvoiceQty: 0,
+        purchaseInvoiceQty: 0,
+      };
+      return {
+        productId: p.id,
+        name: p.name,
+        code: p.code,
+        unit: p.unit,
+        totalQty: net.totalQty,
+        saleInvoiceQty: net.saleInvoiceQty,
+        purchaseInvoiceQty: net.purchaseInvoiceQty,
+      };
+    })
+    .filter(
+      (p) =>
+        p.totalQty !== 0 ||
+        p.saleInvoiceQty !== 0 ||
+        p.purchaseInvoiceQty !== 0,
+    );
+}
+
+function optionalPositiveId(value?: number | null): number | undefined {
+  return value != null && value > 0 ? value : undefined;
+}
+
+/** Store-scoped bag balances for Sale Invoice / Purchase Invoice stock only. */
+export async function getStockByStore(storeId: number, categoryId?: number) {
+  const store = await prisma.store.findFirst({ where: { id: storeId } });
+  if (!store) throw new AppError(404, 'Store not found');
+
   return {
     store: { id: store.id, name: store.name },
-    products: products
-      .map((p) => {
-        const net = nets.get(p.id) ?? {
-          totalQty: 0,
-          saleInvoiceQty: 0,
-          purchaseInvoiceQty: 0,
-        };
-        return {
-          productId: p.id,
-          name: p.name,
-          code: p.code,
-          totalQty: net.totalQty,
-          saleInvoiceQty: net.saleInvoiceQty,
-          purchaseInvoiceQty: net.purchaseInvoiceQty,
-        };
-      })
-      .filter(
-        (p) =>
-          p.totalQty !== 0 ||
-          p.saleInvoiceQty !== 0 ||
-          p.purchaseInvoiceQty !== 0,
-      ),
+    products: await loadSalePurchaseStockRows({
+      storeId,
+      categoryId: optionalPositiveId(categoryId),
+    }),
+  };
+}
+
+export async function getStockQuantityReport(params: {
+  storeId?: number | null;
+  categoryId?: number | null;
+}) {
+  const storeId = optionalPositiveId(params.storeId);
+  const categoryId = optionalPositiveId(params.categoryId);
+
+  if (storeId != null) {
+    const result = await getStockByStore(storeId, categoryId);
+    return {
+      storeId: result.store.id,
+      storeName: result.store.name,
+      categoryId: categoryId ?? null,
+      products: result.products,
+    };
+  }
+
+  return {
+    storeId: null,
+    storeName: null,
+    categoryId: categoryId ?? null,
+    products: await loadSalePurchaseStockRows({ categoryId }),
+  };
+}
+
+export async function getStockValueReport(params: {
+  date: string;
+  storeId?: number | null;
+  categoryId?: number | null;
+}) {
+  const { getAccountBalancesAsOf } = await import('../accounting/accounting.service');
+  const storeId = optionalPositiveId(params.storeId);
+  const categoryId = optionalPositiveId(params.categoryId);
+
+  if (storeId != null) {
+    const store = await prisma.store.findFirst({ where: { id: storeId } });
+    if (!store) throw new AppError(404, 'Store not found');
+  }
+
+  const products = await prisma.product.findMany({
+    where: {
+      ...SELECTABLE_PRODUCT,
+      ...(categoryId != null ? { categoryId } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      kind: true,
+      accountId: true,
+      category: { select: { name: true } },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  const balances = await getAccountBalancesAsOf({
+    date: params.date,
+    ...(categoryId != null ? { productCategoryId: categoryId } : {}),
+  });
+  const ledgerByAccount = new Map(balances.accounts.map((row) => [row.accountId, row.balance]));
+
+  const productRefs = products.map((p) => ({ id: p.id, kind: p.kind }));
+  const qtyAllStores =
+    storeId != null ? await getCurrentStockBalancesForProducts(productRefs) : null;
+  const qtyInStore =
+    storeId != null ? await getCurrentStockBalancesForProducts(productRefs, storeId) : null;
+
+  const rows = products.map((product) => {
+    const ledgerBalance = ledgerByAccount.get(product.accountId) ?? 0;
+    let value = ledgerBalance;
+    if (qtyAllStores && qtyInStore) {
+      const totalQty = qtyAllStores.get(product.id) ?? 0;
+      const storeQty = qtyInStore.get(product.id) ?? 0;
+      value = totalQty === 0 ? 0 : (ledgerBalance / totalQty) * storeQty;
+    }
+    return {
+      productId: product.id,
+      code: product.code,
+      name: product.name,
+      category: product.category?.name ?? '',
+      value,
+    };
+  });
+
+  return {
+    date: params.date,
+    storeId: storeId ?? null,
+    categoryId: categoryId ?? null,
+    rows,
+    totalValue: rows.reduce((sum, row) => sum + row.value, 0),
   };
 }
 
@@ -417,7 +531,7 @@ export async function createStockTransfer(
     const toStore = await tx.store.findFirst({ where: { id: data.toStoreId, isActive: true } });
     if (!toStore) throw new AppError(400, 'To store not found or inactive');
 
-    const product = await tx.product.findFirst({ where: { id: data.productId, isActive: true } });
+    const product = await tx.product.findFirst({ where: { id: data.productId, ...SELECTABLE_PRODUCT } });
     if (!product) throw new AppError(400, 'Product not found');
 
     const available = await getCurrentStockBalance(data.productId, data.fromStoreId, tx);

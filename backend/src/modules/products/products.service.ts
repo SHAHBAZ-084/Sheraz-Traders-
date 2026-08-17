@@ -1,7 +1,8 @@
-import { AccountType, InvoiceStatus, InvoiceType, Prisma, ProductKind } from '@prisma/client';
+import { AccountType, InvoiceStatus, InvoiceType, Prisma, ProductKind, RecordStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { AppError } from '../../utils/helpers';
+import { SELECTABLE_PRODUCT } from '../../lib/record-status';
 import { postOpeningBalanceInTx, postStockAdjustmentBalanceInTx, assertVoucherDateInActiveFinancialYear } from '../accounting/accounting.service';
 import {
   computeKachiOpeningStockValue,
@@ -82,7 +83,7 @@ export async function listProducts(
   const includeLedger = options?.includeLedger !== false;
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
-  const where: Prisma.ProductWhereInput = { isActive: true };
+  const where: Prisma.ProductWhereInput = { ...SELECTABLE_PRODUCT };
 
   if (options?.categoryId === null) {
     where.categoryId = null;
@@ -344,13 +345,15 @@ export async function createStockAdjustment(data: {
   quantity?: number;
   rate?: number;
   kachiOpening?: KachiOpeningStockInput;
+  createdById?: number;
+  postImmediately?: boolean;
 }) {
   assertStoreForStock(data.storeId, 'Store is required for stock adjustment');
 
   const adjustmentDate = parseAdjustmentDate(data.adjustmentDate);
 
   const product = await prisma.product.findFirst({
-    where: { id: data.productId, isActive: true },
+    where: { id: data.productId, ...SELECTABLE_PRODUCT },
     include: { account: { include: { ledger: true } } },
   });
   if (!product) throw new AppError(404, 'Product not found');
@@ -358,9 +361,14 @@ export async function createStockAdjustment(data: {
 
   const accountName = product.account.name;
   const ledgerId = product.account.ledger.id;
+  const postImmediately = data.postImmediately !== false;
 
   return prisma.$transaction(async (tx) => {
     const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, adjustmentDate, 'Invoice');
+
+    let quantity: number | null = null;
+    let rate: number | null = null;
+    let kachiOpening: KachiOpeningStockInput | null = null;
 
     if (product.kind === ProductKind.KACHI) {
       if (data.quantity != null || data.rate != null) {
@@ -395,18 +403,7 @@ export async function createStockAdjustment(data: {
       if (!(computed.amount > 0)) {
         throw new AppError(400, 'Kachi adjustment value must be greater than zero');
       }
-
-      await addKachiStockToProductInTx(tx, {
-        productId: product.id,
-        ledgerId,
-        accountName,
-        storeId: data.storeId,
-        kachiOpening: opening,
-        mode: 'adjustment',
-        date: adjustmentDate,
-        financialYearId,
-        productName: product.name,
-      });
+      kachiOpening = opening;
     } else {
       if (data.kachiOpening != null) {
         throw new AppError(400, 'Kachi weight fields cannot be used with standard products');
@@ -420,14 +417,56 @@ export async function createStockAdjustment(data: {
       if (!Number.isFinite(rateRaw) || rateRaw <= 0) {
         throw new AppError(400, 'Rate must be greater than zero');
       }
+      quantity = quantityRaw;
+      rate = rateRaw;
+    }
 
+    if (!postImmediately) {
+      if (data.createdById == null) throw new AppError(400, 'createdById is required for pending adjustments');
+      const pending = await tx.pendingAdjustment.create({
+        data: {
+          kind: 'STOCK',
+          status: RecordStatus.PENDING_APPROVAL,
+          adjustmentDate,
+          createdById: data.createdById,
+          productId: product.id,
+          storeId: data.storeId,
+          quantity,
+          rate,
+          kachiOpening: kachiOpening ? (kachiOpening as Prisma.InputJsonValue) : undefined,
+        },
+      });
+      const balance = await getCurrentStockBalance(product.id, data.storeId, tx);
+      return {
+        pendingApproval: true as const,
+        id: pending.id,
+        productId: product.id,
+        storeId: data.storeId,
+        balance,
+        productName: product.name,
+      };
+    }
+
+    if (product.kind === ProductKind.KACHI && kachiOpening) {
+      await addKachiStockToProductInTx(tx, {
+        productId: product.id,
+        ledgerId,
+        accountName,
+        storeId: data.storeId,
+        kachiOpening,
+        mode: 'adjustment',
+        date: adjustmentDate,
+        financialYearId,
+        productName: product.name,
+      });
+    } else if (quantity != null && rate != null) {
       await addStandardStockToProductInTx(tx, {
         productId: product.id,
         ledgerId,
         accountName,
         storeId: data.storeId,
-        quantity: quantityRaw,
-        rate: rateRaw,
+        quantity,
+        rate,
         mode: 'adjustment',
         date: adjustmentDate,
         financialYearId,
@@ -437,12 +476,103 @@ export async function createStockAdjustment(data: {
 
     const balance = await getCurrentStockBalance(product.id, data.storeId, tx);
     return {
+      pendingApproval: false as const,
       productId: product.id,
       storeId: data.storeId,
       balance,
       productName: product.name,
     };
   });
+}
+
+function parseStoredKachiOpening(value: unknown): KachiOpeningStockInput | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const bagMode = row.bagMode === 'THELA' ? 'THELA' : row.bagMode === 'BORI' ? 'BORI' : null;
+  if (!bagMode) return null;
+  return {
+    bagMode,
+    bagCount: Number(row.bagCount) || 0,
+    dharanCount: Number(row.dharanCount) || 0,
+    looseKg: Number(row.looseKg) || 0,
+    bhartii: Number(row.bhartii) || 0,
+    ratePerMaund: Number(row.ratePerMaund) || 0,
+  };
+}
+
+export async function approveStockAdjustment(id: number, _approvedById: number) {
+  return prisma.$transaction(async (tx) => {
+    const pending = await tx.pendingAdjustment.findFirst({
+      where: { id, kind: 'STOCK', status: RecordStatus.PENDING_APPROVAL },
+      include: {
+        product: { include: { account: { include: { ledger: true } } } },
+      },
+    });
+    if (!pending) throw new AppError(404, 'Pending stock adjustment not found');
+    if (!pending.product?.account.ledger) throw new AppError(400, 'Product ledger not found');
+    if (pending.product.status !== RecordStatus.ACTIVE || !pending.product.isActive) {
+      throw new AppError(400, 'Product is not active');
+    }
+    if (pending.storeId == null) throw new AppError(400, 'Store is required');
+
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, pending.adjustmentDate, 'Invoice');
+    const product = pending.product;
+    const ledgerId = product.account.ledger.id;
+    const accountName = product.account.name;
+
+    if (product.kind === ProductKind.KACHI) {
+      const kachiOpening = parseStoredKachiOpening(pending.kachiOpening);
+      if (!kachiOpening) throw new AppError(400, 'Kachi weight details are required');
+      await addKachiStockToProductInTx(tx, {
+        productId: product.id,
+        ledgerId,
+        accountName,
+        storeId: pending.storeId,
+        kachiOpening,
+        mode: 'adjustment',
+        date: pending.adjustmentDate,
+        financialYearId,
+        productName: product.name,
+      });
+    } else {
+      const quantity = Number(pending.quantity ?? 0);
+      const rate = Number(pending.rate ?? 0);
+      await addStandardStockToProductInTx(tx, {
+        productId: product.id,
+        ledgerId,
+        accountName,
+        storeId: pending.storeId,
+        quantity,
+        rate,
+        mode: 'adjustment',
+        date: pending.adjustmentDate,
+        financialYearId,
+        productName: product.name,
+      });
+    }
+
+    await tx.pendingAdjustment.update({
+      where: { id: pending.id },
+      data: { status: RecordStatus.ACTIVE },
+    });
+
+    const balance = await getCurrentStockBalance(product.id, pending.storeId, tx);
+    return {
+      productId: product.id,
+      storeId: pending.storeId,
+      balance,
+      productName: product.name,
+    };
+  });
+}
+
+export async function rejectStockAdjustment(id: number) {
+  const pending = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'STOCK', status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!pending) throw new AppError(404, 'Pending stock adjustment not found');
+  await prisma.pendingAdjustment.delete({ where: { id } });
+  return { ok: true, id };
 }
 
 export async function createProduct(data: {
@@ -455,17 +585,23 @@ export async function createProduct(data: {
   openingStockRate?: number;
   openingStoreId?: number;
   kachiOpening?: KachiOpeningStockInput;
+  createdById?: number;
+  postImmediately?: boolean;
 }) {
   const name = data.name.trim();
   if (!name) throw new AppError(400, 'Product name is required');
 
   const kind = data.kind ?? ProductKind.STANDARD;
-
-  if (kind === ProductKind.KACHI) {
-    return createKachiProduct(data, name);
+  const postImmediately = data.postImmediately !== false;
+  if (!postImmediately && data.createdById == null) {
+    throw new AppError(400, 'createdById is required for pending products');
   }
 
-  return createStandardProduct(data, name);
+  if (kind === ProductKind.KACHI) {
+    return createKachiProduct(data, name, { createdById: data.createdById, postImmediately });
+  }
+
+  return createStandardProduct(data, name, { createdById: data.createdById, postImmediately });
 }
 
 async function createStandardProduct(
@@ -479,6 +615,7 @@ async function createStandardProduct(
     openingStoreId?: number;
   },
   name: string,
+  opts: { createdById?: number; postImmediately: boolean },
 ) {
   const openingStockRaw =
     data.openingStock != null && data.openingStock !== undefined ? Number(data.openingStock) : 0;
@@ -543,10 +680,10 @@ async function createStandardProduct(
         name: accountName,
         code,
         type: AccountType.ASSET,
+        status: opts.postImmediately ? RecordStatus.ACTIVE : RecordStatus.PENDING_APPROVAL,
+        createdById: opts.createdById ?? null,
       },
     });
-
-    const ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
 
     const product = await tx.product.create({
       data: {
@@ -556,12 +693,23 @@ async function createStandardProduct(
         kind: ProductKind.STANDARD,
         accountId: account.id,
         categoryId,
+        status: opts.postImmediately ? RecordStatus.ACTIVE : RecordStatus.PENDING_APPROVAL,
+        createdById: opts.createdById ?? null,
+        pendingOpeningStoreId: opts.postImmediately || openingStock === 0 ? null : data.openingStoreId,
+        pendingOpeningQty: opts.postImmediately || openingStock === 0 ? null : openingStock,
+        pendingOpeningRate: opts.postImmediately || openingStock === 0 ? null : openingStockRate,
       },
       include: {
         account: { include: { ledger: true } },
         category: true,
       },
     });
+
+    if (!opts.postImmediately) {
+      return product;
+    }
+
+    const ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
 
     if (openingStock > 0) {
       await addStandardStockToProductInTx(tx, {
@@ -596,6 +744,7 @@ async function createKachiProduct(
     kachiOpening?: KachiOpeningStockInput;
   },
   name: string,
+  opts: { createdById?: number; postImmediately: boolean },
 ) {
   if (data.openingStock != null || data.openingStockRate != null) {
     throw new AppError(
@@ -687,10 +836,10 @@ async function createKachiProduct(
         name: accountName,
         code,
         type: AccountType.ASSET,
+        status: opts.postImmediately ? RecordStatus.ACTIVE : RecordStatus.PENDING_APPROVAL,
+        createdById: opts.createdById ?? null,
       },
     });
-
-    const ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
 
     const product = await tx.product.create({
       data: {
@@ -700,12 +849,25 @@ async function createKachiProduct(
         kind: ProductKind.KACHI,
         accountId: account.id,
         categoryId,
+        status: opts.postImmediately ? RecordStatus.ACTIVE : RecordStatus.PENDING_APPROVAL,
+        createdById: opts.createdById ?? null,
+        pendingOpeningStoreId: opts.postImmediately || openingWeightKg === 0 ? null : data.openingStoreId,
+        pendingKachiOpening:
+          opts.postImmediately || openingWeightKg === 0
+            ? undefined
+            : (opening as Prisma.InputJsonValue),
       },
       include: {
         account: { include: { ledger: true } },
         category: true,
       },
     });
+
+    if (!opts.postImmediately) {
+      return product;
+    }
+
+    const ledger = await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
 
     if (openingWeightKg > 0) {
       await addKachiStockToProductInTx(tx, {
@@ -726,6 +888,81 @@ async function createKachiProduct(
       },
     });
   });
+}
+
+export async function approveProduct(productId: number, _approvedById: number) {
+  return prisma.$transaction(async (tx) => {
+    const product = await tx.product.findFirst({
+      where: { id: productId, status: RecordStatus.PENDING_APPROVAL },
+      include: { account: { include: { ledger: true } }, category: true },
+    });
+    if (!product) throw new AppError(404, 'Pending product not found');
+
+    let ledger = product.account.ledger;
+    if (!ledger) {
+      ledger = await tx.ledger.create({ data: { accountId: product.accountId, balance: 0 } });
+    }
+
+    await tx.account.update({
+      where: { id: product.accountId },
+      data: { status: RecordStatus.ACTIVE },
+    });
+    await tx.product.update({
+      where: { id: product.id },
+      data: {
+        status: RecordStatus.ACTIVE,
+        pendingOpeningStoreId: null,
+        pendingOpeningQty: null,
+        pendingOpeningRate: null,
+        pendingKachiOpening: Prisma.JsonNull,
+      },
+    });
+
+    const accountName = product.account.name;
+    if (product.kind === ProductKind.KACHI) {
+      const kachiOpening = parseStoredKachiOpening(product.pendingKachiOpening);
+      if (kachiOpening && product.pendingOpeningStoreId) {
+        await addKachiStockToProductInTx(tx, {
+          productId: product.id,
+          ledgerId: ledger.id,
+          accountName,
+          storeId: product.pendingOpeningStoreId,
+          kachiOpening,
+          mode: 'opening',
+        });
+      }
+    } else {
+      const qty = Number(product.pendingOpeningQty ?? 0);
+      const rate = Number(product.pendingOpeningRate ?? 0);
+      if (qty > 0 && product.pendingOpeningStoreId) {
+        await addStandardStockToProductInTx(tx, {
+          productId: product.id,
+          ledgerId: ledger.id,
+          accountName,
+          storeId: product.pendingOpeningStoreId,
+          quantity: qty,
+          rate,
+          mode: 'opening',
+        });
+      }
+    }
+
+    return tx.product.findUniqueOrThrow({
+      where: { id: product.id },
+      include: { account: { include: { ledger: true } }, category: true },
+    });
+  });
+}
+
+export async function rejectProduct(productId: number) {
+  const product = await prisma.product.findFirst({
+    where: { id: productId, status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!product) throw new AppError(404, 'Pending product not found');
+  const accountId = product.accountId;
+  await prisma.product.delete({ where: { id: productId } });
+  await prisma.account.delete({ where: { id: accountId } });
+  return { ok: true, id: productId };
 }
 
 export async function removeProduct(id: number) {

@@ -1,9 +1,13 @@
-import { InvoiceStatus, InvoiceType, VoucherStatus } from '@prisma/client';
+import { InvoiceStatus, InvoiceType, RecordStatus, VoucherStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import {
   assertVoucherDateInActiveFinancialYear,
+  approveAccount,
+  approveAccountAdjustment,
   approveVoucher,
+  rejectAccount,
+  rejectAccountAdjustment,
 } from '../accounting/accounting.service';
 import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { getInvoice } from '../invoices/invoices.service';
@@ -19,10 +23,24 @@ import {
   approveSaleInvoice,
   updatePendingSaleInvoice,
 } from '../invoices/sale-invoice.service';
+import {
+  approveProduct,
+  approveStockAdjustment,
+  rejectProduct,
+  rejectStockAdjustment,
+} from '../products/products.service';
 import { assertCanEditPendingInvoice, assertCanEditPendingVoucher, type PendingEditor } from './pending-edit-auth';
 
+export type PendingApprovalKind =
+  | 'voucher'
+  | 'invoice'
+  | 'account'
+  | 'product'
+  | 'account_adjustment'
+  | 'stock_adjustment';
+
 export type PendingApprovalItem = {
-  kind: 'voucher' | 'invoice';
+  kind: PendingApprovalKind;
   id: number;
   type: string;
   reference: string | null;
@@ -34,8 +52,17 @@ export type PendingApprovalItem = {
   createdBy: { id: number; displayName: string; username: string } | null;
 };
 
+function mapCreatedBy(user: { id: number; displayName: string | null; username: string } | null) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    displayName: user.displayName ?? user.username,
+    username: user.username,
+  };
+}
+
 export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
-  const [vouchers, invoices] = await Promise.all([
+  const [vouchers, invoices, accounts, products, adjustments] = await Promise.all([
     prisma.voucher.findMany({
       where: { status: VoucherStatus.PENDING_APPROVAL },
       include: {
@@ -55,6 +82,32 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       },
       orderBy: { createdAt: 'asc' },
     }),
+    prisma.account.findMany({
+      where: { status: RecordStatus.PENDING_APPROVAL, product: null },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true } },
+        category: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.product.findMany({
+      where: { status: RecordStatus.PENDING_APPROVAL },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true } },
+        category: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.pendingAdjustment.findMany({
+      where: { status: RecordStatus.PENDING_APPROVAL },
+      include: {
+        createdBy: { select: { id: true, displayName: true, username: true } },
+        account: { select: { name: true, code: true } },
+        product: { select: { name: true, code: true, unit: true } },
+        store: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
   ]);
 
   const items: PendingApprovalItem[] = [
@@ -68,13 +121,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       creditAccountName: v.creditAccount ? `${v.creditAccount.name} (${v.creditAccount.code})` : null,
       amount: Number(v.amount),
       description: v.description,
-      createdBy: v.createdBy
-        ? {
-            id: v.createdBy.id,
-            displayName: v.createdBy.displayName ?? v.createdBy.username,
-            username: v.createdBy.username,
-          }
-        : null,
+      createdBy: mapCreatedBy(v.createdBy),
     })),
     ...invoices.map((inv) => ({
       kind: 'invoice' as const,
@@ -86,14 +133,84 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       creditAccountName: inv.supplier ? inv.supplier.name : null,
       amount: Number(inv.total),
       description: inv.notes ?? inv.billNo,
-      createdBy: inv.createdBy
-        ? {
-            id: inv.createdBy.id,
-            displayName: inv.createdBy.displayName ?? inv.createdBy.username,
-            username: inv.createdBy.username,
-          }
-        : null,
+      createdBy: mapCreatedBy(inv.createdBy),
     })),
+    ...accounts.map((account) => {
+      const opening = Math.abs(Number(account.pendingOpeningBalance ?? 0));
+      const side = account.pendingOpeningSide === 'CR' ? 'Cr' : 'Dr';
+      return {
+        kind: 'account' as const,
+        id: account.id,
+        type: 'ACCOUNT',
+        reference: account.code,
+        date: account.createdAt.toISOString(),
+        debitAccountName: account.name,
+        creditAccountName: account.category?.name ?? null,
+        amount: opening,
+        description: opening > 0 ? `Opening ${opening.toFixed(2)} ${side}` : 'No opening balance',
+        createdBy: mapCreatedBy(account.createdBy),
+      };
+    }),
+    ...products.map((product) => {
+      const qty = Number(product.pendingOpeningQty ?? 0);
+      const rate = Number(product.pendingOpeningRate ?? 0);
+      const openingValue = qty > 0 && rate > 0 ? qty * rate : 0;
+      const kachi = product.pendingKachiOpening;
+      const kachiHint =
+        kachi && typeof kachi === 'object' && kachi !== null && 'ratePerMaund' in kachi
+          ? `Kachi opening @ ${Number((kachi as { ratePerMaund?: number }).ratePerMaund) || 0}/maund`
+          : null;
+      const openingHint =
+        qty > 0
+          ? `Opening ${qty}${product.unit ? ` ${product.unit}` : ''} @ ${rate}`
+          : kachiHint;
+      return {
+        kind: 'product' as const,
+        id: product.id,
+        type: product.kind,
+        reference: product.code,
+        date: product.createdAt.toISOString(),
+        debitAccountName: product.name,
+        creditAccountName: product.category?.name ?? null,
+        amount: openingValue,
+        description: [openingHint, product.unit ? `Unit ${product.unit}` : null].filter(Boolean).join(' · ') || null,
+        createdBy: mapCreatedBy(product.createdBy),
+      };
+    }),
+    ...adjustments.map((row) => {
+      if (row.kind === 'ACCOUNT') {
+        const side = row.side === 'CR' ? 'Cr' : 'Dr';
+        return {
+          kind: 'account_adjustment' as const,
+          id: row.id,
+          type: 'ACCOUNT_ADJUSTMENT',
+          reference: row.account ? `${row.account.name} (${row.account.code})` : null,
+          date: row.adjustmentDate.toISOString(),
+          debitAccountName: row.side === 'DR' ? row.account?.name ?? null : 'Opening Balance Equity',
+          creditAccountName: row.side === 'CR' ? row.account?.name ?? null : 'Opening Balance Equity',
+          amount: Number(row.amount ?? 0),
+          description: `Account adjustment ${side}`,
+          createdBy: mapCreatedBy(row.createdBy),
+        };
+      }
+      const qty = Number(row.quantity ?? 0);
+      const rate = Number(row.rate ?? 0);
+      return {
+        kind: 'stock_adjustment' as const,
+        id: row.id,
+        type: 'STOCK_ADJUSTMENT',
+        reference: row.product ? `${row.product.code} — ${row.product.name}` : null,
+        date: row.adjustmentDate.toISOString(),
+        debitAccountName: row.product?.name ?? null,
+        creditAccountName: row.store?.name ?? null,
+        amount: qty > 0 && rate > 0 ? qty * rate : Number(row.amount ?? 0),
+        description:
+          qty > 0
+            ? `Qty ${qty}${row.product?.unit ? ` ${row.product.unit}` : ''}${rate > 0 ? ` @ ${rate}` : ''}`
+            : 'Kachi stock adjustment',
+        createdBy: mapCreatedBy(row.createdBy),
+      };
+    }),
   ];
 
   return items.sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')));
@@ -138,6 +255,38 @@ export async function approvePendingInvoice(invoiceId: number) {
     default:
       throw new AppError(400, `Cannot approve invoice type ${invoice.type}`);
   }
+}
+
+export async function approvePendingAccount(accountId: number, approvedById: number) {
+  return approveAccount(accountId, approvedById);
+}
+
+export async function rejectPendingAccount(accountId: number) {
+  return rejectAccount(accountId);
+}
+
+export async function approvePendingProduct(productId: number, approvedById: number) {
+  return approveProduct(productId, approvedById);
+}
+
+export async function rejectPendingProduct(productId: number) {
+  return rejectProduct(productId);
+}
+
+export async function approvePendingAccountAdjustment(id: number, approvedById: number) {
+  return approveAccountAdjustment(id, approvedById);
+}
+
+export async function rejectPendingAccountAdjustment(id: number) {
+  return rejectAccountAdjustment(id);
+}
+
+export async function approvePendingStockAdjustment(id: number, approvedById: number) {
+  return approveStockAdjustment(id, approvedById);
+}
+
+export async function rejectPendingStockAdjustment(id: number) {
+  return rejectStockAdjustment(id);
 }
 
 export async function getPendingVoucher(voucherId: number, editor: PendingEditor) {

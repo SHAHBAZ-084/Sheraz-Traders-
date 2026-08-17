@@ -15,6 +15,9 @@ export function DatabaseMaintenancePage() {
   const [dbChecking, setDbChecking] = useState(false);
   const [dbResult, setDbResult] = useState<{ ok: boolean; results: string[] } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [localBackupPath, setLocalBackupPath] = useState('');
+  const [localPathSaving, setLocalPathSaving] = useState(false);
+  const [localBackupLoading, setLocalBackupLoading] = useState(false);
   const [oauthClientId, setOauthClientId] = useState('');
   const [oauthClientSecret, setOauthClientSecret] = useState('');
   const [oauthSaving, setOauthSaving] = useState(false);
@@ -24,10 +27,13 @@ export function DatabaseMaintenancePage() {
   const loadStatus = useCallback(async () => {
     try {
       setLoadingStatus(true);
+      setError('');
       const res = await api.getBackupStatus();
       setStatus(res);
+      setLocalBackupPath(res.local?.path ?? '');
     } catch (err) {
       console.error('Failed to load backup status', err);
+      setError(err instanceof Error ? err.message : 'Failed to load backup status');
     } finally {
       setLoadingStatus(false);
     }
@@ -126,8 +132,60 @@ export function DatabaseMaintenancePage() {
     }
   }
 
+  async function onBrowseLocalBackupFolder() {
+    if (!window.grainPos?.selectDirectory) {
+      setError('Folder picker is available in the desktop app only. Type the backup folder path manually.');
+      return;
+    }
+    setError('');
+    try {
+      const selected = await window.grainPos.selectDirectory();
+      if (selected) setLocalBackupPath(selected);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open folder picker');
+    }
+  }
+
+  async function onSaveLocalBackupPath(event: FormEvent) {
+    event.preventDefault();
+    setLocalPathSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await api.saveLocalBackupPath(localBackupPath.trim());
+      setLocalBackupPath(res.path);
+      setMessage(`Local backup folder saved: ${res.path}`);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save local backup folder');
+    } finally {
+      setLocalPathSaving(false);
+    }
+  }
+
+  async function onTriggerLocalBackupNow() {
+    setLocalBackupLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const trimmedPath = localBackupPath.trim();
+      const res = await api.triggerLocalBackup(trimmedPath || undefined);
+      const backedUpAt = res.backedUpAt ?? new Date().toISOString();
+      setMessage(
+        `Local backup completed${res.path ? ` — saved to ${res.path}` : ''} (${formatBackupTimestamp(backedUpAt)})`,
+      );
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Local backup failed');
+    } finally {
+      setLocalBackupLoading(false);
+    }
+  }
+
+  const localStatus = status?.local;
+
   return (
-    <PageShell title="Database Maintenance" subtitle="Integrity checks and manual Google Drive backup">
+    <PageShell title="Database Maintenance" subtitle="Integrity checks and manual backups">
       <Panel className="max-w-3xl space-y-4">
         {status?.needsReconnect ? (
           <div className="rounded-md bg-danger/10 p-4 border border-danger/30 text-danger">
@@ -269,6 +327,70 @@ export function DatabaseMaintenancePage() {
                 </SecondaryButton>
               </>
             )}
+          </div>
+        </Tile>
+
+        <Tile>
+          <div className="border-b border-border pb-3">
+            <p className="text-sm font-semibold text-textPrimary">Local Backup</p>
+            <p className="mt-0.5 text-xs text-textMuted">
+              Save a database snapshot to a folder on this computer.
+            </p>
+          </div>
+
+          <form className="mt-4 space-y-3" onSubmit={onSaveLocalBackupPath}>
+            <div>
+              <FieldLabel>Backup folder</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                <TextInput
+                  value={localBackupPath}
+                  onChange={(e) => setLocalBackupPath(e.target.value)}
+                  placeholder="D:\Backups"
+                  className="min-w-[16rem] flex-1"
+                />
+                <SecondaryButton type="button" onClick={() => void onBrowseLocalBackupFolder()}>
+                  Browse…
+                </SecondaryButton>
+              </div>
+            </div>
+            <SecondaryButton
+              type="submit"
+              disabled={localPathSaving || !localBackupPath.trim()}
+            >
+              {localPathSaving ? 'Saving…' : 'Save folder'}
+            </SecondaryButton>
+          </form>
+
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="rounded border border-border p-3 bg-surface2/50">
+              <span className="text-textMuted font-medium block">Last Successful Backup</span>
+              <span className="mt-1 text-sm font-semibold text-textPrimary block">
+                {localStatus?.lastSuccessAt ? formatBackupTimestamp(localStatus.lastSuccessAt) : 'Never'}
+              </span>
+            </div>
+
+            <div className="rounded border border-border p-3 bg-surface2/50">
+              <span className="text-textMuted font-medium block">Last Backup Attempt</span>
+              <span className="mt-1 text-sm font-semibold text-textPrimary block">
+                {localStatus?.lastAttemptAt ? formatBackupTimestamp(localStatus.lastAttemptAt) : 'None'}
+              </span>
+            </div>
+          </div>
+
+          {localStatus?.lastError ? (
+            <div className="mt-3 rounded bg-danger/5 p-2.5 text-xs text-danger border border-danger/20">
+              <span className="font-semibold">Last Error:</span> {localStatus.lastError}
+            </div>
+          ) : null}
+
+          <div className="mt-5">
+            <PrimaryButton
+              type="button"
+              onClick={() => void onTriggerLocalBackupNow()}
+              disabled={localBackupLoading || !localBackupPath.trim()}
+            >
+              {localBackupLoading ? 'Backing up…' : 'Backup Now'}
+            </PrimaryButton>
           </div>
         </Tile>
 
