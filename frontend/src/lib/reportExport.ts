@@ -74,11 +74,33 @@ async function embedLetterheadFromElement(doc: jsPDF, element: HTMLElement, star
   return startY + imgHeight + 4;
 }
 
+const PDF_AMOUNT_FONT_SIZE = 10;
+const PDF_BODY_FONT_SIZE = 8;
+
+function isPdfAmountColumn(header: string): boolean {
+  const label = header.toLowerCase();
+  return (
+    label.includes('debit') ||
+    label.includes('credit') ||
+    label.includes('amount') ||
+    label.includes('balance') ||
+    label.includes('profit') ||
+    label.includes('price') ||
+    label.includes('mazduri')
+  );
+}
+
 function buildPdfColumnStyles(headers: string[]): Record<number, Partial<Styles>> {
   const styles: Record<number, Partial<Styles>> = {};
 
   headers.forEach((header, index) => {
     const label = header.toLowerCase();
+    const amountStyle: Partial<Styles> = {
+      cellWidth: 20,
+      halign: 'right',
+      fontSize: PDF_AMOUNT_FONT_SIZE,
+      fontStyle: 'normal',
+    };
 
     if (label.includes('date')) {
       styles[index] = { cellWidth: 19 };
@@ -100,8 +122,8 @@ function buildPdfColumnStyles(headers: string[]): Record<number, Partial<Styles>
       styles[index] = { cellWidth: 'auto', overflow: 'linebreak' };
       return;
     }
-    if (label.includes('debit') || label.includes('credit') || label.includes('amount') || label.includes('balance') || label.includes('profit') || label.includes('price')) {
-      styles[index] = { cellWidth: 17, halign: 'right' };
+    if (isPdfAmountColumn(header)) {
+      styles[index] = amountStyle;
       return;
     }
     if (label.includes('account code')) {
@@ -138,6 +160,8 @@ export async function downloadPdf(
     letterhead?: ReportLetterheadConfig;
     letterheadElement?: HTMLElement | null;
     orientation?: 'portrait' | 'landscape';
+    /** Summary row(s) repeated at the bottom of every PDF page (e.g. ledger totals). */
+    footerRows?: (string | number)[][];
   },
 ) {
   const doc = new jsPDF({
@@ -166,14 +190,18 @@ export async function downloadPdf(
     }
   }
 
+  const footerRows = options?.footerRows?.map((row) => row.map(String));
+  const columnStyles = buildPdfColumnStyles(headers);
+
   autoTable(doc, {
     head: [headers],
     body: rows.map((row) => row.map(String)),
+    ...(footerRows?.length ? { foot: footerRows, showFoot: 'everyPage' as const } : {}),
     startY: y + 2,
     margin: { top: 14, right: 14, bottom: 14, left: 14 },
     theme: 'plain',
     styles: {
-      fontSize: 8,
+      fontSize: PDF_BODY_FONT_SIZE,
       cellPadding: { top: 1.8, right: 2, bottom: 2.2, left: 2 },
       minCellHeight: 6,
       valign: 'middle',
@@ -195,10 +223,27 @@ export async function downloadPdf(
     bodyStyles: {
       fillColor: [255, 255, 255],
     },
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [30, 30, 30],
+      fontStyle: 'bold',
+      lineWidth: 0.1,
+      cellPadding: { top: 2.2, right: 2, bottom: 2.2, left: 2 },
+      minCellHeight: 7,
+      valign: 'middle',
+    },
     alternateRowStyles: {
       fillColor: [255, 255, 255],
     },
-    columnStyles: buildPdfColumnStyles(headers),
+    columnStyles,
+    didParseCell(data) {
+      if (data.section === 'body' && isPdfAmountColumn(headers[data.column.index] ?? '')) {
+        data.cell.styles.fontSize = PDF_AMOUNT_FONT_SIZE;
+      }
+      if (data.section === 'foot' && isPdfAmountColumn(headers[data.column.index] ?? '')) {
+        data.cell.styles.fontSize = PDF_AMOUNT_FONT_SIZE;
+      }
+    },
   });
 
   const pdfBlob = doc.output('blob');

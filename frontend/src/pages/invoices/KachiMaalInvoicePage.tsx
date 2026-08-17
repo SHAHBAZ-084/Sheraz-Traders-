@@ -38,6 +38,8 @@ import {
   primaryPartyCategorySelectOptions,
 } from '../../lib/partyAccounts';
 import { invoiceLoadErrorMessage, loadInvoiceFormBase } from '../../lib/invoiceFormLoad';
+import { useAuth } from '../../contexts/AuthContext';
+import { kachiPercentUrduLabel, kachiUrduLabel } from '../../lib/kachiUrduLabels';
 
 type GridRow = {
   clientId: string;
@@ -95,6 +97,7 @@ export function KachiMaalInvoicePage() {
   const [prefs, setPrefs] = useState<SystemPreferences | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
 
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -125,6 +128,7 @@ export function KachiMaalInvoicePage() {
     setCategories(base.categories);
     setPrefs(base.prefs);
     setProducts(base.products ?? []);
+    setError('');
     if (isEditingPending) return;
     try {
       const refRow = await api.getNextKachiMaalReference();
@@ -161,8 +165,19 @@ export function KachiMaalInvoicePage() {
   }, [restoredState]);
 
   useEffect(() => {
-    reload().catch((err) => setError(invoiceLoadErrorMessage(err)));
-  }, [reload]);
+    if (!user) return;
+    let cancelled = false;
+    reload()
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = invoiceLoadErrorMessage(err);
+        if (msg === 'Not authenticated') return;
+        setError(msg);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reload, user]);
 
   useEffect(() => {
     if (!isEditingPending || pendingId == null) return;
@@ -430,11 +445,11 @@ export function KachiMaalInvoicePage() {
             <InvoiceFormSection label="Header">
               <InvoiceHeaderRow>
                 <InvoiceField>
-                  <FieldLabel>Invoice #</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('invoiceNo')}</FieldLabel>
                   <TextInput value={predictedRef} readOnly />
                 </InvoiceField>
                 <InvoiceField>
-                  <FieldLabel>Date</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('date')}</FieldLabel>
                   <TextInput
                     type="date"
                     value={invoiceDate}
@@ -442,11 +457,11 @@ export function KachiMaalInvoicePage() {
                   />
                 </InvoiceField>
                 <InvoiceField>
-                  <FieldLabel>Bill #</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('billNo')}</FieldLabel>
                   <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
                 </InvoiceField>
                 <InvoiceField>
-                  <FieldLabel>Gari #</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('gariNo')}</FieldLabel>
                   <TextInput value={gariNo} onChange={(e) => setGariNo(e.target.value)} />
                 </InvoiceField>
               </InvoiceHeaderRow>
@@ -462,18 +477,18 @@ export function KachiMaalInvoicePage() {
                   />
                 </InvoiceField>
                 <InvoiceField>
-                  <FieldLabel>Tafseel</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('tafseel')}</FieldLabel>
                   <TextInput value={tafseel} onChange={(e) => setTafseel(e.target.value)} />
                 </InvoiceField>
               </InvoiceFieldRow>
             </InvoiceFormSection>
 
-            <InvoiceFormSection label="Add dheri row">
+            <InvoiceFormSection label={kachiUrduLabel('addDheriRow')}>
               <InvoiceFieldStack>
-                <InvoiceFieldGroup label="Identity & bags">
+                <InvoiceFieldGroup label={kachiUrduLabel('identity')}>
                   <InvoiceFieldRow cols={5}>
                     <InvoiceField wide>
-                      <FieldLabel>Party</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('party')}</FieldLabel>
                       <SearchSelect
                         options={partyOptions}
                         value={partyAccountId}
@@ -482,46 +497,45 @@ export function KachiMaalInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Bags count</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('boriCount')}</FieldLabel>
                       <DecimalInput value={bagCount} onChange={setBagCount} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Dharan</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('dharan')}</FieldLabel>
                       <DecimalInput value={dharanCount} onChange={setDharanCount} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Kilo</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('kilo')}</FieldLabel>
                       <DecimalInput value={looseKg} onChange={setLooseKg} inputMode="decimal" />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Bhartii</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('bhartii')}</FieldLabel>
                       <DecimalInput value={bhartii} onChange={setBhartii} inputMode="decimal" />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
-                <InvoiceFieldGroup label="Pricing">
+                <InvoiceFieldGroup label={kachiUrduLabel('pricing')}>
                   <InvoiceFieldRow cols={4}>
                     <InvoiceField>
-                      <FieldLabel>Rate / Maund</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('ratePerMaund')}</FieldLabel>
                       <DecimalInput value={ratePerMaund} onChange={setRatePerMaund} />
                     </InvoiceField>
                     <InvoiceReadOnlyField
-                      label="Total Weight"
+                      label={kachiUrduLabel('totalWeight')}
                       value={entryPreview.totalWeightKg}
                       displayText={formatWeightMaundKg(entryPreview.totalWeightKg)}
                     />
-                    <InvoiceReadOnlyField label="Amount" value={entryPreview.amount} />
-                    <InvoiceReadOnlyField label="Net to party" value={entryPreview.netCreditToParty} />
+                    <InvoiceReadOnlyField label={kachiUrduLabel('amount')} value={entryPreview.amount} />
+                    <InvoiceReadOnlyField label={kachiUrduLabel('netToParty')} value={entryPreview.netCreditToParty} />
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFieldStack>
             </InvoiceFormSection>
 
-            <InvoiceAddRowAction onClick={addRow} />
-            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <InvoiceAddRowAction onClick={addRow}>{kachiUrduLabel('addToGrid')}</InvoiceAddRowAction>
 
-            <InvoiceFormSection label="Preview grid">
+            <InvoiceFormSection label={kachiUrduLabel('previewGrid')}>
               <InvoicePreviewGridShell isEmpty={gridRows.length === 0}>
                 <table className="w-full min-w-[720px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-surface2">
@@ -562,9 +576,9 @@ export function KachiMaalInvoicePage() {
               </InvoicePreviewGridShell>
             </InvoiceFormSection>
 
-            <InvoiceFormSection label="Settlement (debit side)">
+            <InvoiceFormSection label={kachiUrduLabel('settlementDebitSide')}>
               <InvoiceFieldStack>
-                <InvoiceFieldGroup label="Debit account & totals">
+                <InvoiceFieldGroup label={kachiUrduLabel('debitAccountTotals')}>
                   <InvoiceFieldRow cols={2}>
                     <InvoiceField>
                       <FieldLabel>Party category</FieldLabel>
@@ -576,7 +590,7 @@ export function KachiMaalInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Debit account</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('debitAccount')}</FieldLabel>
                       <SearchSelect
                         options={debitAccountOptions}
                         value={debitAccountId}
@@ -587,13 +601,13 @@ export function KachiMaalInvoicePage() {
                     </InvoiceField>
                   </InvoiceFieldRow>
                   <InvoiceFieldRow cols={3}>
-                    <InvoiceReadOnlyField label="Goods total" value={invoiceTotals.totalGoodsAmount} />
-                    <InvoiceReadOnlyField label={`Pale Dari (${prefRates.paleDariPercent}%)`} value={invoiceTotals.totalPaleDari} />
-                    <InvoiceReadOnlyField label={`Brokery (${prefRates.brokeryPercent}%)`} value={invoiceTotals.totalBrokery} />
+                    <InvoiceReadOnlyField label={kachiUrduLabel('goodsTotal')} value={invoiceTotals.totalGoodsAmount} />
+                    <InvoiceReadOnlyField label={kachiPercentUrduLabel('paleDari', prefRates.paleDariPercent)} value={invoiceTotals.totalPaleDari} />
+                    <InvoiceReadOnlyField label={kachiPercentUrduLabel('brokery', prefRates.brokeryPercent)} value={invoiceTotals.totalBrokery} />
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
 
-                <InvoiceFieldGroup label="Misc">
+                <InvoiceFieldGroup label={kachiUrduLabel('miscAndLowerBardana')}>
                   <InvoiceFieldRow cols={3}>
                     <InvoiceField>
                       <div className="mb-1 flex items-center justify-between gap-1">
@@ -612,7 +626,7 @@ export function KachiMaalInvoicePage() {
                             }}
                             className="h-3.5 w-3.5 cursor-pointer rounded border-border text-financial"
                           />
-                          <span>Market fee</span>
+                          <span className="field-label-urdu">{kachiUrduLabel('marketFee')}</span>
                         </label>
                       </div>
                       <TextInput
@@ -621,9 +635,9 @@ export function KachiMaalInvoicePage() {
                         disabled={!(prefs?.marketFeeEnabled ?? true)}
                       />
                     </InvoiceField>
-                    <InvoiceReadOnlyField label={`Daami (${prefRates.daamiPercent}%)`} value={invoiceTotals.profitAmount} />
+                    <InvoiceReadOnlyField label={kachiPercentUrduLabel('daami', prefRates.daamiPercent)} value={invoiceTotals.profitAmount} />
                     <InvoiceField>
-                      <FieldLabel>Misc (optional)</FieldLabel>
+                      <FieldLabel>{kachiUrduLabel('miscOptional')}</FieldLabel>
                       <DecimalInput value={miscAmount} onChange={setMiscAmount} />
                     </InvoiceField>
                   </InvoiceFieldRow>
@@ -632,7 +646,7 @@ export function KachiMaalInvoicePage() {
             </InvoiceFormSection>
 
             <InvoiceFormFooter
-              totalLabel="Total debit"
+              totalLabel={kachiUrduLabel('totalDebit')}
               totalValue={invoiceTotals.totalDebitAmount}
               error={error}
               message={message}
@@ -665,7 +679,7 @@ export function KachiMaalInvoicePage() {
                         `Ref ${predictedRef || 'Draft'} (${gridRows.length} rows)`,
                       )
               }
-              primaryLabel={isEditingPending ? 'Update pending' : 'Save invoice'}
+              primaryLabel={isEditingPending ? 'Update pending' : kachiUrduLabel('saveInvoice')}
             />
         </div>
       </form>

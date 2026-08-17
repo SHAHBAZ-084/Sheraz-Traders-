@@ -46,8 +46,20 @@ accountingRouter.get(
   asyncHandler(async (req, res) => {
     const lite = req.query.lite === '1' || req.query.lite === 'true';
     const forSelectors = req.query.forSelectors !== '0' && req.query.forSelectors !== 'false';
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    const categoryIdRaw = req.query.categoryId;
+    let categoryId: number | undefined;
+    if (typeof categoryIdRaw === 'string' && categoryIdRaw.trim() !== '') {
+      const parsed = parseInt(categoryIdRaw, 10);
+      categoryId = Number.isFinite(parsed) ? parsed : undefined;
+    }
     const accounts = await accountingService.listAccounts(
-      { includeLedger: !lite, forSelectors },
+      {
+        includeLedger: !lite,
+        forSelectors,
+        search: search || undefined,
+        categoryId,
+      },
       parsePagination(req.query, SELECTOR_PAGINATION),
     );
     res.json(accounts);
@@ -69,6 +81,22 @@ accountingRouter.post(
   asyncHandler(async (req, res) => {
     const account = await accountingService.createAccount({ ...req.body });
     res.status(201).json(account);
+  }),
+);
+
+accountingRouter.post(
+  '/account-adjustment',
+  validateBody(
+    z.object({
+      adjustmentDate: z.string().min(1),
+      accountId: z.number().int().positive(),
+      amount: z.number().positive(),
+      side: z.enum(['DR', 'CR']),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await accountingService.createAccountAdjustment(req.body);
+    res.status(201).json(result);
   }),
 );
 
@@ -176,6 +204,17 @@ accountingRouter.get(
         ? parseInt(categoryIdParam, 10)
         : undefined;
 
+    const productCategoryIdParam = req.query.productCategoryId as string | undefined;
+    const productCategoryId =
+      productCategoryIdParam && productCategoryIdParam.trim() !== ''
+        ? parseInt(productCategoryIdParam, 10)
+        : undefined;
+
+    if (Number.isFinite(categoryId) && Number.isFinite(productCategoryId)) {
+      res.status(400).json({ error: 'Use either categoryId or productCategoryId, not both' });
+      return;
+    }
+
     const sideParam = req.query.side as string | undefined;
     const side =
       sideParam === 'debit' || sideParam === 'credit' || sideParam === 'both'
@@ -191,6 +230,7 @@ accountingRouter.get(
     const report = await accountingService.getAccountBalancesAsOf({
       date,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
+      productCategoryId: Number.isFinite(productCategoryId) ? productCategoryId : undefined,
       side,
       limit,
       offset,

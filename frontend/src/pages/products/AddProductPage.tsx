@@ -1,13 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReportLetterhead } from '../../components/reports/ReportLetterhead';
+import { ListPagination } from '../../components/ui/ListPagination';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { api, type Product, type ProductCategory, type Store } from '../../lib/api';
+import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
+import { printPage } from '../../lib/print';
+import { downloadExcel, downloadPdf } from '../../lib/reportExport';
 import {
   computeKachiOpeningStockValue,
   formatWeightMaundKg,
   parseNum,
   type KachiBagMode,
 } from '../../lib/kachiMaalCalculations';
-import { formatLedgerAmount } from '../../lib/format';
+import { formatLedgerAmount, formatLedgerBalance } from '../../lib/format';
+import { kachiUrduLabel } from '../../lib/kachiUrduLabels';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import {
   FieldLabel,
@@ -22,6 +28,32 @@ import { PageCloseBar } from '../../components/ui/PageCloseBar';
 
 /** Dedicated Add Product screen (product + optional business category + Products ledger). */
 type AddProductKind = 'OTHER' | 'KACHI';
+
+function formatProductStock(product: Product): string {
+  const qty = product.stockBalance ?? 0;
+  if (product.kind === 'KACHI') return formatWeightMaundKg(qty);
+  const unit = product.unit?.trim();
+  return unit ? `${qty} ${unit}` : String(qty);
+}
+
+function formatProductValue(product: Product): string {
+  const balance = product.account?.ledger?.balance;
+  if (balance == null || balance === '') return '—';
+  return formatLedgerBalance(balance);
+}
+
+const PRODUCT_EXPORT_HEADERS = ['Name', 'Type', 'Category', 'Unit', 'Stock', 'Value'];
+
+function productToExportRow(product: Product): string[] {
+  return [
+    product.name,
+    product.kind === 'KACHI' ? 'Kachi' : 'Other',
+    product.category?.name ?? '—',
+    product.unit ?? '—',
+    formatProductStock(product),
+    formatProductValue(product),
+  ];
+}
 
 export function AddProductPage() {
   const isAdmin = useIsAdmin();
@@ -41,6 +73,8 @@ export function AddProductPage() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryBusy, setCategoryBusy] = useState(false);
@@ -55,6 +89,7 @@ export function AddProductPage() {
   const [editUnit, setEditUnit] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<number | ''>('');
   const [editBusy, setEditBusy] = useState(false);
+  const letterheadRef = useRef<HTMLElement>(null);
 
   async function loadCategories() {
     try {
@@ -78,36 +113,89 @@ export function AddProductPage() {
     }
   }
 
-  async function loadProducts() {
+  const loadProducts = useCallback(async (pageOffset = offset) => {
     try {
-      const res = await api.listProducts();
-      setProducts(Array.isArray(res) ? res : []);
+      const res = await api.listProductsPage(
+        { limit: BROWSE_PAGE_SIZE, offset: pageOffset },
+        {
+          search: search.trim() || undefined,
+          categoryId:
+            filterCategoryId === ''
+              ? undefined
+              : filterCategoryId === 'none'
+                ? 'none'
+                : filterCategoryId,
+        },
+      );
+      setProducts(Array.isArray(res.items) ? res.items : []);
+      setTotal(res.total ?? 0);
     } catch {
       setProducts([]);
+      setTotal(0);
     }
-  }
+  }, [offset, search, filterCategoryId]);
 
   useEffect(() => {
     void loadCategories();
     void loadStores();
-    void loadProducts();
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (products ?? []).filter((p) => {
-      if (filterCategoryId === 'none') {
-        if (p.categoryId != null) return false;
-      } else if (filterCategoryId !== '' && (p.categoryId ?? null) !== filterCategoryId) {
-        return false;
+  useEffect(() => {
+    void loadProducts(offset);
+  }, [loadProducts, offset]);
+
+  const productFilters = useMemo(
+    () => ({ search, filterCategoryId }),
+    [search, filterCategoryId],
+  );
+
+  useEffect(() => {
+    setOffset(0);
+  }, [productFilters]);
+
+  const productListSubtitle = useMemo(() => {
+    const parts: string[] = [];
+    if (search.trim()) parts.push(`Search: ${search.trim()}`);
+    if (filterCategoryId === 'none') parts.push('Category: No category');
+    else if (filterCategoryId !== '') {
+      const category = categories.find((c) => c.id === filterCategoryId);
+      if (category) parts.push(`Category: ${category.name}`);
+    }
+    if (total > 0) parts.push(`${total} product${total === 1 ? '' : 's'}`);
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  }, [search, filterCategoryId, categories, total]);
+
+  function exportProducts(format: 'pdf' | 'excel') {
+    if (total === 0) return;
+    void (async () => {
+      const items =
+        total > products.length
+          ? (
+              await api.listProductsPage(
+                { limit: total, offset: 0 },
+                {
+                  search: search.trim() || undefined,
+                  categoryId:
+                    filterCategoryId === ''
+                      ? undefined
+                      : filterCategoryId === 'none'
+                        ? 'none'
+                        : filterCategoryId,
+                },
+              )
+            ).items
+          : products;
+      const rows = items.map(productToExportRow);
+      const base = `products-${new Date().toISOString().slice(0, 10)}`;
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Products', PRODUCT_EXPORT_HEADERS, rows);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Product List', PRODUCT_EXPORT_HEADERS, rows, {
+          letterheadElement: letterheadRef.current,
+        });
       }
-      if (!q) return true;
-      const haystack = [p.name, p.unit ?? '', p.category?.name ?? '', p.account?.name ?? '', p.code]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [products, search, filterCategoryId]);
+    })();
+  }
 
   async function onAddCategory() {
     setError('');
@@ -197,7 +285,8 @@ export function AddProductPage() {
             + stockNote,
         );
         resetCreateForm();
-        await loadProducts();
+        setOffset(0);
+        await loadProducts(0);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed');
       }
@@ -248,7 +337,8 @@ export function AddProductPage() {
           + stockNote,
       );
       resetCreateForm();
-      await loadProducts();
+      setOffset(0);
+      await loadProducts(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -301,7 +391,7 @@ export function AddProductPage() {
       });
       setListMessage(`Product "${updated.name}" updated.`);
       cancelEdit();
-      await loadProducts();
+      await loadProducts(offset);
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Failed to update product');
     } finally {
@@ -317,7 +407,9 @@ export function AddProductPage() {
       await api.removeProduct(product.id);
       if (editingId === product.id) cancelEdit();
       setListMessage(`Product "${product.name}" removed.`);
-      await loadProducts();
+      const nextOffset = offset >= total - 1 && offset > 0 ? Math.max(0, offset - BROWSE_PAGE_SIZE) : offset;
+      setOffset(nextOffset);
+      await loadProducts(nextOffset);
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Failed to remove product');
     }
@@ -347,7 +439,7 @@ export function AddProductPage() {
     parseNum(kachiBagCount) > 0 || parseNum(kachiDharan) > 0 || parseNum(kachiLooseKg) > 0;
 
   return (
-    <PageShell title="Add Product" subtitle="Creates the product and its inventory ledger automatically">
+    <PageShell title="Add Product">
       <Panel className="max-w-lg">
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
@@ -372,9 +464,6 @@ export function AddProductPage() {
                 Kachi Product
               </label>
             </div>
-            <p className="mt-1 text-xs text-textMuted">
-              Kachi products use Thela/Dharan/Kg weight for opening stock; other products use simple quantity × rate.
-            </p>
           </div>
           <div>
             <FieldLabel>Product name</FieldLabel>
@@ -428,16 +517,13 @@ export function AddProductPage() {
                     </select>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-textMuted">
-                  Quantity and rate are required together. Select the store that holds the opening stock. Value (qty × rate) debits the product ledger and credits Opening Balance Equity.
-                </p>
               </div>
             </>
           ) : (
             <div className="space-y-3 rounded-sm border border-border bg-surface3 p-3">
               <FieldLabel>Kachi opening stock (optional — set once at creation)</FieldLabel>
               <div>
-                <FieldLabel>Bag mode</FieldLabel>
+                <FieldLabel>{kachiUrduLabel('boriThela')}</FieldLabel>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
@@ -446,7 +532,7 @@ export function AddProductPage() {
                       checked={kachiBagMode === 'THELA'}
                       onChange={() => setKachiBagMode('THELA')}
                     />
-                    Thela
+                    {kachiUrduLabel('thela')}
                   </label>
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
@@ -455,31 +541,31 @@ export function AddProductPage() {
                       checked={kachiBagMode === 'BORI'}
                       onChange={() => setKachiBagMode('BORI')}
                     />
-                    Bori
+                    {kachiUrduLabel('bori')}
                   </label>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
-                  <FieldLabel>{kachiBagMode === 'THELA' ? 'Thela count' : 'Bags count'}</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('boriCount')}</FieldLabel>
                   <DecimalInput value={kachiBagCount} onChange={setKachiBagCount} inputMode="decimal" />
                 </div>
                 <div>
-                  <FieldLabel>Dharan</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('dharan')}</FieldLabel>
                   <DecimalInput value={kachiDharan} onChange={setKachiDharan} inputMode="decimal" />
                 </div>
                 <div>
-                  <FieldLabel>Kg (loose)</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('kilo')}</FieldLabel>
                   <DecimalInput value={kachiLooseKg} onChange={setKachiLooseKg} inputMode="decimal" />
                 </div>
                 <div>
-                  <FieldLabel>Bhartii</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('bhartii')}</FieldLabel>
                   <DecimalInput value={kachiBhartii} onChange={setKachiBhartii} inputMode="decimal" />
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <FieldLabel>Purchase rate / Maund</FieldLabel>
+                  <FieldLabel>{kachiUrduLabel('ratePerMaund')}</FieldLabel>
                   <DecimalInput value={kachiRatePerMaund} onChange={setKachiRatePerMaund} />
                 </div>
                 <div>
@@ -501,18 +587,15 @@ export function AddProductPage() {
               {kachiPreview ? (
                 <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <p>
-                    <span className="text-textMuted">Total weight: </span>
+                    <span className="text-textMuted">{kachiUrduLabel('totalWeight')}: </span>
                     <span className="font-medium tabular-nums">{formatWeightMaundKg(kachiPreview.totalWeightKg)}</span>
                   </p>
                   <p>
-                    <span className="text-textMuted">Opening value: </span>
+                    <span className="text-textMuted">{kachiUrduLabel('amount')}: </span>
                     <span className="font-medium tabular-nums">{formatLedgerAmount(kachiPreview.amount)}</span>
                   </p>
                 </div>
               ) : null}
-              <p className="text-xs text-textMuted">
-                Weight and purchase rate are required together. Value debits this product&apos;s ledger and credits Opening Balance Equity — no party is involved (existing opening stock, not a Kachi Maal purchase).
-              </p>
             </div>
           )}
 
@@ -569,14 +652,17 @@ export function AddProductPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3 relative z-[1]">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3 relative z-[1] print:hidden">
           <h2 className="text-sm font-semibold text-textPrimary">Products</h2>
           <div className="flex flex-wrap gap-2">
             <div className="min-w-[12rem]">
               <FieldLabel>Search</FieldLabel>
               <TextInput
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setOffset(0);
+                }}
                 placeholder="Search name, unit, ledger…"
               />
             </div>
@@ -587,6 +673,7 @@ export function AddProductPage() {
                 value={filterCategoryId === '' ? '' : String(filterCategoryId)}
                 onChange={(e) => {
                   const v = e.target.value;
+                  setOffset(0);
                   if (v === '') setFilterCategoryId('');
                   else if (v === 'none') setFilterCategoryId('none');
                   else setFilterCategoryId(Number(v));
@@ -604,7 +691,7 @@ export function AddProductPage() {
 
         {editingProduct ? (
           <form
-            className="mb-4 space-y-3 rounded-sm border border-border bg-surface3 p-3"
+            className="mb-4 space-y-3 rounded-sm border border-border bg-surface3 p-3 print:hidden"
             onSubmit={onSaveEdit}
           >
             <h3 className="text-sm font-semibold text-textPrimary">
@@ -633,7 +720,6 @@ export function AddProductPage() {
                 </select>
               </div>
             </div>
-            <p className="text-xs text-textMuted">Opening stock cannot be changed after creation.</p>
             <div className="flex flex-wrap gap-2">
               <PrimaryButton type="submit" disabled={editBusy || !editName.trim()}>
                 {editBusy ? 'Saving…' : 'Save changes'}
@@ -643,60 +729,79 @@ export function AddProductPage() {
           </form>
         ) : null}
 
-        {listError ? <p className="mb-2 text-sm text-danger">{listError}</p> : null}
-        {listMessage ? <p className="mb-2 text-sm text-success">{listMessage}</p> : null}
+        {listError ? <p className="mb-2 text-sm text-danger print:hidden">{listError}</p> : null}
+        {listMessage ? <p className="mb-2 text-sm text-success print:hidden">{listMessage}</p> : null}
 
-        <LegacyTable>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Category</th>
-              <th>Unit</th>
-              <th>Ledger</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProducts.length === 0 ? (
+        <div className="report-print-area">
+          <ReportLetterhead ref={letterheadRef} title="Product List" subtitle={productListSubtitle} />
+          <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+            <SecondaryButton type="button" disabled={total === 0} onClick={() => exportProducts('pdf')}>
+              Download PDF
+            </SecondaryButton>
+            <SecondaryButton type="button" disabled={total === 0} onClick={() => exportProducts('excel')}>
+              Download Excel
+            </SecondaryButton>
+            <SecondaryButton type="button" disabled={total === 0} onClick={printPage}>
+              Print
+            </SecondaryButton>
+          </div>
+          <LegacyTable>
+            <thead>
               <tr>
-                <td colSpan={6} className="text-textMuted">
-                  {(products?.length ?? 0) === 0 ? 'No products yet.' : 'No products match the search/filter.'}
-                </td>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th>Stock</th>
+                <th>Value</th>
+                <th className="print:hidden">Actions</th>
               </tr>
-            ) : (
-              filteredProducts.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.kind === 'KACHI' ? 'Kachi' : 'Other'}</td>
-                  <td>{p.category?.name ?? '—'}</td>
-                  <td>{p.unit ?? '—'}</td>
-                  <td>{p.account?.name ?? p.code}</td>
-                  <td>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-textAccent underline-offset-2 hover:underline"
-                        onClick={() => startEdit(p)}
-                      >
-                        Edit
-                      </button>
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-danger underline-offset-2 hover:underline"
-                          onClick={() => void onDelete(p)}
-                        >
-                          Delete
-                        </button>
-                      ) : null}
-                    </div>
+            </thead>
+            <tbody>
+              {products.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-textMuted">
+                    {total === 0 && !search.trim() && filterCategoryId === ''
+                      ? 'No products yet.'
+                      : 'No products match the search/filter.'}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </LegacyTable>
+              ) : (
+                products.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.kind === 'KACHI' ? 'Kachi' : 'Other'}</td>
+                    <td>{p.category?.name ?? '—'}</td>
+                    <td>{p.unit ?? '—'}</td>
+                    <td className="tabular-nums">{formatProductStock(p)}</td>
+                    <td className="tabular-nums">{formatProductValue(p)}</td>
+                    <td className="print:hidden">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-textAccent underline-offset-2 hover:underline"
+                          onClick={() => startEdit(p)}
+                        >
+                          Edit
+                        </button>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-danger underline-offset-2 hover:underline"
+                            onClick={() => void onDelete(p)}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </LegacyTable>
+        </div>
+        <ListPagination total={total} offset={offset} onPageChange={setOffset} className="mt-4" />
       </Panel>
       <PageCloseBar />
     </PageShell>

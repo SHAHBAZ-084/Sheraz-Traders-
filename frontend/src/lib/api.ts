@@ -96,6 +96,8 @@ export type Product = {
   accountId: number;
   categoryId?: number | null;
   category?: ProductCategory | null;
+  /** Net stock quantity (bags for standard, kg for kachi). */
+  stockBalance?: number;
   account?: { id: number; name: string; code: string; ledger?: { balance: number | string } | null };
 };
 
@@ -255,6 +257,9 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_
     } catch {
       // Non-JSON error payload
     }
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('app:unauthorized'));
+    }
     throw new Error(errorMessage);
   }
 
@@ -384,6 +389,19 @@ export const api = {
     if (options?.lite) query.set('lite', '1');
     return fetchListItems<Product>(`/api/products?${query.toString()}`);
   },
+  listProductsPage(
+    pagination: { limit: number; offset: number },
+    filters?: { search?: string; categoryId?: number | 'none' },
+  ) {
+    const query = new URLSearchParams({
+      limit: String(pagination.limit),
+      offset: String(pagination.offset),
+    });
+    if (filters?.search?.trim()) query.set('search', filters.search.trim());
+    if (filters?.categoryId === 'none') query.set('categoryNone', '1');
+    else if (filters?.categoryId != null) query.set('categoryId', String(filters.categoryId));
+    return fetchPaginatedPage<Product>(`/api/products?${query.toString()}`);
+  },
   listProductCategories() {
     return fetchListItems<ProductCategory>(`/api/products/product-categories?${SELECTOR_LIST_QUERY}`);
   },
@@ -492,6 +510,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+  createStockAdjustment(data: {
+    adjustmentDate: string;
+    productId: number;
+    storeId: number;
+    quantity?: number;
+    rate?: number;
+    kachiOpening?: {
+      bagMode: 'BORI' | 'THELA';
+      bagCount: number;
+      dharanCount: number;
+      looseKg: number;
+      bhartii: number;
+      ratePerMaund: number;
+    };
+  }) {
+    return request<{ productId: number; storeId: number; balance: number; productName: string }>(
+      '/api/stock/adjustment',
+      { method: 'POST', body: JSON.stringify(data) },
+    );
   },
   getProductsByStore(storeId: number) {
     return request<Array<{ id: number; name: string; code: string }>>(
@@ -609,7 +647,7 @@ export const api = {
     notes?: string;
     lines: Array<{ productId: number; quantity: number; rate: number }>;
   }) {
-    return request('/api/invoices/sale-invoice', { method: 'POST', body: JSON.stringify(data) });
+    return request<InvoiceDetail>('/api/invoices/sale-invoice', { method: 'POST', body: JSON.stringify(data) });
   },
 
   getNextPurchaseInvoiceReference() {
@@ -624,7 +662,10 @@ export const api = {
     notes?: string;
     lines: Array<{ productId: number; quantity: number; rate: number; mazduriAmount?: number }>;
   }) {
-    return request('/api/invoices/purchase-invoice', { method: 'POST', body: JSON.stringify(data) });
+    return request<InvoiceDetail>('/api/invoices/purchase-invoice', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
 
@@ -759,6 +800,19 @@ export const api = {
     if (options?.forSelectors === false) query.set('forSelectors', '0');
     return fetchListItems<Account>(`/api/accounting/accounts?${query.toString()}`);
   },
+  listAccountsPage(
+    pagination: { limit: number; offset: number },
+    filters?: { search?: string; categoryId?: number },
+  ) {
+    const query = new URLSearchParams({
+      limit: String(pagination.limit),
+      offset: String(pagination.offset),
+      forSelectors: '0',
+    });
+    if (filters?.search?.trim()) query.set('search', filters.search.trim());
+    if (filters?.categoryId != null) query.set('categoryId', String(filters.categoryId));
+    return fetchPaginatedPage<Account>(`/api/accounting/accounts?${query.toString()}`);
+  },
   createAccount(data: {
     categoryId: number;
     name: string;
@@ -768,6 +822,17 @@ export const api = {
     openingBalanceSide?: 'DR' | 'CR';
   }) {
     return request<Account>('/api/accounting/accounts', { method: 'POST', body: JSON.stringify(data) });
+  },
+  createAccountAdjustment(data: {
+    adjustmentDate: string;
+    accountId: number;
+    amount: number;
+    side: 'DR' | 'CR';
+  }) {
+    return request<{ accountId: number; accountName: string; balance: number }>(
+      '/api/accounting/account-adjustment',
+      { method: 'POST', body: JSON.stringify(data) },
+    );
   },
   updateAccount(id: number, data: { name?: string; code?: string; isActive?: boolean }) {
     return request<Account>(`/api/accounting/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
@@ -853,6 +918,7 @@ export const api = {
   getAccountBalanceReport(params: {
     date: string;
     categoryId?: number;
+    productCategoryId?: number;
     side?: 'debit' | 'credit' | 'both';
     financialYearId?: number;
     limit?: number;
@@ -860,6 +926,7 @@ export const api = {
   }) {
     const query = new URLSearchParams({ date: params.date, side: params.side ?? 'both' });
     if (params.categoryId != null) query.set('categoryId', String(params.categoryId));
+    if (params.productCategoryId != null) query.set('productCategoryId', String(params.productCategoryId));
     if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
     if (params.limit != null) query.set('limit', String(params.limit));
     if (params.offset != null) query.set('offset', String(params.offset));
@@ -867,6 +934,7 @@ export const api = {
       date: string;
       side: 'debit' | 'credit' | 'both';
       categoryId: number | null;
+      productCategoryId?: number | null;
       accounts: {
         accountId: number;
         accountCode: string;
@@ -880,6 +948,8 @@ export const api = {
       groups: {
         categoryId: number;
         categoryName: string;
+        totalDebit: number;
+        totalCredit: number;
         accounts: {
           accountId: number;
           accountCode: string;

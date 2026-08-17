@@ -838,6 +838,110 @@ export async function postOpeningBalanceInTx(
   await applyPostedLedgerEntriesInTx(tx, data.ledgerId, financialYearId, [entry.id]);
 }
 
+/**
+ * Balanced stock-adjustment pair (product Maal Khata + Opening Balance Equity).
+ * Same DR product / CR equity pattern as opening stock, but dated and not flagged as opening balance.
+ */
+export async function postStockAdjustmentBalanceInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    ledgerId: number;
+    accountName: string;
+    amount: number;
+    side: 'DR' | 'CR';
+    notes: string;
+    financialYearId: number;
+    entryDate: Date;
+  },
+) {
+  const amount = Math.abs(Number(data.amount));
+  if (!(amount > 0)) return;
+
+  const equityAccount = await findOrCreateOpeningBalanceEquityAccount(tx);
+  const equityLedger = equityAccount.ledger!;
+  const offsetType = data.side === 'DR' ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT;
+
+  const productEntry = await tx.ledgerEntry.create({
+    data: {
+      ledgerId: data.ledgerId,
+      type: data.side === 'DR' ? LedgerEntryType.DEBIT : LedgerEntryType.CREDIT,
+      amount,
+      balance: 0,
+      notes: data.notes,
+      isOpeningBalance: false,
+      financialYearId: data.financialYearId,
+      createdAt: data.entryDate,
+    },
+  });
+
+  const equityEntry = await tx.ledgerEntry.create({
+    data: {
+      ledgerId: equityLedger.id,
+      type: offsetType,
+      amount,
+      balance: 0,
+      notes: `Stock Adjustment — offset for ${data.accountName}`,
+      isOpeningBalance: false,
+      financialYearId: data.financialYearId,
+      createdAt: data.entryDate,
+    },
+  });
+
+  await applyPostedLedgerEntriesInTx(tx, data.ledgerId, data.financialYearId, [productEntry.id]);
+  await applyPostedLedgerEntriesInTx(tx, equityLedger.id, data.financialYearId, [equityEntry.id]);
+}
+
+function parseAdjustmentDate(value: string): Date {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw new AppError(400, 'Invalid adjustment date');
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+export async function createAccountAdjustment(data: {
+  adjustmentDate: string;
+  accountId: number;
+  amount: number;
+  side: 'DR' | 'CR';
+}) {
+  const amount = Math.abs(Number(data.amount));
+  if (!(amount > 0)) throw new AppError(400, 'Amount must be greater than zero');
+  if (data.side !== 'DR' && data.side !== 'CR') {
+    throw new AppError(400, 'Side must be DR or CR');
+  }
+
+  const adjustmentDate = parseAdjustmentDate(data.adjustmentDate);
+
+  const account = await prisma.account.findFirst({
+    where: { id: data.accountId, isActive: true },
+    include: { category: true, ledger: true },
+  });
+  if (!account) throw new AppError(404, 'Account not found');
+  if (!account.ledger) throw new AppError(400, 'Account ledger not found');
+  if (isMaalKhataCategoryName(account.category?.name ?? '')) {
+    throw new AppError(400, 'Product accounts must be adjusted using Stock Adjustment');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await assertVoucherDateInActiveFinancialYear(tx, adjustmentDate, 'Invoice');
+
+    await postOpeningBalanceInTx(tx, {
+      ledgerId: account.ledger!.id,
+      accountName: account.name,
+      amount,
+      side: data.side,
+      notes: 'Account Adjustment',
+    });
+
+    const ledger = await tx.ledger.findUnique({ where: { id: account.ledger!.id } });
+    return {
+      accountId: account.id,
+      accountName: account.name,
+      balance: ledger ? Number(ledger.balance) : 0,
+    };
+  });
+}
+
 export async function createAccount(data: {
   categoryId: number;
   name: string;
@@ -1233,17 +1337,35 @@ export async function runAccountingMaintenance() {
 }
 
 export async function listAccounts(
-  options?: { includeLedger?: boolean; forSelectors?: boolean },
+  options?: {
+    includeLedger?: boolean;
+    forSelectors?: boolean;
+    search?: string;
+    categoryId?: number;
+  },
   pagination?: { limit: number; offset: number },
 ): Promise<PaginatedResult<Awaited<ReturnType<typeof mapListedAccount>>>> {
   const includeLedger = options?.includeLedger !== false;
   const forSelectors = options?.forSelectors !== false;
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
-  const where = {
+  const where: Prisma.AccountWhereInput = {
     isActive: true,
     ...(forSelectors ? { excludeFromSelectors: false } : {}),
   };
+
+  if (options?.categoryId != null) {
+    where.categoryId = options.categoryId;
+  }
+
+  const search = options?.search?.trim();
+  if (search) {
+    where.OR = [
+      { name: { contains: search } },
+      { code: { contains: search } },
+      { category: { is: { name: { contains: search } } } },
+    ];
+  }
 
   const [accounts, total] = await Promise.all([
     prisma.account.findMany({
@@ -2623,14 +2745,154 @@ export async function deleteVoucher(voucherId: number, userId: number) {
   return cancelVoucher( voucherId, userId);
 }
 
+type AccountBalanceRow = {
+  accountId: number;
+  accountCode: string;
+  accountName: string;
+  categoryId: number;
+  categoryName: string;
+  balance: number;
+  debit: number;
+  credit: number;
+};
+
+type AccountForBalanceReport = {
+  id: number;
+  code: string;
+  name: string;
+  categoryId: number;
+  category: { name: string } | null;
+  ledger: { id: number } | null;
+};
+
+type LedgerEntryForBalance = {
+  ledgerId: number;
+  type: string;
+  amount: unknown;
+  isOpeningBalance?: boolean;
+  createdAt: Date;
+  voucher: { date: Date; status: string; number: string | null } | null;
+};
+
+function computeAccountBalanceRow(
+  account: AccountForBalanceReport,
+  params: {
+    asOf: Date;
+    side: 'debit' | 'credit' | 'both';
+    openingByAccount: Map<number, number>;
+    entriesByLedger: Map<number, LedgerEntryForBalance[]>;
+  },
+): AccountBalanceRow | null {
+  if (!account.ledger) return null;
+
+  const baseOpening = params.openingByAccount.get(account.id) ?? 0;
+  const entries = [...(params.entriesByLedger.get(account.ledger.id) ?? [])];
+  entries.sort(compareLedgerEntries);
+
+  let running = baseOpening;
+  for (const entry of entries) {
+    const at = startOfDay(entryEffectiveDate(entry));
+    if (at > params.asOf) continue;
+    const { debit, credit } = entryDebitCredit(entry.type, Number(entry.amount));
+    running += debit - credit;
+  }
+
+  const { debit, credit } = trialBalanceFromSignedBalance(running);
+  if (params.side === 'debit' && debit <= 0) return null;
+  if (params.side === 'credit' && credit <= 0) return null;
+
+  return {
+    accountId: account.id,
+    accountCode: account.code,
+    accountName: account.name,
+    categoryId: account.categoryId,
+    categoryName: account.category?.name ?? '',
+    balance: running,
+    debit,
+    credit,
+  };
+}
+
+function computeAccountBalanceRows(
+  accounts: AccountForBalanceReport[],
+  params: {
+    asOf: Date;
+    side: 'debit' | 'credit' | 'both';
+    openingByAccount: Map<number, number>;
+    entriesByLedger: Map<number, LedgerEntryForBalance[]>;
+  },
+): AccountBalanceRow[] {
+  const rows: AccountBalanceRow[] = [];
+  for (const account of accounts) {
+    const row = computeAccountBalanceRow(account, params);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
+
+function sumAccountBalanceRows(rows: AccountBalanceRow[]) {
+  return {
+    totalDebit: rows.reduce((sum, row) => sum + row.debit, 0),
+    totalCredit: rows.reduce((sum, row) => sum + row.credit, 0),
+  };
+}
+
+function buildAccountBalanceGroupTotals(rows: AccountBalanceRow[]) {
+  const groupTotalsMap = new Map<number, { totalDebit: number; totalCredit: number }>();
+  for (const row of rows) {
+    const existing = groupTotalsMap.get(row.categoryId) ?? { totalDebit: 0, totalCredit: 0 };
+    existing.totalDebit += row.debit;
+    existing.totalCredit += row.credit;
+    groupTotalsMap.set(row.categoryId, existing);
+  }
+  return groupTotalsMap;
+}
+
+function buildAccountBalanceDisplayGroups(
+  paginatedRows: AccountBalanceRow[],
+  groupTotalsMap: Map<number, { totalDebit: number; totalCredit: number }>,
+) {
+  const groupsMap = new Map<
+    number,
+    {
+      categoryId: number;
+      categoryName: string;
+      accounts: AccountBalanceRow[];
+      totalDebit: number;
+      totalCredit: number;
+    }
+  >();
+  for (const row of paginatedRows) {
+    const groupTotals = groupTotalsMap.get(row.categoryId) ?? { totalDebit: 0, totalCredit: 0 };
+    const existing = groupsMap.get(row.categoryId);
+    if (existing) {
+      existing.accounts.push(row);
+    } else {
+      groupsMap.set(row.categoryId, {
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        accounts: [row],
+        totalDebit: groupTotals.totalDebit,
+        totalCredit: groupTotals.totalCredit,
+      });
+    }
+  }
+  return Array.from(groupsMap.values());
+}
+
 export async function getAccountBalancesAsOf(params: {
   date: string;
   categoryId?: number;
+  productCategoryId?: number;
   side?: 'debit' | 'credit' | 'both';
   limit?: number;
   offset?: number;
   financialYearId?: number;
 }) {
+  if (params.categoryId != null && params.productCategoryId != null) {
+    throw new AppError(400, 'Use either categoryId or productCategoryId, not both');
+  }
+
   const side = params.side ?? 'both';
   const asOf = parseDateEnd(params.date);
   const financialYearId =
@@ -2643,24 +2905,48 @@ export async function getAccountBalancesAsOf(params: {
   }
   const { yearStart, yearEnd } = await loadFinancialYearBounds(prisma, financialYearId);
 
+  let productLinkedAccountIds: number[] | undefined;
+  if (params.productCategoryId != null) {
+    const products = await prisma.product.findMany({
+      where: { categoryId: params.productCategoryId },
+      select: { accountId: true },
+    });
+    productLinkedAccountIds = products.map((product) => product.accountId);
+    if (productLinkedAccountIds.length === 0) {
+      return {
+        date: params.date,
+        side,
+        categoryId: null,
+        productCategoryId: params.productCategoryId,
+        totalCount: 0,
+        accounts: [],
+        groups: [],
+        totalDebit: 0,
+        totalCredit: 0,
+      };
+    }
+  }
+
   const where = {
     isActive: true,
     excludeFromSelectors: false,
     ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
+    ...(productLinkedAccountIds != null ? { id: { in: productLinkedAccountIds } } : {}),
   };
 
-  const total = await prisma.account.count({ where });
-  const accounts = await prisma.account.findMany({
+  // Full filtered account set — balance rows and totals must be computed from ALL matching
+  // accounts because debit/credit side filtering happens after balance computation (cannot
+  // paginate at the DB level before that step).
+  const allAccounts = await prisma.account.findMany({
     where,
     include: { category: true, ledger: true },
     orderBy: [{ category: { name: 'asc' } }, { code: 'asc' }],
-    ...(params.limit != null ? { skip: params.offset ?? 0, take: params.limit } : {}),
   });
 
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = allAccounts.map((a) => a.id);
   const openingByAccount = await batchOpeningBalanceSnapshots(prisma, accountIds, financialYearId);
 
-  const ledgerIds = accounts
+  const ledgerIds = allAccounts
     .map((a) => a.ledger?.id)
     .filter((id): id is number => id != null);
 
@@ -2698,74 +2984,32 @@ export async function getAccountBalancesAsOf(params: {
     entriesByLedger.set(entry.ledgerId, list);
   }
 
-  type BalanceRow = {
-    accountId: number;
-    accountCode: string;
-    accountName: string;
-    categoryId: number;
-    categoryName: string;
-    balance: number;
-    debit: number;
-    credit: number;
+  const balanceParams = {
+    asOf,
+    side,
+    openingByAccount,
+    entriesByLedger,
   };
 
-  const rows: BalanceRow[] = [];
+  const allRows = computeAccountBalanceRows(allAccounts, balanceParams);
+  const { totalDebit, totalCredit } = sumAccountBalanceRows(allRows);
+  const totalCount = allRows.length;
+  const groupTotalsMap = buildAccountBalanceGroupTotals(allRows);
 
-  for (const account of accounts) {
-    if (!account.ledger) continue;
+  const paginatedRows =
+    params.limit != null
+      ? allRows.slice(params.offset ?? 0, (params.offset ?? 0) + params.limit)
+      : allRows;
 
-    const baseOpening = openingByAccount.get(account.id) ?? 0;
-    const entries = entriesByLedger.get(account.ledger.id) ?? [];
-    entries.sort(compareLedgerEntries);
-
-    let running = baseOpening;
-    for (const entry of entries) {
-      const at = startOfDay(entryEffectiveDate(entry));
-      if (at > asOf) continue;
-      const { debit, credit } = entryDebitCredit(entry.type, Number(entry.amount));
-      running += debit - credit;
-    }
-
-    const { debit, credit } = trialBalanceFromSignedBalance(running);
-    if (side === 'debit' && debit <= 0) continue;
-    if (side === 'credit' && credit <= 0) continue;
-
-    rows.push({
-      accountId: account.id,
-      accountCode: account.code,
-      accountName: account.name,
-      categoryId: account.categoryId,
-      categoryName: account.category?.name ?? '',
-      balance: running,
-      debit,
-      credit,
-    });
-  }
-
-  const groupsMap = new Map<number, { categoryId: number; categoryName: string; accounts: BalanceRow[] }>();
-  for (const row of rows) {
-    const existing = groupsMap.get(row.categoryId);
-    if (existing) {
-      existing.accounts.push(row);
-    } else {
-      groupsMap.set(row.categoryId, {
-        categoryId: row.categoryId,
-        categoryName: row.categoryName,
-        accounts: [row],
-      });
-    }
-  }
-
-  const groups = Array.from(groupsMap.values());
-  const totalDebit = rows.reduce((sum, row) => sum + row.debit, 0);
-  const totalCredit = rows.reduce((sum, row) => sum + row.credit, 0);
+  const groups = buildAccountBalanceDisplayGroups(paginatedRows, groupTotalsMap);
 
   return {
     date: params.date,
     side,
     categoryId: params.categoryId ?? null,
-    totalCount: total,
-    accounts: rows,
+    productCategoryId: params.productCategoryId ?? null,
+    totalCount,
+    accounts: paginatedRows,
     groups,
     totalDebit,
     totalCredit,

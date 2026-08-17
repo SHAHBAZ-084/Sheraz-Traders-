@@ -29,6 +29,8 @@ import {
   partyCategorySelectOptions,
 } from '../../lib/partyAccounts';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
+import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
+import { urduLabelClassName } from '../../lib/urduScript';
 
 type GridRow = {
   clientId: string;
@@ -78,9 +80,17 @@ function LinesTable({
         <thead className="sticky top-0 z-10 bg-surface2">
           <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
             <th className="px-3 py-2.5">Product</th>
-            <th className="px-3 py-2.5 text-right">Qty</th>
-            <th className="px-3 py-2.5 text-right">Rate</th>
-            {hasAnyMazduri ? <th className="px-3 py-2.5 text-right">Mazduri</th> : null}
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('qty')}
+            </th>
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('rate'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('rate')}
+            </th>
+            {hasAnyMazduri ? (
+              <th className={urduLabelClassName(salePurchaseInvoiceLabel('mazduri'), 'px-3 py-2.5 text-right')}>
+                {salePurchaseInvoiceLabel('mazduri')}
+              </th>
+            ) : null}
             <th className="px-3 py-2.5 text-right">Total</th>
             {onRemove ? <th className="px-3 py-2.5" /> : null}
           </tr>
@@ -334,8 +344,7 @@ export function PurchaseInvoicePage() {
     setMazduriEnabled(false);
   }
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function submitInvoice(printAfterSave: boolean) {
     setError('');
     if (!storeId) {
       setError('Select a store');
@@ -368,19 +377,28 @@ export function PurchaseInvoicePage() {
         navigate('/system/approvals');
         return;
       }
-      await api.createPurchaseInvoice({
+      const invoice = await api.createPurchaseInvoice({
         invoiceDate,
         billNo: billNo || undefined,
         storeId: Number(storeId),
         supplierAccountId: Number(supplierAccountId),
         lines,
       });
-      navigate('/invoices/view-invoice');
+      if (printAfterSave && invoice.reference) {
+        navigate(`/invoices/print-bill?reference=${encodeURIComponent(invoice.reference)}`);
+      } else {
+        navigate('/invoices/view-invoice');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save purchase invoice');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    await submitInvoice(false);
   }
 
   return (
@@ -390,22 +408,22 @@ export function PurchaseInvoicePage() {
     >
       <form onSubmit={onSubmit}>
         <div className="inv-sp-invoice-form">
-              <InvoiceFormSection label="Header">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('header')}>
                 <InvoiceHeaderRow>
                   <InvoiceField>
-                    <FieldLabel>Date</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('date')}</FieldLabel>
                     <TextInput type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Invoice #</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('invoiceNo')}</FieldLabel>
                     <TextInput value={predictedRef} readOnly />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Bill No</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('billNo')}</FieldLabel>
                     <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
                   </InvoiceField>
                   <InvoiceField wide>
-                    <FieldLabel>Store</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('store')}</FieldLabel>
                     <SearchSelect
                       options={storeOptions}
                       value={storeId}
@@ -416,11 +434,11 @@ export function PurchaseInvoicePage() {
                 </InvoiceHeaderRow>
               </InvoiceFormSection>
 
-              <InvoiceFormSection label="Add existing product">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('addExistingProduct')}>
                 <InvoiceFieldGroup>
                   <InvoiceFieldRow cols={mazduriEnabled ? 6 : 5}>
                     <InvoiceField wide>
-                      <FieldLabel>Category</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('category')}</FieldLabel>
                       <SearchSelect
                         options={productCategoryOptions}
                         value={productCategoryId}
@@ -429,7 +447,7 @@ export function PurchaseInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField wide>
-                      <FieldLabel>Product</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('product')}</FieldLabel>
                       <SearchSelect
                         options={productOptions}
                         value={productId}
@@ -438,15 +456,15 @@ export function PurchaseInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Qty</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('qty')}</FieldLabel>
                       <DecimalInput value={quantity} onChange={setQuantity} />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Rate</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('rate')}</FieldLabel>
                       <DecimalInput value={rate} onChange={setRate} />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Add Mazduri</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('addMazduri')}</FieldLabel>
                       <label className="flex h-[2.375rem] cursor-pointer items-center gap-2 text-sm text-textPrimary">
                         <input
                           type="checkbox"
@@ -462,7 +480,7 @@ export function PurchaseInvoicePage() {
                     </InvoiceField>
                     {mazduriEnabled ? (
                       <InvoiceField>
-                        <FieldLabel>Mazduri</FieldLabel>
+                        <FieldLabel>{salePurchaseInvoiceLabel('mazduri')}</FieldLabel>
                         <DecimalInput value={mazduriAmount} onChange={setMazduriAmount} />
                       </InvoiceField>
                     ) : null}
@@ -470,10 +488,10 @@ export function PurchaseInvoicePage() {
                 </InvoiceFieldGroup>
               </InvoiceFormSection>
 
-              <InvoiceFormSection label="Supplier">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('party')}>
                 <InvoiceFieldRow cols={2} className="inv-sp-party-row">
                   <InvoiceField>
-                    <FieldLabel>Purchase party category</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('purchasePartyCategory')}</FieldLabel>
                     <SearchSelect
                       options={partyCategoryOptions}
                       value={partyCategoryId}
@@ -482,7 +500,7 @@ export function PurchaseInvoicePage() {
                     />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Party</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('party')}</FieldLabel>
                     <SearchSelect
                       options={supplierOptions}
                       value={supplierAccountId}
@@ -494,9 +512,9 @@ export function PurchaseInvoicePage() {
                 </InvoiceFieldRow>
               </InvoiceFormSection>
 
-              <InvoiceAddRowAction onClick={addRow} />
+              <InvoiceAddRowAction onClick={addRow}>{salePurchaseInvoiceLabel('addToGrid')}</InvoiceAddRowAction>
 
-              <InvoiceFormSection label="Preview grid">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('previewGrid')}>
                 <LinesTable
                   rows={gridRows}
                   onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
@@ -535,7 +553,13 @@ export function PurchaseInvoicePage() {
                           predictedRef || 'Purchase Invoice',
                         )
                 }
-                primaryLabel={isEditingPending ? 'Update pending' : 'Save'}
+                primaryLabel={isEditingPending ? 'Update pending' : salePurchaseInvoiceLabel('save')}
+                secondaryPrimaryLabel={
+                  isEditingPending ? undefined : 'Save & Print'
+                }
+                onSecondaryPrimaryClick={
+                  isEditingPending ? undefined : () => void submitInvoice(true)
+                }
               />
           </div>
         </form>

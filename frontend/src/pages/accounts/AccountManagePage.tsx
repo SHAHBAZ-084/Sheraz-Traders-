@@ -1,7 +1,9 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ListPagination } from '../../components/ui/ListPagination';
 import { formatLedgerBalance } from '../../lib/format';
 import { sanitizeDecimalInput } from '../../lib/numericInput';
 import { api, type Account, type AccountCategory } from '../../lib/api';
+import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
 import {
   FieldLabel,
   LegacyTable,
@@ -40,6 +42,9 @@ function suggestedOpeningSideForCategory(categoryId: number, accounts: Account[]
 export function AccountManagePage({ mode }: { mode: Mode }) {
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [browseAccounts, setBrowseAccounts] = useState<Account[]>([]);
+  const [browseTotal, setBrowseTotal] = useState(0);
+  const [browseOffset, setBrowseOffset] = useState(0);
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [name, setName] = useState('');
   const [openingBalance, setOpeningBalance] = useState('');
@@ -51,10 +56,39 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
   const [search, setSearch] = useState('');
   const [filterCategoryId, setFilterCategoryId] = useState<number | ''>('');
 
+  const loadBrowseAccounts = useCallback(async (pageOffset = browseOffset) => {
+    try {
+      const res = await api.listAccountsPage(
+        { limit: BROWSE_PAGE_SIZE, offset: pageOffset },
+        {
+          search: search.trim() || undefined,
+          categoryId: filterCategoryId === '' ? undefined : filterCategoryId,
+        },
+      );
+      setBrowseAccounts(Array.isArray(res.items) ? res.items : []);
+      setBrowseTotal(res.total ?? 0);
+    } catch {
+      setBrowseAccounts([]);
+      setBrowseTotal(0);
+    }
+  }, [browseOffset, search, filterCategoryId]);
+
   useEffect(() => {
     api.listCategories().then(setCategories).catch(() => setCategories([]));
     api.listAccounts({ forSelectors: false }).then(setAccounts).catch(() => setAccounts([]));
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'add') return;
+    void loadBrowseAccounts(browseOffset);
+  }, [mode, loadBrowseAccounts, browseOffset]);
+
+  const browseFilters = useMemo(() => ({ search, filterCategoryId }), [search, filterCategoryId]);
+
+  useEffect(() => {
+    if (mode !== 'add') return;
+    setBrowseOffset(0);
+  }, [mode, browseFilters]);
 
   useEffect(() => {
     if (mode === 'edit' && selectedId) {
@@ -77,23 +111,25 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     [categories, categoryId],
   );
 
-  const filteredAccounts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (accounts ?? []).filter((a) => {
-      if (filterCategoryId !== '' && a.categoryId !== filterCategoryId) return false;
-      if (!q) return true;
-      const haystack = [a.name, a.code, a.category?.name ?? ''].join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [accounts, search, filterCategoryId]);
+  const filteredAccounts = browseAccounts;
+
+  async function reloadSelectorAccounts() {
+    try {
+      setAccounts(await api.listAccounts({ forSelectors: false }));
+    } catch {
+      setAccounts([]);
+    }
+  }
 
   async function reload(modeHint: Mode = mode) {
     if (modeHint === 'remove' || modeHint === 'edit') {
-      setAccounts(await api.listAccounts({ forSelectors: false }));
+      await reloadSelectorAccounts();
       return;
     }
     setCategories(await api.listCategories());
-    setAccounts(await api.listAccounts({ forSelectors: false }));
+    await reloadSelectorAccounts();
+    setBrowseOffset(0);
+    await loadBrowseAccounts(0);
   }
 
   async function onSubmit(event: FormEvent) {
@@ -248,7 +284,10 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
                 <FieldLabel>Search</FieldLabel>
                 <TextInput
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setBrowseOffset(0);
+                  }}
                   placeholder="Search name, code…"
                 />
               </div>
@@ -259,6 +298,7 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
                   value={filterCategoryId === '' ? '' : String(filterCategoryId)}
                   onChange={(e) => {
                     const v = e.target.value;
+                    setBrowseOffset(0);
                     setFilterCategoryId(v === '' ? '' : Number(v));
                   }}
                 >
@@ -284,7 +324,9 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
               {filteredAccounts.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-textMuted">
-                    {(accounts?.length ?? 0) === 0 ? 'No accounts yet.' : 'No accounts match the search/filter.'}
+                    {browseTotal === 0 && !search.trim() && filterCategoryId === ''
+                      ? 'No accounts yet.'
+                      : 'No accounts match the search/filter.'}
                   </td>
                 </tr>
               ) : (
@@ -299,6 +341,12 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
               )}
             </tbody>
           </LegacyTable>
+          <ListPagination
+            total={browseTotal}
+            offset={browseOffset}
+            onPageChange={setBrowseOffset}
+            className="mt-4"
+          />
         </Panel>
       ) : null}
 

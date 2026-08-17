@@ -1,8 +1,9 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Account, type AccountCategory, type Voucher } from '../../lib/api';
+import { api, type Account, type AccountCategory, type ProductCategory, type Voucher } from '../../lib/api';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
 import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
 import { downloadExcel, downloadPdf } from '../../lib/reportExport';
+import { printPage } from '../../lib/print';
 import { ListPagination } from '../../components/ui/ListPagination';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
@@ -67,6 +68,8 @@ function reportEmptyClass(embedded?: boolean) {
 
 type LedgerResult = Awaited<ReturnType<typeof api.getLedger>>;
 type AccountBalanceResult = Awaited<ReturnType<typeof api.getAccountBalanceReport>>;
+
+const REPORT_AMOUNT_CELL = 'report-amount-cell';
 
 function todayInputValue() {
   const d = new Date();
@@ -251,15 +254,15 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
           formatLedgerAmount(exportData.summary.totalCredit),
           formatLedgerBalance(exportData.summary.closingBalance),
         ];
-    rows.push(totalRow);
     const safeName = accountName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-');
     const base = `ledger-${safeName || 'account'}`;
     if (format === 'excel') {
-      downloadExcel(`${base}.xlsx`, 'Ledger', headers, rows);
+      downloadExcel(`${base}.xlsx`, 'Ledger', headers, [...rows, totalRow]);
     } else {
       await downloadPdf(`${base}.pdf`, 'Account Ledger', headers, rows, {
         letterheadElement: letterheadRef.current,
         orientation: 'landscape',
+        footerRows: [totalRow],
       });
     }
   }
@@ -321,6 +324,7 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportLedger('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportLedger('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             <ReportTable tableClassName="table-fixed">
               <colgroup>
@@ -357,28 +361,28 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
                     <td className="pr-2 whitespace-normal break-words text-textSecondary">
                       {r.description ? <LedgerVoucherDescription text={r.description} /> : ''}
                     </td>
-                    <td className={`pr-2 text-right tabular-nums ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
-                    <td className={`pr-2 text-right tabular-nums ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
+                    <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
+                    <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
                     {ledger.showMazduriColumn ? (
-                      <td className={`pr-2 text-right tabular-nums ${ledgerDebitAmountClass((r.mazduri ?? 0) > 0)}`}>
+                      <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass((r.mazduri ?? 0) > 0)}`}>
                         {r.mazduri != null && r.mazduri > 0 ? formatLedgerAmount(r.mazduri) : '—'}
                       </td>
                     ) : null}
-                    <td className="text-right font-medium tabular-nums text-accent">{formatLedgerBalance(r.balance)}</td>
+                    <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL}`}>{formatLedgerBalance(r.balance)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={5}>Total / Closing</td>
-                  <td className={`text-right tabular-nums ${ledgerDebitAmountClass(ledger.summary.totalDebit > 0)}`}>{formatLedgerAmount(ledger.summary.totalDebit)}</td>
-                  <td className={`text-right tabular-nums ${ledgerCreditAmountClass(ledger.summary.totalCredit > 0)}`}>{formatLedgerAmount(ledger.summary.totalCredit)}</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(ledger.summary.totalDebit > 0)}`}>{formatLedgerAmount(ledger.summary.totalDebit)}</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(ledger.summary.totalCredit > 0)}`}>{formatLedgerAmount(ledger.summary.totalCredit)}</td>
                   {ledger.showMazduriColumn ? (
-                    <td className={`text-right tabular-nums ${ledgerDebitAmountClass((ledger.summary.totalMazduri ?? 0) > 0)}`}>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass((ledger.summary.totalMazduri ?? 0) > 0)}`}>
                       {formatLedgerAmount(ledger.summary.totalMazduri ?? 0)}
                     </td>
                   ) : null}
-                  <td className="text-right text-accent">{formatLedgerBalance(ledger.summary.closingBalance)}</td>
+                  <td className={`text-right text-accent ${REPORT_AMOUNT_CELL}`}>{formatLedgerBalance(ledger.summary.closingBalance)}</td>
                 </tr>
               </tfoot>
             </ReportTable>
@@ -467,12 +471,13 @@ export function TrialBalancePage() {
         formatLedgerAmount(row.debit, 2),
         formatLedgerAmount(row.credit, 2),
       ]);
-      rows.push(['Total', formatLedgerAmount(exportData.totalDebit, 2), formatLedgerAmount(exportData.totalCredit, 2)]);
+      const totalRow = ['Total', formatLedgerAmount(exportData.totalDebit, 2), formatLedgerAmount(exportData.totalCredit, 2)];
       if (format === 'excel') {
-        downloadExcel('trial-balance.xlsx', 'Trial Balance', headers, rows);
+        downloadExcel('trial-balance.xlsx', 'Trial Balance', headers, [...rows, totalRow]);
       } else {
         await downloadPdf('trial-balance.pdf', 'Detail Trial Balance', headers, rows, {
           letterheadElement: letterheadRef.current,
+          footerRows: [totalRow],
         });
       }
     })();
@@ -493,6 +498,7 @@ export function TrialBalancePage() {
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportTrialBalance('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportTrialBalance('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             <ReportTable>
               <thead>
@@ -506,8 +512,8 @@ export function TrialBalancePage() {
                 {data.accounts.map((row, i) => (
                   <tr key={i}>
                     <td>{row.accountName}</td>
-                    <td className={`text-right tabular-nums ${ledgerDebitAmountClass(row.debit > 0)}`}>{formatLedgerAmount(row.debit, 2)}</td>
-                    <td className={`text-right tabular-nums ${ledgerCreditAmountClass(row.credit > 0)}`}>{formatLedgerAmount(row.credit, 2)}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(row.debit > 0)}`}>{formatLedgerAmount(row.debit, 2)}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(row.credit > 0)}`}>{formatLedgerAmount(row.credit, 2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -640,6 +646,9 @@ export function StockReportPage() {
                 return product ? `${product.code} — ${product.name}` : undefined;
               })()}
             />
+            <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
+            </div>
             <p className="text-sm text-textSecondary">
               Tracking from {formatDate(report.trackingStartedAt)} onward.
               {!report.historicalBackfill
@@ -709,6 +718,7 @@ export function StockReportPage() {
 }
 
 type BalanceSideFilter = 'both' | 'debit' | 'credit';
+type AccountBalanceFilterMode = 'account' | 'product';
 type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI';
 
 function BalanceTable({
@@ -736,13 +746,13 @@ function BalanceTable({
           <tr key={row.accountId}>
             <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
             <td className="pr-3">{row.accountName}</td>
-            <td className={`pr-3 text-right tabular-nums ${ledgerDebitAmountClass(row.debit > 0)}`}>
+            <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(row.debit > 0)}`}>
               {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
             </td>
-            <td className={`pr-3 text-right tabular-nums ${ledgerCreditAmountClass(row.credit > 0)}`}>
+            <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(row.credit > 0)}`}>
               {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
             </td>
-            <td className="text-right font-medium tabular-nums text-accent">
+            <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL}`}>
               {formatLedgerBalance(row.balance)}
             </td>
           </tr>
@@ -751,8 +761,8 @@ function BalanceTable({
       <tfoot>
         <tr>
           <td colSpan={2}>Total</td>
-          <td className={`text-right tabular-nums ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
-          <td className={`text-right tabular-nums ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
+          <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
+          <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
           <td />
         </tr>
       </tfoot>
@@ -763,8 +773,11 @@ function BalanceTable({
 export function AccountBalancePage({ historicalScope, embedded }: ReportPageOptions = {}) {
   const financialYearId = useReportFinancialYearId(historicalScope);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [datedOn, setDatedOn] = useState(todayInputValue);
+  const [filterMode, setFilterMode] = useState<AccountBalanceFilterMode>('account');
   const [categoryId, setCategoryId] = useState('');
+  const [productCategoryId, setProductCategoryId] = useState('');
   const [side, setSide] = useState<BalanceSideFilter>('both');
   const [report, setReport] = useState<AccountBalanceResult | null>(null);
   const [offset, setOffset] = useState(0);
@@ -778,24 +791,38 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
     api.listCategories()
       .then((rows) => setCategories(rows.filter((c) => c.isActive)))
       .catch(() => setCategories([]));
+    api.listProductCategories()
+      .then((rows) => setProductCategories(Array.isArray(rows) ? rows : []))
+      .catch(() => setProductCategories([]));
   }, []);
+
+  function balanceReportQuery(pageOffset: number, pageLimit: number) {
+    return {
+      date: datedOn,
+      side,
+      limit: pageLimit,
+      offset: pageOffset,
+      ...(financialYearId != null ? { financialYearId } : {}),
+      ...(filterMode === 'account' && categoryId ? { categoryId: Number(categoryId) } : {}),
+      ...(filterMode === 'product' && productCategoryId
+        ? { productCategoryId: Number(productCategoryId) }
+        : {}),
+    };
+  }
 
   async function loadReport(pageOffset = offset) {
     if (!datedOn) {
       setError('Select a date');
       return;
     }
+    if (filterMode === 'product' && !productCategoryId) {
+      setError('Select a product category');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      const result = await api.getAccountBalanceReport({
-        date: datedOn,
-        categoryId: categoryId ? Number(categoryId) : undefined,
-        side,
-        limit: BROWSE_PAGE_SIZE,
-        offset: pageOffset,
-        ...(financialYearId != null ? { financialYearId } : {}),
-      });
+      const result = await api.getAccountBalanceReport(balanceReportQuery(pageOffset, BROWSE_PAGE_SIZE));
       setReport(result);
       setTotal(result.pagination?.total ?? result.totalCount ?? result.accounts.length);
       setOffset(pageOffset);
@@ -813,14 +840,7 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
     void (async () => {
       const exportData =
         total > report.accounts.length
-          ? await api.getAccountBalanceReport({
-              date: datedOn,
-              categoryId: categoryId ? Number(categoryId) : undefined,
-              side,
-              limit: total,
-              offset: 0,
-              ...(financialYearId != null ? { financialYearId } : {}),
-            })
+          ? await api.getAccountBalanceReport(balanceReportQuery(0, total))
           : report;
       const headers = ['Account Code', 'Account Name', 'Debit', 'Credit', 'Balance'];
       const rows = exportData.accounts.map((row) => [
@@ -830,31 +850,45 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
       row.credit > 0 ? formatLedgerAmount(row.credit) : '',
       formatLedgerBalance(row.balance),
     ]);
-    rows.push([
-      'Total',
-      '',
-      formatLedgerAmount(exportData.totalDebit),
-      formatLedgerAmount(exportData.totalCredit),
-      '',
-    ]);
-    const safeDate = datedOn.replace(/[^\d-]/g, '');
-    const base = `account-balance-${safeDate}`;
-    if (format === 'excel') {
-      downloadExcel(`${base}.xlsx`, 'Account Balance', headers, rows);
-    } else {
-      await downloadPdf(`${base}.pdf`, 'Account Balance', headers, rows, {
-        letterheadElement: letterheadRef.current,
-        orientation: 'landscape',
-      });
-    }
+      const totalRow = [
+        'Total',
+        '',
+        formatLedgerAmount(exportData.totalDebit),
+        formatLedgerAmount(exportData.totalCredit),
+        '',
+      ];
+      const safeDate = datedOn.replace(/[^\d-]/g, '');
+      const base = `account-balance-${safeDate}`;
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Account Balance', headers, [...rows, totalRow]);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Account Balance', headers, rows, {
+          letterheadElement: letterheadRef.current,
+          orientation: 'landscape',
+          footerRows: [totalRow],
+        });
+      }
     })();
   }
 
-  const showGrouped = !categoryId && (report?.groups?.length ?? 0) > 0;
+  const showGrouped =
+    filterMode === 'account' && !categoryId && (report?.groups?.length ?? 0) > 0;
 
-  const balanceSubtitle = historicalScope?.financialYearLabel
-    ? `${historicalScope.financialYearLabel} · As of ${formatDate(datedOn)}`
-    : `As of ${formatDate(datedOn)}`;
+  const selectedProductCategoryName = productCategories.find(
+    (category) => String(category.id) === productCategoryId,
+  )?.name;
+
+  const balanceSubtitle = useMemo(() => {
+    const parts: string[] = [];
+    if (historicalScope?.financialYearLabel) {
+      parts.push(historicalScope.financialYearLabel);
+    }
+    parts.push(`As of ${formatDate(datedOn)}`);
+    if (filterMode === 'product' && selectedProductCategoryName) {
+      parts.push(`Product category: ${selectedProductCategoryName}`);
+    }
+    return parts.join(' · ');
+  }, [historicalScope?.financialYearLabel, datedOn, filterMode, selectedProductCategoryName]);
 
   const panel = (
     <ReportPanel embedded={embedded} title="Account Balance">
@@ -864,21 +898,59 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
             <TextInput type="date" value={datedOn} onChange={(e) => setDatedOn(e.target.value)} />
           </div>
           <div>
-            <FieldLabel>Account Type</FieldLabel>
-            <select
-              className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
-              value={categoryId}
-              onChange={(e) => {
-                setCategoryId(e.target.value);
+            <FieldLabel>Filter by</FieldLabel>
+            <SegmentedControl
+              ariaLabel="Balance filter type"
+              value={filterMode}
+              onChange={(value) => {
+                setFilterMode(value as AccountBalanceFilterMode);
+                setCategoryId('');
+                setProductCategoryId('');
                 setOffset(0);
+                setLoaded(false);
+                setReport(null);
               }}
-            >
-              <option value="">All Groups</option>
-              {(categories ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              options={[
+                { value: 'account', label: 'Account Category' },
+                { value: 'product', label: 'Product Category' },
+              ]}
+            />
           </div>
+          {filterMode === 'account' ? (
+            <div>
+              <FieldLabel>Account Type</FieldLabel>
+              <select
+                className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
+                value={categoryId}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setOffset(0);
+                }}
+              >
+                <option value="">All Groups</option>
+                {(categories ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <FieldLabel>Product Category</FieldLabel>
+              <select
+                className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
+                value={productCategoryId}
+                onChange={(e) => {
+                  setProductCategoryId(e.target.value);
+                  setOffset(0);
+                }}
+              >
+                <option value="">Select category…</option>
+                {(productCategories ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <FieldLabel>Amount Type</FieldLabel>
             <SegmentedControl
@@ -903,13 +975,18 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
         {!loaded ? (
           <p className={reportEmptyClass(embedded)}>Set filters and click View</p>
         ) : report && (report.accounts?.length ?? 0) === 0 ? (
-          <p className={reportEmptyClass(embedded)}>No accounts match these filters</p>
+          <p className={reportEmptyClass(embedded)}>
+            {filterMode === 'product'
+              ? 'No product accounts match this category'
+              : 'No accounts match these filters'}
+          </p>
         ) : report ? (
           <div className="report-print-area">
             <ReportLetterhead ref={letterheadRef} title="Account Balance" subtitle={balanceSubtitle} />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             {showGrouped ? (
               <div className="space-y-6">
@@ -922,8 +999,8 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                     </div>
                     <BalanceTable
                       rows={group.accounts}
-                      totalDebit={group.accounts.reduce((s, r) => s + r.debit, 0)}
-                      totalCredit={group.accounts.reduce((s, r) => s + r.credit, 0)}
+                      totalDebit={group.totalDebit}
+                      totalCredit={group.totalCredit}
                     />
                   </div>
                 ))}
@@ -940,8 +1017,8 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                   <tfoot>
                     <tr>
                       <td colSpan={2}>Grand Total</td>
-                      <td className={`text-right tabular-nums ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
-                      <td className={`text-right tabular-nums ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
+                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
+                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -1176,6 +1253,7 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             <ReportTable minWidth="960px">
               <thead>
@@ -1484,6 +1562,7 @@ export function ProfitLossStatementPage() {
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
+              <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
             <ReportTable>
               <thead>

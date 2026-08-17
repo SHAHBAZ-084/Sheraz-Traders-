@@ -2,12 +2,19 @@ import { AccountType, InvoiceStatus, InvoiceType, Prisma, ProductKind } from '@p
 import { prisma } from '../../lib/prisma';
 import { PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
 import { AppError } from '../../utils/helpers';
-import { postOpeningBalanceInTx } from '../accounting/accounting.service';
+import { postOpeningBalanceInTx, postStockAdjustmentBalanceInTx, assertVoucherDateInActiveFinancialYear } from '../accounting/accounting.service';
 import {
   computeKachiOpeningStockValue,
   type KachiBagMode,
 } from '../invoices/kachi-maal.calculations';
-import { getCurrentStockBalance, postOpeningKachiStockIn, postOpeningStockIn } from '../stock/stock.service';
+import {
+  getCurrentStockBalance,
+  getCurrentStockBalancesForProducts,
+  postOpeningKachiStockIn,
+  postOpeningStockIn,
+  postStockAdjustmentKachiIn,
+  postStockAdjustmentStandardIn,
+} from '../stock/stock.service';
 import {
   ensureMaalKhataCategoryInTx,
   generateNextMaalKhataCodeInTx,
@@ -64,13 +71,35 @@ export async function createProductCategory(nameInput: string) {
 }
 
 export async function listProducts(
-  options?: { includeLedger?: boolean },
+  options?: {
+    includeLedger?: boolean;
+    search?: string;
+    /** When set to `null`, only products with no business category. */
+    categoryId?: number | null;
+  },
   pagination?: { limit: number; offset: number },
 ): Promise<PaginatedResult<Awaited<ReturnType<typeof mapListedProduct>>>> {
   const includeLedger = options?.includeLedger !== false;
   const limit = pagination?.limit ?? SELECTOR_MAX_PAGE_SIZE;
   const offset = pagination?.offset ?? 0;
-  const where = { isActive: true };
+  const where: Prisma.ProductWhereInput = { isActive: true };
+
+  if (options?.categoryId === null) {
+    where.categoryId = null;
+  } else if (options?.categoryId != null) {
+    where.categoryId = options.categoryId;
+  }
+
+  const search = options?.search?.trim();
+  if (search) {
+    where.OR = [
+      { name: { contains: search } },
+      { code: { contains: search } },
+      { unit: { contains: search } },
+      { category: { is: { name: { contains: search } } } },
+      { account: { is: { name: { contains: search } } } },
+    ];
+  }
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
@@ -108,8 +137,12 @@ export async function listProducts(
     prisma.product.count({ where }),
   ]);
 
+  const stockBalances = await getCurrentStockBalancesForProducts(
+    products.map((p) => ({ id: p.id, kind: p.kind })),
+  );
+
   return {
-    items: products.map(mapListedProduct),
+    items: products.map((p) => mapListedProduct(p, stockBalances.get(p.id) ?? 0)),
     total,
     limit,
     offset,
@@ -137,10 +170,11 @@ function mapListedProduct(product: {
     isActive: boolean;
     ledger?: { id: number; accountId: number; balance: unknown; updatedAt: Date } | null;
   };
-}) {
+}, stockBalance: number) {
   const { account, ...rest } = product;
   return {
     ...rest,
+    stockBalance,
     account: {
       ...account,
       ledger: account.ledger
@@ -158,6 +192,258 @@ export type KachiOpeningStockInput = {
   bhartii: number;
   ratePerMaund: number;
 };
+
+function parseAdjustmentDate(value: string): Date {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw new AppError(400, 'Invalid adjustment date');
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+function assertStoreForStock(storeId: number | null | undefined, message: string) {
+  if (storeId == null || storeId <= 0) {
+    throw new AppError(400, message);
+  }
+}
+
+/** Post valued STANDARD stock IN + ledger (opening stock or adjustment). */
+async function addStandardStockToProductInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    productId: number;
+    ledgerId: number;
+    accountName: string;
+    storeId: number;
+    quantity: number;
+    rate: number;
+    mode: 'opening' | 'adjustment';
+    date?: Date;
+    financialYearId?: number;
+    productName?: string;
+  },
+) {
+  const quantity = Number(data.quantity);
+  const rate = Number(data.rate);
+  const amount = quantity * rate;
+  if (!(quantity > 0) || !(amount > 0)) return;
+
+  assertStoreForStock(data.storeId, 'Store is required when opening stock is greater than zero');
+
+  if (data.mode === 'opening') {
+    await postOpeningStockIn(tx, {
+      productId: data.productId,
+      storeId: data.storeId,
+      quantity,
+      date: data.date,
+    });
+    await postOpeningBalanceInTx(tx, {
+      ledgerId: data.ledgerId,
+      accountName: data.accountName,
+      amount,
+      side: 'DR',
+      notes: 'Opening Stock',
+    });
+    return;
+  }
+
+  const entryDate = data.date ?? new Date();
+  const notes = `Stock Adjustment — ${data.productName ?? data.accountName} (${quantity})`;
+  await postStockAdjustmentStandardIn(tx, {
+    productId: data.productId,
+    storeId: data.storeId,
+    quantity,
+    date: entryDate,
+    description: notes,
+  });
+  await postStockAdjustmentBalanceInTx(tx, {
+    ledgerId: data.ledgerId,
+    accountName: data.accountName,
+    amount,
+    side: 'DR',
+    notes,
+    financialYearId: data.financialYearId!,
+    entryDate,
+  });
+}
+
+/** Post valued Kachi stock IN + ledger (opening stock or adjustment). */
+async function addKachiStockToProductInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    productId: number;
+    ledgerId: number;
+    accountName: string;
+    storeId: number;
+    kachiOpening: KachiOpeningStockInput;
+    mode: 'opening' | 'adjustment';
+    date?: Date;
+    financialYearId?: number;
+    productName?: string;
+  },
+) {
+  const computed = computeKachiOpeningStockValue({
+    bagMode: data.kachiOpening.bagMode,
+    bagCount: Number(data.kachiOpening.bagCount) || 0,
+    dharanCount: Number(data.kachiOpening.dharanCount) || 0,
+    looseKg: Number(data.kachiOpening.looseKg) || 0,
+    bhartii: Number(data.kachiOpening.bhartii) || 0,
+    ratePerMaund: Number(data.kachiOpening.ratePerMaund),
+  });
+
+  const { totalWeightKg: weightKg, amount } = computed;
+  if (!(weightKg > 0) || !(amount > 0)) return;
+
+  assertStoreForStock(
+    data.storeId,
+    data.mode === 'opening'
+      ? 'Store is required when kachi opening stock is entered'
+      : 'Store is required for stock adjustment',
+  );
+
+  if (data.mode === 'opening') {
+    await postOpeningKachiStockIn(tx, {
+      productId: data.productId,
+      storeId: data.storeId,
+      weightKg,
+      date: data.date,
+    });
+    await postOpeningBalanceInTx(tx, {
+      ledgerId: data.ledgerId,
+      accountName: data.accountName,
+      amount,
+      side: 'DR',
+      notes: 'Opening Stock',
+    });
+    return;
+  }
+
+  const entryDate = data.date ?? new Date();
+  const notes = `Stock Adjustment — ${data.productName ?? data.accountName}`;
+  await postStockAdjustmentKachiIn(tx, {
+    productId: data.productId,
+    storeId: data.storeId,
+    weightKg,
+    date: entryDate,
+    description: notes,
+  });
+  await postStockAdjustmentBalanceInTx(tx, {
+    ledgerId: data.ledgerId,
+    accountName: data.accountName,
+    amount,
+    side: 'DR',
+    notes,
+    financialYearId: data.financialYearId!,
+    entryDate,
+  });
+}
+
+export async function createStockAdjustment(data: {
+  adjustmentDate: string;
+  productId: number;
+  storeId: number;
+  quantity?: number;
+  rate?: number;
+  kachiOpening?: KachiOpeningStockInput;
+}) {
+  assertStoreForStock(data.storeId, 'Store is required for stock adjustment');
+
+  const adjustmentDate = parseAdjustmentDate(data.adjustmentDate);
+
+  const product = await prisma.product.findFirst({
+    where: { id: data.productId, isActive: true },
+    include: { account: { include: { ledger: true } } },
+  });
+  if (!product) throw new AppError(404, 'Product not found');
+  if (!product.account.ledger) throw new AppError(400, 'Product ledger not found');
+
+  const accountName = product.account.name;
+  const ledgerId = product.account.ledger.id;
+
+  return prisma.$transaction(async (tx) => {
+    const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, adjustmentDate, 'Invoice');
+
+    if (product.kind === ProductKind.KACHI) {
+      if (data.quantity != null || data.rate != null) {
+        throw new AppError(
+          400,
+          'Standard quantity/rate cannot be used with Kachi products — use kachi weight fields',
+        );
+      }
+      const opening = data.kachiOpening;
+      if (!opening) throw new AppError(400, 'Kachi weight details are required');
+      if (opening.bagMode !== 'BORI' && opening.bagMode !== 'THELA') {
+        throw new AppError(400, 'bagMode must be BORI or THELA');
+      }
+      if (!(Number(opening.ratePerMaund) > 0)) {
+        throw new AppError(400, 'Purchase rate per maund is required');
+      }
+      if (Number(opening.bagCount) > 0 && !(Number(opening.bhartii) > 0)) {
+        throw new AppError(400, 'Bhartii must be greater than zero when bag count is entered');
+      }
+
+      const computed = computeKachiOpeningStockValue({
+        bagMode: opening.bagMode,
+        bagCount: Number(opening.bagCount) || 0,
+        dharanCount: Number(opening.dharanCount) || 0,
+        looseKg: Number(opening.looseKg) || 0,
+        bhartii: Number(opening.bhartii) || 0,
+        ratePerMaund: Number(opening.ratePerMaund),
+      });
+      if (!(computed.totalWeightKg > 0)) {
+        throw new AppError(400, 'Kachi adjustment weight must be greater than zero');
+      }
+      if (!(computed.amount > 0)) {
+        throw new AppError(400, 'Kachi adjustment value must be greater than zero');
+      }
+
+      await addKachiStockToProductInTx(tx, {
+        productId: product.id,
+        ledgerId,
+        accountName,
+        storeId: data.storeId,
+        kachiOpening: opening,
+        mode: 'adjustment',
+        date: adjustmentDate,
+        financialYearId,
+        productName: product.name,
+      });
+    } else {
+      if (data.kachiOpening != null) {
+        throw new AppError(400, 'Kachi weight fields cannot be used with standard products');
+      }
+
+      const quantityRaw = data.quantity != null ? Number(data.quantity) : NaN;
+      const rateRaw = data.rate != null ? Number(data.rate) : NaN;
+      if (!Number.isFinite(quantityRaw) || quantityRaw <= 0) {
+        throw new AppError(400, 'Quantity must be greater than zero');
+      }
+      if (!Number.isFinite(rateRaw) || rateRaw <= 0) {
+        throw new AppError(400, 'Rate must be greater than zero');
+      }
+
+      await addStandardStockToProductInTx(tx, {
+        productId: product.id,
+        ledgerId,
+        accountName,
+        storeId: data.storeId,
+        quantity: quantityRaw,
+        rate: rateRaw,
+        mode: 'adjustment',
+        date: adjustmentDate,
+        financialYearId,
+        productName: product.name,
+      });
+    }
+
+    const balance = await getCurrentStockBalance(product.id, data.storeId, tx);
+    return {
+      productId: product.id,
+      storeId: data.storeId,
+      balance,
+      productName: product.name,
+    };
+  });
+}
 
 export async function createProduct(data: {
   name: string;
@@ -219,7 +505,6 @@ async function createStandardProduct(
 
   const openingStock = hasQty ? openingStockRaw : 0;
   const openingStockRate = hasRate ? openingStockRateRaw : 0;
-  const openingStockValue = openingStock * openingStockRate;
 
   if (openingStock > 0 && (data.openingStoreId == null || data.openingStoreId <= 0)) {
     throw new AppError(400, 'Store is required when opening stock is greater than zero');
@@ -279,20 +564,14 @@ async function createStandardProduct(
     });
 
     if (openingStock > 0) {
-      await postOpeningStockIn(tx, {
+      await addStandardStockToProductInTx(tx, {
         productId: product.id,
-        storeId: data.openingStoreId!,
-        quantity: openingStock,
-      });
-
-      // Debit product Maal Khata (same account purchase invoices use for inventory value),
-      // Credit Opening Balance Equity — mirrors account opening balances.
-      await postOpeningBalanceInTx(tx, {
         ledgerId: ledger.id,
         accountName,
-        amount: openingStockValue,
-        side: 'DR',
-        notes: 'Opening Stock',
+        storeId: data.openingStoreId!,
+        quantity: openingStock,
+        rate: openingStockRate,
+        mode: 'opening',
       });
     }
 
@@ -429,18 +708,13 @@ async function createKachiProduct(
     });
 
     if (openingWeightKg > 0) {
-      await postOpeningKachiStockIn(tx, {
+      await addKachiStockToProductInTx(tx, {
         productId: product.id,
-        storeId: data.openingStoreId!,
-        weightKg: openingWeightKg,
-      });
-
-      await postOpeningBalanceInTx(tx, {
         ledgerId: ledger.id,
         accountName,
-        amount: openingValue,
-        side: 'DR',
-        notes: 'Opening Stock',
+        storeId: data.openingStoreId!,
+        kachiOpening: opening!,
+        mode: 'opening',
       });
     }
 

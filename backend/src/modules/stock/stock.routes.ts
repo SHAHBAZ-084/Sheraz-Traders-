@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import * as stockService from './stock.service';
+import { createStockAdjustment } from '../products/products.service';
 
 import { parsePagination, paginateArray } from '../../utils/pagination';
 
@@ -98,5 +99,49 @@ stockRouter.post(
       createdById: req.session.userId!,
     });
     res.status(201).json(invoice);
+  }),
+);
+
+stockRouter.post(
+  '/adjustment',
+  asyncHandler(async (req, res) => {
+    const kachiOpeningSchema = z.object({
+      bagMode: z.enum(['BORI', 'THELA']),
+      bagCount: z.number().min(0),
+      dharanCount: z.number().min(0),
+      looseKg: z.number().min(0),
+      bhartii: z.number().min(0),
+      ratePerMaund: z.number().positive(),
+    });
+
+    const schema = z
+      .object({
+        adjustmentDate: z.string().min(1),
+        productId: z.number().int().positive(),
+        storeId: z.number().int().positive(),
+        quantity: z.number().positive().optional(),
+        rate: z.number().positive().optional(),
+        kachiOpening: kachiOpeningSchema.optional(),
+      })
+      .superRefine((body, ctx) => {
+        const hasStandard = body.quantity != null || body.rate != null;
+        const hasKachi = body.kachiOpening != null;
+        if (hasStandard && hasKachi) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide either standard quantity/rate or kachi weight fields, not both',
+          });
+        }
+        if (hasStandard && (body.quantity == null || body.rate == null)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Quantity and rate must both be provided together',
+          });
+        }
+      });
+
+    const body = schema.parse(req.body);
+    const result = await createStockAdjustment(body);
+    res.status(201).json(result);
   }),
 );

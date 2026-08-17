@@ -1,4 +1,12 @@
 import { forwardRef, ReactNode, RefObject } from 'react';
+import { containsUrduScript } from '../../lib/urduScript';
+
+function reactNodeText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(reactNodeText).join('');
+  return '';
+}
 
 type PageShellProps = {
   title?: ReactNode;
@@ -86,9 +94,10 @@ export function LegacyTable({
 }
 
 /** Visual field caption — not a <label>, so it never steals clicks from sibling controls. */
-export function FieldLabel({ children }: { children: ReactNode }) {
+export function FieldLabel({ children, urdu }: { children: ReactNode; urdu?: boolean }) {
+  const isUrdu = urdu ?? containsUrduScript(reactNodeText(children));
   return (
-    <div className="app-field-label">
+    <div className={`app-field-label${isUrdu ? ' field-label-urdu' : ''}`}>
       <span className="app-field-label-text">{children}</span>
     </div>
   );

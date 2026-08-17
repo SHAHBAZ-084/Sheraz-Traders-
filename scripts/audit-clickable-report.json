@@ -1,0 +1,1023 @@
+{
+  "base": "http://127.0.0.1:5173",
+  "startedAt": "2026-08-16T12:34:09.076Z",
+  "viewports": [
+    "desktop",
+    "wide",
+    "narrow"
+  ],
+  "pages": [
+    {
+      "name": "Login",
+      "path": "/login",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Home (blank)",
+      "path": "/",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Dashboard",
+      "path": "/dashboard",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 15,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Category",
+      "path": "/accounts/categories/add",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Category",
+      "path": "/accounts/categories/edit",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Category",
+      "path": "/accounts/categories/remove",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Account",
+      "path": "/accounts/manage/add",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Account",
+      "path": "/accounts/manage/edit",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 5,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Account",
+      "path": "/accounts/manage/remove",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Product",
+      "path": "/products/add",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 14,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Product",
+      "path": "/products/remove",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Parties",
+      "path": "/accounts/sale-parties",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 13,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Parties",
+      "path": "/accounts/purchase-parties",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 13,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Kachi Maal Invoice",
+      "path": "/invoices/kachi-maal",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 13,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Invoice",
+      "path": "/invoices/sale-invoice",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Invoice",
+      "path": "/invoices/purchase-invoice",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Invoice",
+      "path": "/invoices/view-invoice",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Jama Naam Register",
+      "path": "/jama-naam",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Transfer",
+      "path": "/inventory/stock-transfer",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Payment Voucher",
+      "path": "/vouchers/payment",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Receipt Voucher",
+      "path": "/vouchers/receipt",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Journal Voucher",
+      "path": "/vouchers/journal",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Vouchers",
+      "path": "/vouchers/view",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Ledger",
+      "path": "/reports/accounts",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 6,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Balance",
+      "path": "/reports/account-balance",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Vouchers Report",
+      "path": "/reports/vouchers",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Trial Balance",
+      "path": "/reports/trial-balance",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 2,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Profit & Loss",
+      "path": "/reports/profit-loss",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Report",
+      "path": "/reports/stock",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports",
+      "path": "/reports/financial-year",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports Hub",
+      "path": "/reports/financial-year/30",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Database Maintenance",
+      "path": "/system/database",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stores",
+      "path": "/system/stores",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 18,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Pending Approvals",
+      "path": "/system/approvals",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 1,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "System Preferences",
+      "path": "/system/preferences",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "User Information",
+      "path": "/user",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 10,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "FY Management",
+      "path": "/user/fy-management",
+      "viewport": "desktop",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": [
+        "No interactive controls found in viewport at top"
+      ]
+    },
+    {
+      "name": "Login",
+      "path": "/login",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Home (blank)",
+      "path": "/",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Dashboard",
+      "path": "/dashboard",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 16,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Category",
+      "path": "/accounts/categories/add",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Category",
+      "path": "/accounts/categories/edit",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Category",
+      "path": "/accounts/categories/remove",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Account",
+      "path": "/accounts/manage/add",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Account",
+      "path": "/accounts/manage/edit",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 5,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Account",
+      "path": "/accounts/manage/remove",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Product",
+      "path": "/products/add",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 20,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Product",
+      "path": "/products/remove",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Parties",
+      "path": "/accounts/sale-parties",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 15,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Parties",
+      "path": "/accounts/purchase-parties",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 15,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Kachi Maal Invoice",
+      "path": "/invoices/kachi-maal",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 13,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Invoice",
+      "path": "/invoices/sale-invoice",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 14,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Invoice",
+      "path": "/invoices/purchase-invoice",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 15,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Invoice",
+      "path": "/invoices/view-invoice",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Jama Naam Register",
+      "path": "/jama-naam",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Transfer",
+      "path": "/inventory/stock-transfer",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Payment Voucher",
+      "path": "/vouchers/payment",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Receipt Voucher",
+      "path": "/vouchers/receipt",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Journal Voucher",
+      "path": "/vouchers/journal",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Vouchers",
+      "path": "/vouchers/view",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Ledger",
+      "path": "/reports/accounts",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 6,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Balance",
+      "path": "/reports/account-balance",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Vouchers Report",
+      "path": "/reports/vouchers",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Trial Balance",
+      "path": "/reports/trial-balance",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 2,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Profit & Loss",
+      "path": "/reports/profit-loss",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Report",
+      "path": "/reports/stock",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports",
+      "path": "/reports/financial-year",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports Hub",
+      "path": "/reports/financial-year/30",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Database Maintenance",
+      "path": "/system/database",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stores",
+      "path": "/system/stores",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 22,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Pending Approvals",
+      "path": "/system/approvals",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 1,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "System Preferences",
+      "path": "/system/preferences",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "User Information",
+      "path": "/user",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "FY Management",
+      "path": "/user/fy-management",
+      "viewport": "wide",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": [
+        "No interactive controls found in viewport at top"
+      ]
+    },
+    {
+      "name": "Login",
+      "path": "/login",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Home (blank)",
+      "path": "/",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Dashboard",
+      "path": "/dashboard",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Category",
+      "path": "/accounts/categories/add",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Category",
+      "path": "/accounts/categories/edit",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Category",
+      "path": "/accounts/categories/remove",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Account",
+      "path": "/accounts/manage/add",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Edit Account",
+      "path": "/accounts/manage/edit",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 5,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Account",
+      "path": "/accounts/manage/remove",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Add Product",
+      "path": "/products/add",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 10,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Remove Product",
+      "path": "/products/remove",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Parties",
+      "path": "/accounts/sale-parties",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 10,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Parties",
+      "path": "/accounts/purchase-parties",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 10,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Kachi Maal Invoice",
+      "path": "/invoices/kachi-maal",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 13,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Sale Invoice",
+      "path": "/invoices/sale-invoice",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Purchase Invoice",
+      "path": "/invoices/purchase-invoice",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 12,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Invoice",
+      "path": "/invoices/view-invoice",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Jama Naam Register",
+      "path": "/jama-naam",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Transfer",
+      "path": "/inventory/stock-transfer",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Payment Voucher",
+      "path": "/vouchers/payment",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Receipt Voucher",
+      "path": "/vouchers/receipt",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 8,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Journal Voucher",
+      "path": "/vouchers/journal",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "View Vouchers",
+      "path": "/vouchers/view",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Ledger",
+      "path": "/reports/accounts",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 6,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Account Balance",
+      "path": "/reports/account-balance",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Vouchers Report",
+      "path": "/reports/vouchers",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Trial Balance",
+      "path": "/reports/trial-balance",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 2,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Profit & Loss",
+      "path": "/reports/profit-loss",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stock Report",
+      "path": "/reports/stock",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 4,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports",
+      "path": "/reports/financial-year",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 6,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Financial Year Reports Hub",
+      "path": "/reports/financial-year/30",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 11,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Database Maintenance",
+      "path": "/system/database",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 3,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Stores",
+      "path": "/system/stores",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 14,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "Pending Approvals",
+      "path": "/system/approvals",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 1,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "System Preferences",
+      "path": "/system/preferences",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 9,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "User Information",
+      "path": "/user",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 7,
+      "failures": [],
+      "notes": []
+    },
+    {
+      "name": "FY Management",
+      "path": "/user/fy-management",
+      "viewport": "narrow",
+      "status": "pass",
+      "controls": 0,
+      "failures": [],
+      "notes": [
+        "No interactive controls found in viewport at top"
+      ]
+    }
+  ],
+  "finishedAt": "2026-08-16T12:36:20.261Z",
+  "summary": {
+    "total": 111,
+    "passed": 111,
+    "failed": 0,
+    "failedPages": []
+  }
+}

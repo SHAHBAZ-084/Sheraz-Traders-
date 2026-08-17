@@ -3,6 +3,7 @@ import { FieldLabel, FinancialButton, PageShell, Panel } from '../ui/PageShell';
 import { FormActionFooter } from '../ui/FormActionFooter';
 import { formatLedgerAmount } from '../../lib/format';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { urduLabelClassName, containsUrduScript } from '../../lib/urduScript';
 
 /** Centered title band + white invoice/voucher form panel (app theme). */
 export function FormPageShell({
@@ -58,7 +59,9 @@ export function InvoiceFormSection({
 }) {
   return (
     <section className={`inv-section ${className}`.trim()}>
-      {label ? <h2 className="inv-section-title">{label}</h2> : null}
+      {label ? (
+        <h2 className={urduLabelClassName(label, 'inv-section-title')}>{label}</h2>
+      ) : null}
       <div className={label ? 'inv-section-body' : undefined}>{children}</div>
     </section>
   );
@@ -93,7 +96,7 @@ export function InvoiceFieldGroup({
 }) {
   return (
     <div className={`inv-field-group ${className}`.trim()}>
-      {label ? <p className="inv-field-group-label">{label}</p> : null}
+      {label ? <p className={urduLabelClassName(label, 'inv-field-group-label')}>{label}</p> : null}
       {children}
     </div>
   );
@@ -156,7 +159,7 @@ export function InvoiceReadOnlyField({
       : formatLedgerAmount(value));
   return (
     <InvoiceField className={className}>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel urdu={containsUrduScript(label)}>{label}</FieldLabel>
       <div className="app-input-static app-input-static--calc tabular-nums">{display}</div>
     </InvoiceField>
   );
@@ -214,6 +217,8 @@ export function InvoiceFormFooter({
   onClose,
   onMinimize,
   primaryLabel = 'Save invoice',
+  secondaryPrimaryLabel,
+  onSecondaryPrimaryClick,
 }: {
   totalLabel: string;
   totalValue: number;
@@ -223,6 +228,8 @@ export function InvoiceFormFooter({
   onClose: () => void;
   onMinimize?: () => void;
   primaryLabel?: string;
+  secondaryPrimaryLabel?: string;
+  onSecondaryPrimaryClick?: () => void;
 }) {
   return (
     <FormActionFooter
@@ -240,6 +247,8 @@ export function InvoiceFormFooter({
       saving={saving}
       onClose={onClose}
       onMinimize={onMinimize}
+      secondaryPrimaryLabel={secondaryPrimaryLabel}
+      onSecondaryPrimaryClick={onSecondaryPrimaryClick}
     />
   );
 }

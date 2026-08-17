@@ -10,8 +10,10 @@ import { PurchasePartiesPage, SalePartiesPage } from './pages/accounts/PartiesPa
 import { ProductRemovePage } from './pages/accounts/ProductManagePage';
 import { AddProductPage } from './pages/products/AddProductPage';
 import { StockTransferPage } from './pages/inventory/StockTransferPage';
+import { StockAdjustmentPage } from './pages/inventory/StockAdjustmentPage';
 import { InvoiceFormPage } from './pages/invoices/InvoiceFormPage';
 import { ViewInvoicePage } from './pages/invoices/ViewInvoicePage';
+import { InvoiceBillPrintPage } from './pages/invoices/InvoiceBillPrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { PosHomePage } from './pages/PosHomePage';
@@ -58,10 +60,12 @@ export default function App() {
                 <Route path="/invoices/sale-invoice" element={<InvoiceFormPage slug="sale-invoice" />} />
                 <Route path="/invoices/purchase-invoice" element={<InvoiceFormPage slug="purchase-invoice" />} />
                 <Route path="/invoices/view-invoice" element={<ViewInvoicePage />} />
+                <Route path="/invoices/print-bill" element={<InvoiceBillPrintPage />} />
 
                 <Route path="/jama-naam" element={<JamaNaamRegisterPage />} />
 
                 <Route path="/inventory/stock-transfer" element={<StockTransferPage />} />
+                <Route path="/inventory/stock-adjustment" element={<StockAdjustmentPage />} />
 
                 <Route path="/vouchers/receipt" element={<VoucherFormPage kind="receipt" />} />
                 <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />

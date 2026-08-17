@@ -28,6 +28,37 @@ function formatStockQuantity(qty: number, kind: ProductKind): string {
   return String(qty);
 }
 
+/** Net stock (IN − OUT) for many products in one query — used by product browse lists. */
+export async function getCurrentStockBalancesForProducts(
+  products: Array<{ id: number; kind: ProductKind }>,
+  storeId?: number | null,
+  db: Tx | typeof prisma = prisma,
+): Promise<Map<number, number>> {
+  const productIds = products.map((p) => p.id);
+  const balances = new Map<number, number>();
+  if (productIds.length === 0) return balances;
+
+  for (const id of productIds) balances.set(id, 0);
+  const kindById = new Map(products.map((p) => [p.id, p.kind]));
+
+  const scopedStoreId = storeId != null && storeId > 0 ? storeId : undefined;
+  const movements = await db.stockMovement.findMany({
+    where: {
+      productId: { in: productIds },
+      ...(scopedStoreId != null ? { storeId: scopedStoreId } : {}),
+    },
+    select: { productId: true, direction: true, bags: true, weightKg: true },
+  });
+
+  for (const m of movements) {
+    const kind = kindById.get(m.productId) ?? ProductKind.STANDARD;
+    const delta = movementDelta(m, kind);
+    balances.set(m.productId, (balances.get(m.productId) ?? 0) + delta);
+  }
+
+  return balances;
+}
+
 async function loadActiveProductsForLines(
   tx: Tx,
   lines: Array<{ productId: number; quantity: number }>,
@@ -582,6 +613,83 @@ export async function postOpeningKachiStockIn(
       invoiceReference: 'Opening Stock',
       description: 'Opening Stock (Kachi)',
       isOpeningStock: true,
+    },
+  });
+}
+
+/** Stock IN for valued adjustments on existing STANDARD products (not opening stock). */
+export async function postStockAdjustmentStandardIn(
+  tx: Tx,
+  data: {
+    productId: number;
+    storeId: number;
+    quantity: number;
+    date: Date;
+    description?: string;
+  },
+) {
+  const qty = Number(data.quantity);
+  if (!(qty > 0)) return;
+
+  const product = await tx.product.findFirst({
+    where: { id: data.productId, isActive: true, kind: ProductKind.STANDARD },
+  });
+  if (!product) throw new AppError(400, `Standard product #${data.productId} not found`);
+
+  const store = await tx.store.findFirst({ where: { id: data.storeId, isActive: true } });
+  if (!store) throw new AppError(400, 'Store not found or inactive');
+
+  await tx.stockMovement.create({
+    data: {
+      productId: product.id,
+      storeId: store.id,
+      direction: StockDirection.IN,
+      bags: qty,
+      date: data.date,
+      invoiceId: null,
+      invoiceType: InvoiceType.OPENING_STOCK,
+      invoiceReference: 'Stock Adjustment',
+      description: data.description ?? `Stock Adjustment — ${product.name}`,
+      isOpeningStock: false,
+    },
+  });
+}
+
+/** Stock IN for valued adjustments on existing Kachi products (not opening stock). */
+export async function postStockAdjustmentKachiIn(
+  tx: Tx,
+  data: {
+    productId: number;
+    storeId: number;
+    weightKg: number;
+    date: Date;
+    description?: string;
+  },
+) {
+  const weightKg = Number(data.weightKg);
+  if (!(weightKg > 0)) return;
+
+  const product = await tx.product.findFirst({
+    where: { id: data.productId, isActive: true, kind: ProductKind.KACHI },
+  });
+  if (!product) throw new AppError(400, `Kachi product #${data.productId} not found`);
+
+  const store = await tx.store.findFirst({ where: { id: data.storeId, isActive: true } });
+  if (!store) throw new AppError(400, 'Store not found or inactive');
+
+  await tx.stockMovement.create({
+    data: {
+      productId: product.id,
+      storeId: store.id,
+      direction: StockDirection.IN,
+      bags: 0,
+      weightKg,
+      date: data.date,
+      invoiceId: null,
+      invoiceType: InvoiceType.OPENING_STOCK,
+      invoiceReference: 'Stock Adjustment',
+      description: data.description ?? `Stock Adjustment — ${product.name}`,
+      isOpeningStock: false,
     },
   });
 }

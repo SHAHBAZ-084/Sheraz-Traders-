@@ -113,6 +113,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
       { kind: 'link', label: 'Database Maintenance', to: '/system/database' },
       { kind: 'link', label: 'Stores', to: '/system/stores' },
       { kind: 'link', label: 'Transfer Stock', to: '/inventory/stock-transfer' },
+      { kind: 'link', label: 'Stock Adjustment', to: '/inventory/stock-adjustment' },
       { kind: 'link', label: 'System Preference', to: '/system/preferences' },
     ],
   },

@@ -30,6 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const onUnauthorized = () => setUser(null);
+    window.addEventListener('app:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('app:unauthorized', onUnauthorized);
+  }, []);
+
   const login = useCallback(async (username: string, password: string) => {
     const { user: loggedInUser } = await api.login(username, password);
     setUser(loggedInUser);

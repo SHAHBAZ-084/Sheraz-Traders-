@@ -29,6 +29,8 @@ import {
   partyCategorySelectOptions,
 } from '../../lib/partyAccounts';
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
+import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
+import { urduLabelClassName } from '../../lib/urduScript';
 
 import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
 
@@ -73,8 +75,12 @@ function LinesTable({
         <thead className="sticky top-0 z-10 bg-surface2">
           <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
             <th className="px-3 py-2.5">Product</th>
-            <th className="px-3 py-2.5 text-right">Qty</th>
-            <th className="px-3 py-2.5 text-right">Rate</th>
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('qty')}
+            </th>
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('rate'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('rate')}
+            </th>
             <th className="px-3 py-2.5 text-right">Total</th>
             {onRemove ? <th className="px-3 py-2.5" /> : null}
           </tr>
@@ -328,8 +334,7 @@ export function SaleInvoicePage() {
     }
   }
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function submitInvoice(printAfterSave: boolean) {
     setError('');
     if (!storeId) {
       setError('Select a store');
@@ -360,7 +365,7 @@ export function SaleInvoicePage() {
         navigate('/system/approvals');
         return;
       }
-      await api.createSaleInvoice({
+      const invoice = await api.createSaleInvoice({
         invoiceDate,
         billNo: billNo || undefined,
         storeId: Number(storeId),
@@ -371,12 +376,21 @@ export function SaleInvoicePage() {
           rate: row.rate,
         })),
       });
-      navigate('/invoices/view-invoice');
+      if (printAfterSave && invoice.reference) {
+        navigate(`/invoices/print-bill?reference=${encodeURIComponent(invoice.reference)}`);
+      } else {
+        navigate('/invoices/view-invoice');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save sale invoice');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    await submitInvoice(false);
   }
 
   return (
@@ -386,22 +400,22 @@ export function SaleInvoicePage() {
     >
       <form onSubmit={onSubmit}>
         <div className="inv-sp-invoice-form">
-              <InvoiceFormSection label="Header">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('header')}>
                 <InvoiceHeaderRow>
                   <InvoiceField>
-                    <FieldLabel>Date</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('date')}</FieldLabel>
                     <TextInput type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Invoice #</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('invoiceNo')}</FieldLabel>
                     <TextInput value={predictedRef} readOnly />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Bill No</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('billNo')}</FieldLabel>
                     <TextInput value={billNo} onChange={(e) => setBillNo(e.target.value)} />
                   </InvoiceField>
                   <InvoiceField wide>
-                    <FieldLabel>Store</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('store')}</FieldLabel>
                     <SearchSelect
                       options={storeOptions}
                       value={storeId}
@@ -412,11 +426,11 @@ export function SaleInvoicePage() {
                 </InvoiceHeaderRow>
               </InvoiceFormSection>
 
-              <InvoiceFormSection label="Add existing product">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('addExistingProduct')}>
                 <InvoiceFieldGroup>
                   <InvoiceFieldRow cols={4}>
                     <InvoiceField wide>
-                      <FieldLabel>Category</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('category')}</FieldLabel>
                       <SearchSelect
                         options={productCategoryOptions}
                         value={productCategoryId}
@@ -425,7 +439,7 @@ export function SaleInvoicePage() {
                       />
                     </InvoiceField>
                     <InvoiceField wide>
-                      <FieldLabel>Product</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('product')}</FieldLabel>
                       <div className="flex items-center gap-1.5">
                         <div className="min-w-0 flex-1">
                           <SearchSelect
@@ -439,21 +453,21 @@ export function SaleInvoicePage() {
                       </div>
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Qty</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('qty')}</FieldLabel>
                       <DecimalInput value={quantity} onChange={setQuantity} />
                     </InvoiceField>
                     <InvoiceField>
-                      <FieldLabel>Rate</FieldLabel>
+                      <FieldLabel>{salePurchaseInvoiceLabel('rate')}</FieldLabel>
                       <DecimalInput value={rate} onChange={setRate} />
                     </InvoiceField>
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFormSection>
 
-              <InvoiceFormSection label="Customer">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('party')}>
                 <InvoiceFieldRow cols={2}>
                   <InvoiceField>
-                    <FieldLabel>Sale party category</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('salePartyCategory')}</FieldLabel>
                     <SearchSelect
                       options={partyCategoryOptions}
                       value={partyCategoryId}
@@ -462,7 +476,7 @@ export function SaleInvoicePage() {
                     />
                   </InvoiceField>
                   <InvoiceField>
-                    <FieldLabel>Party</FieldLabel>
+                    <FieldLabel>{salePurchaseInvoiceLabel('party')}</FieldLabel>
                     <SearchSelect
                       options={customerOptions}
                       value={customerAccountId}
@@ -475,10 +489,10 @@ export function SaleInvoicePage() {
               </InvoiceFormSection>
 
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
-                {addingRow ? 'Checking stock…' : 'Add to grid'}
+                {addingRow ? 'Checking stock…' : salePurchaseInvoiceLabel('addToGrid')}
               </InvoiceAddRowAction>
 
-              <InvoiceFormSection label="Preview grid">
+              <InvoiceFormSection label={salePurchaseInvoiceLabel('previewGrid')}>
                 <LinesTable
                   rows={gridRows}
                   onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
@@ -515,7 +529,13 @@ export function SaleInvoicePage() {
                           predictedRef || 'Sale Invoice',
                         )
                 }
-                primaryLabel={isEditingPending ? 'Update pending' : 'Save'}
+                primaryLabel={isEditingPending ? 'Update pending' : salePurchaseInvoiceLabel('save')}
+                secondaryPrimaryLabel={
+                  isEditingPending ? undefined : 'Save & Print'
+                }
+                onSecondaryPrimaryClick={
+                  isEditingPending ? undefined : () => void submitInvoice(true)
+                }
               />
           </div>
         </form>

@@ -33,9 +33,24 @@ productsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const lite = req.query.lite === '1' || req.query.lite === 'true';
+    const includeStock = req.query.includeStock === '1' || req.query.includeStock === 'true';
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    const categoryNone = req.query.categoryNone === '1' || req.query.categoryNone === 'true';
+    const categoryIdRaw = req.query.categoryId;
+    let categoryId: number | null | undefined;
+    if (categoryNone) {
+      categoryId = null;
+    } else if (typeof categoryIdRaw === 'string' && categoryIdRaw.trim() !== '') {
+      const parsed = parseInt(categoryIdRaw, 10);
+      categoryId = Number.isFinite(parsed) ? parsed : undefined;
+    }
     res.json(
       await productsService.listProducts(
-        { includeLedger: !lite },
+        {
+          includeLedger: !lite,
+          search: search || undefined,
+          categoryId,
+        },
         parsePagination(req.query, SELECTOR_PAGINATION),
       ),
     );

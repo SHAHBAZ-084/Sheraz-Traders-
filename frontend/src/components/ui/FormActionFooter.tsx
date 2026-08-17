@@ -14,6 +14,8 @@ type FormActionFooterProps = {
   /** Pause this form and keep its draft in the session tray. */
   onMinimize?: () => void;
   onPrimaryClick?: () => void;
+  secondaryPrimaryLabel?: string;
+  onSecondaryPrimaryClick?: () => void;
   primaryRef?: Ref<HTMLButtonElement>;
   primaryType?: ButtonHTMLAttributes<HTMLButtonElement>['type'];
   primaryTabIndex?: number;
@@ -36,6 +38,8 @@ export function FormActionFooter({
   onClose,
   onMinimize,
   onPrimaryClick,
+  secondaryPrimaryLabel,
+  onSecondaryPrimaryClick,
   primaryRef,
   primaryType = 'submit',
   primaryTabIndex,
@@ -58,6 +62,16 @@ export function FormActionFooter({
         >
           {saving ? savingLabel : primaryLabel}
         </FinancialButton>
+        {secondaryPrimaryLabel && onSecondaryPrimaryClick ? (
+          <FinancialButton
+            type="button"
+            disabled={saving || disabled}
+            onClick={onSecondaryPrimaryClick}
+            className="px-6 py-2.5"
+          >
+            {saving ? savingLabel : secondaryPrimaryLabel}
+          </FinancialButton>
+        ) : null}
         {onMinimize ? (
           <SecondaryButton
             type="button"

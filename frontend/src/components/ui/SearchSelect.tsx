@@ -85,13 +85,21 @@ export function SearchSelect({
       setOpen(false);
       setQuery('');
     }
+    function onScroll(e: Event) {
+      const root = internalInputRef.current?.closest('[data-search-select-root]');
+      const target = e.target as Node;
+      if (listRef.current?.contains(target) || root?.contains(target)) {
+        return;
+      }
+      closeDropdown();
+    }
     document.addEventListener('mousedown', onClickOutside);
     window.addEventListener('blur', closeDropdown);
-    document.addEventListener('scroll', closeDropdown, true);
+    document.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('mousedown', onClickOutside);
       window.removeEventListener('blur', closeDropdown);
-      document.removeEventListener('scroll', closeDropdown, true);
+      document.removeEventListener('scroll', onScroll, true);
     };
   }, []);
 

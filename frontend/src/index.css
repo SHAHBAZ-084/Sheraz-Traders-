@@ -1279,6 +1279,132 @@
 
 
 
+  /* Urdu field labels — Naskh font, larger size, no uppercase (invoice forms). */
+
+  .app-field:has(.field-label-urdu) {
+
+    grid-template-rows: 1.5625rem var(--app-control-h);
+
+  }
+
+
+
+  .field-label-urdu,
+
+  .app-field-label.field-label-urdu {
+
+    font-family: 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif;
+
+    font-size: 0.8125rem;
+
+    font-weight: 700;
+
+    color: var(--text-primary);
+
+    letter-spacing: 0;
+
+    text-transform: none;
+
+    line-height: 1.45;
+
+    height: auto;
+
+    min-height: var(--app-label-h);
+
+    max-height: none;
+
+    overflow: visible;
+
+    align-items: flex-end;
+
+    padding-bottom: 0.125rem;
+
+  }
+
+
+
+  .field-label-urdu .app-field-label-text,
+
+  .app-field-label.field-label-urdu .app-field-label-text {
+
+    color: inherit;
+
+    font-weight: inherit;
+
+    line-height: 1.45;
+
+    overflow: visible;
+
+    text-overflow: clip;
+
+    white-space: nowrap;
+
+  }
+
+
+
+  .inv-section-title.field-label-urdu {
+
+    font-family: 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif;
+
+    font-size: 0.875rem;
+
+    font-weight: 700;
+
+    color: var(--text-primary);
+
+    letter-spacing: 0;
+
+    text-transform: none;
+
+    line-height: 1.4;
+
+  }
+
+
+
+  .inv-field-group-label.field-label-urdu {
+
+    font-family: 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif;
+
+    font-size: 0.8125rem;
+
+    font-weight: 700;
+
+    color: var(--text-primary);
+
+    letter-spacing: 0;
+
+    text-transform: none;
+
+    line-height: 1.45;
+
+    margin-bottom: 0.4rem;
+
+  }
+
+
+
+  th.field-label-urdu {
+
+    font-family: 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif;
+
+    font-size: 0.8125rem;
+
+    font-weight: 700;
+
+    color: var(--text-primary);
+
+    letter-spacing: 0;
+
+    text-transform: none;
+
+    line-height: 1.45;
+
+  }
+
+
+
   /* Control track: every non-label child shares the same compact baseline */
 
   .app-field > :not(.app-field-label) {
@@ -2912,6 +3038,16 @@
   .report-table tfoot tr {
     background: #fff;
     border-top: 2px solid var(--border);
+    font-weight: 600;
+  }
+
+  .report-table .report-amount-cell {
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .report-table tfoot .report-amount-cell {
     font-weight: 600;
   }
 
