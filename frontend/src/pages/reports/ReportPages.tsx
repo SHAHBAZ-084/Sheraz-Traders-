@@ -142,7 +142,7 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
   );
 
   useEffect(() => {
-    Promise.all([api.listCategories(), api.listAccounts()])
+    Promise.all([api.listCategories(), api.listAccounts({ forSelectors: false })])
       .then(([categoryRows, accountRows]) => {
         setCategories(categoryRows.filter((c) => c.isActive));
         setAccounts(accountRows.filter((a) => a.isActive));
@@ -330,63 +330,63 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
               <SecondaryButton type="button" onClick={() => exportLedger('excel')}>Download Excel</SecondaryButton>
               <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
-            <ReportTable tableClassName="table-fixed">
+            <ReportTable>
               <colgroup>
-                <col className="w-[7.5rem]" />
-                <col className="w-[5.75rem]" />
-                <col className="w-[6.5rem]" />
-                <col className="w-[5.5rem]" />
+                <col style={{ width: '7rem' }} />
+                <col style={{ width: '4.75rem' }} />
+                <col style={{ width: '5.25rem' }} />
+                <col style={{ width: '8.5rem' }} />
                 <col />
-                <col className="w-[5.5rem]" />
-                <col className="w-[5.5rem]" />
-                {ledger.showMazduriColumn ? <col className="w-[5.5rem]" /> : null}
-                <col className="w-[6.5rem]" />
+                <col style={{ width: '9.5rem' }} />
+                <col style={{ width: '9.5rem' }} />
+                {ledger.showMazduriColumn ? <col style={{ width: '8.5rem' }} /> : null}
+                <col style={{ width: '11rem' }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th className="pr-2">Date</th>
-                  <th className="pr-4 text-right">Voucher#</th>
-                  <th className="pl-3 pr-2">Ref#</th>
-                  <th className="pr-2">Type</th>
-                  <th className="pr-2">Description</th>
-                  <th className="pr-2 text-right">Debit</th>
-                  <th className="pr-2 text-right">Credit</th>
-                  {ledger.showMazduriColumn ? <th className="pr-2 text-right">Mazduri</th> : null}
-                  <th className="text-right">Balance</th>
+                  <th>Date</th>
+                  <th className="text-right">Voucher#</th>
+                  <th>Ref#</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th className={`text-right ${REPORT_AMOUNT_COL}`}>Debit</th>
+                  <th className={`text-right ${REPORT_AMOUNT_COL}`}>Credit</th>
+                  {ledger.showMazduriColumn ? <th className={`text-right ${REPORT_AMOUNT_COL}`}>Mazduri</th> : null}
+                  <th className={`text-right ${REPORT_BALANCE_COL}`}>Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {(ledger.rows ?? []).map((r, i) => (
                   <tr key={i} className={r.isOpeningRow ? 'report-table-row--emphasis' : ''}>
-                    <td className="pr-2 whitespace-nowrap">{formatDate(r.date)}</td>
-                    <td className="pr-4 text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
-                    <td className="pl-3 pr-2 truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
-                    <td className={`pr-2 font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
-                    <td className="pr-2 whitespace-normal break-words text-textSecondary">
+                    <td className="whitespace-nowrap">{formatDate(r.date)}</td>
+                    <td className="text-right font-mono text-xs font-semibold text-financial">{r.voucherNo}</td>
+                    <td className="truncate text-textSecondary" title={r.ref ?? ''}>{r.ref ?? ''}</td>
+                    <td className={`break-words font-medium ${voucherTypeColorClass(r.type)}`}>{formatVoucherTypeLabel(r.type)}</td>
+                    <td className="min-w-0 whitespace-normal break-words text-textSecondary">
                       {r.description ? <LedgerVoucherDescription text={r.description} /> : ''}
                     </td>
-                    <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
-                    <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(r.debit > 0)}`}>{r.debit > 0 ? formatLedgerAmount(r.debit) : ''}</td>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(r.credit > 0)}`}>{r.credit > 0 ? formatLedgerAmount(r.credit) : ''}</td>
                     {ledger.showMazduriColumn ? (
-                      <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass((r.mazduri ?? 0) > 0)}`}>
+                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass((r.mazduri ?? 0) > 0)}`}>
                         {r.mazduri != null && r.mazduri > 0 ? formatLedgerAmount(r.mazduri) : '—'}
                       </td>
                     ) : null}
-                    <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL}`}>{formatLedgerBalance(r.balance)}</td>
+                    <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>{formatLedgerBalance(r.balance)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={5}>Total / Closing</td>
-                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass(ledger.summary.totalDebit > 0)}`}>{formatLedgerAmount(ledger.summary.totalDebit)}</td>
-                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(ledger.summary.totalCredit > 0)}`}>{formatLedgerAmount(ledger.summary.totalCredit)}</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(ledger.summary.totalDebit > 0)}`}>{formatLedgerAmount(ledger.summary.totalDebit)}</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(ledger.summary.totalCredit > 0)}`}>{formatLedgerAmount(ledger.summary.totalCredit)}</td>
                   {ledger.showMazduriColumn ? (
-                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerDebitAmountClass((ledger.summary.totalMazduri ?? 0) > 0)}`}>
+                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass((ledger.summary.totalMazduri ?? 0) > 0)}`}>
                       {formatLedgerAmount(ledger.summary.totalMazduri ?? 0)}
                     </td>
                   ) : null}
-                  <td className={`text-right text-accent ${REPORT_AMOUNT_CELL}`}>{formatLedgerBalance(ledger.summary.closingBalance)}</td>
+                  <td className={`text-right text-accent ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>{formatLedgerBalance(ledger.summary.closingBalance)}</td>
                 </tr>
               </tfoot>
             </ReportTable>

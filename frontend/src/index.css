@@ -3000,6 +3000,8 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md, 0.5rem);
     background: #fff;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
   .report-table {
@@ -3007,6 +3009,7 @@
     font-size: 0.875rem;
     text-align: left;
     width: 100%;
+    table-layout: fixed;
   }
 
   .report-table thead tr {
@@ -3052,11 +3055,13 @@
   }
 
   .report-table .report-amount-col {
-    min-width: 110px;
+    width: 9.5rem;
+    min-width: 9.5rem;
   }
 
   .report-table .report-balance-col {
-    min-width: 130px;
+    width: 11rem;
+    min-width: 11rem;
   }
 
   .report-table tfoot .report-amount-cell {

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import {
   OPENING_BALANCE_EQUITY_ACCOUNT_NAME,
+  SALES_REVENUE_ACCOUNT_NAME,
   createAccount,
+  ensureSalesRevenueAccount,
+  getAccountBalancesAsOf,
   getTrialBalance,
   listAccounts,
 } from './accounting.service';
@@ -35,5 +38,27 @@ describe('Opening Balance Equity selector visibility', () => {
     const tbRow = trialBalance.accounts.find((a) => a.accountId === obe!.id);
     expect(tbRow).toBeTruthy();
     expect(trialBalance.isBalanced).toBe(true);
+  });
+});
+
+describe('Sales Revenue selector visibility', () => {
+  it('is selectable in voucher lists, manage lists, and account balance report', async () => {
+    const salesRevenue = await prisma.$transaction((tx) => ensureSalesRevenueAccount(tx));
+    expect(salesRevenue.excludeFromSelectors).toBe(false);
+
+    const selectorAccounts = await listAccounts({ forSelectors: true });
+    expect(selectorAccounts.items.some((a) => a.id === salesRevenue.id)).toBe(true);
+
+    const manageAccounts = await listAccounts({ forSelectors: false });
+    expect(manageAccounts.items.some((a) => a.id === salesRevenue.id)).toBe(true);
+
+    const date = new Date();
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const balances = await getAccountBalancesAsOf({
+      date: iso,
+      categoryId: salesRevenue.categoryId,
+      side: 'both',
+    });
+    expect(balances.accounts.some((a) => a.accountId === salesRevenue.id)).toBe(true);
   });
 });

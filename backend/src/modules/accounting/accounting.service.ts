@@ -795,11 +795,12 @@ export async function ensureSalesRevenueAccount(tx: Prisma.TransactionClient) {
   });
 
   if (existing?.ledger) {
-    if (!existing.excludeFromSelectors) {
+    if (existing.excludeFromSelectors) {
       await tx.account.update({
         where: { id: existing.id },
-        data: { excludeFromSelectors: true },
+        data: { excludeFromSelectors: false },
       });
+      existing.excludeFromSelectors = false;
     }
     return existing;
   }
@@ -816,7 +817,6 @@ export async function ensureSalesRevenueAccount(tx: Prisma.TransactionClient) {
       name: SALES_REVENUE_ACCOUNT_NAME,
       code,
       type: AccountType.REVENUE,
-      excludeFromSelectors: true,
       isActive: true,
     },
     include: { ledger: true, category: true },
@@ -3143,7 +3143,6 @@ export async function getAccountBalancesAsOf(params: {
 
   const where = {
     ...SELECTABLE_ACCOUNT,
-    excludeFromSelectors: false,
     ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
     ...(productLinkedAccountIds != null ? { id: { in: productLinkedAccountIds } } : {}),
   };

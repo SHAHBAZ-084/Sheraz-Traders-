@@ -15,7 +15,7 @@ export function ReportTable({
   minWidth,
 }: ReportTableProps) {
   return (
-    <div className={`report-table-wrap overflow-x-auto ${className}`.trim()}>
+    <div className={`report-table-wrap ${className}`.trim()}>
       <table
         className={`report-table ${tableClassName}`.trim()}
         style={minWidth ? { minWidth } : undefined}
