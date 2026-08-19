@@ -15,13 +15,14 @@ import {
 } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
+import { SearchSelect } from '../../components/ui/SearchSelect';
 
 type Mode = 'add' | 'edit' | 'remove';
 
 const copy: Record<Mode, { title: string; subtitle: string }> = {
   add: { title: 'Add Account', subtitle: 'Create a new account under a category' },
   edit: { title: 'Edit Account', subtitle: 'Rename an existing account' },
-  remove: { title: 'Remove Account', subtitle: 'Soft-delete an account' },
+  remove: { title: 'Remove Account', subtitle: 'Permanently remove an unused account (only when it has no real transaction history)' },
 };
 
 function parseOpeningAmount(raw: string): number {
@@ -109,6 +110,15 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
   const selectedCategory = useMemo(
     () => categories.find((c) => c.id === categoryId),
     [categories, categoryId],
+  );
+
+  const accountSelectOptions = useMemo(
+    () =>
+      accounts.map((a) => ({
+        value: String(a.id),
+        label: a.code ? `${a.name} (${a.code})` : a.name,
+      })),
+    [accounts],
   );
 
   const filteredAccounts = browseAccounts;
@@ -246,17 +256,12 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
             <>
               <div>
                 <FieldLabel>Account</FieldLabel>
-                <select
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : '')}
-                  required
-                >
-                  <option value="">Select account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
+                <SearchSelect
+                  value={selectedId === '' ? '' : String(selectedId)}
+                  onChange={(value) => setSelectedId(value ? Number(value) : '')}
+                  options={accountSelectOptions}
+                  placeholder="Search account…"
+                />
               </div>
               {mode === 'edit' ? (
                 <div>

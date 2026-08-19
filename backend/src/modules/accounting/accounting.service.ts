@@ -731,6 +731,8 @@ async function resolveAccountType(
 
 export const OPENING_BALANCE_EQUITY_ACCOUNT_NAME = 'Opening Balance Equity';
 
+export const SALES_REVENUE_ACCOUNT_NAME = 'Sales Revenue';
+
 async function findOrCreateOpeningBalanceEquityAccount(
   tx: Prisma.TransactionClient,
   ) {
@@ -778,6 +780,55 @@ async function findOrCreateOpeningBalanceEquityAccount(
   return tx.account.findUniqueOrThrow({
     where: { id: account.id },
     include: { ledger: true },
+  });
+}
+
+export async function ensureSalesRevenueAccount(tx: Prisma.TransactionClient) {
+  const existing = await tx.account.findFirst({
+    where: {
+      isActive: true,
+      name: { equals: SALES_REVENUE_ACCOUNT_NAME },
+      // keep strict-ish: if an account with the name exists but wrong type, we still respect it
+      // because renaming/replacing would be a data migration.
+    },
+    include: { ledger: true, category: true },
+  });
+
+  if (existing?.ledger) {
+    if (!existing.excludeFromSelectors) {
+      await tx.account.update({
+        where: { id: existing.id },
+        data: { excludeFromSelectors: true },
+      });
+    }
+    return existing;
+  }
+
+  const revenueCategory = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.REVENUE);
+
+  const preferredCode = 'REV-SALES';
+  const codeTaken = await tx.account.findFirst({ where: { code: preferredCode } });
+  const code = codeTaken ? await generateNextAccountCodeInTx(tx) : preferredCode;
+
+  const account = await tx.account.create({
+    data: {
+      categoryId: revenueCategory.id,
+      name: SALES_REVENUE_ACCOUNT_NAME,
+      code,
+      type: AccountType.REVENUE,
+      excludeFromSelectors: true,
+      isActive: true,
+    },
+    include: { ledger: true, category: true },
+  });
+
+  if (!account.ledger) {
+    await tx.ledger.create({ data: { accountId: account.id, balance: 0 } });
+  }
+
+  return tx.account.findUniqueOrThrow({
+    where: { id: account.id },
+    include: { ledger: true, category: true },
   });
 }
 
@@ -1219,6 +1270,11 @@ function ledgerEntriesForYearWhere(
           ...(yearEnd ? { lte: yearEnd } : {}),
         },
       },
+      {
+        voucherId: null,
+        isOpeningBalance: false,
+        financialYearId,
+      },
     ],
   };
 }
@@ -1279,7 +1335,12 @@ async function assertUniqueAccountCode(code: string) {
 }
 
 function isSaleRevenueAccountName(name?: string | null) {
-  return name?.trim().toLowerCase() === SALE_REVENUE_ACCOUNT_NAME.toLowerCase();
+  const normalized = name?.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized === SALE_REVENUE_ACCOUNT_NAME.toLowerCase()
+    || normalized === SALES_REVENUE_ACCOUNT_NAME.toLowerCase()
+  );
 }
 
 function isInventoryAccountName(name?: string | null) {
@@ -1580,7 +1641,7 @@ export async function ensureSaleRevenueAccount(tx: Prisma.TransactionClient) {
     where: {
       isActive: true,
       categoryId: category.id,
-      name: { equals: SALE_REVENUE_ACCOUNT_NAME },
+      OR: [{ name: { equals: SALE_REVENUE_ACCOUNT_NAME } }, { name: { equals: SALES_REVENUE_ACCOUNT_NAME } }],
     },
     include: { ledger: true },
   });
@@ -2918,12 +2979,13 @@ type AccountForBalanceReport = {
 };
 
 type LedgerEntryForBalance = {
+  id: number;
   ledgerId: number;
-  type: string;
+  type: LedgerEntryType;
   amount: unknown;
-  isOpeningBalance?: boolean;
+  isOpeningBalance: boolean;
   createdAt: Date;
-  voucher: { date: Date; status: string; number: string | null } | null;
+  voucher: { date: Date; number: number } | null;
 };
 
 function computeAccountBalanceRow(
@@ -3116,10 +3178,12 @@ export async function getAccountBalancesAsOf(params: {
             },
             {
               isOpeningBalance: true,
-              createdAt: {
-                gte: yearStart,
-                ...(yearEnd ? { lte: yearEnd } : {}),
-              },
+              financialYearId,
+            },
+            {
+              voucherId: null,
+              isOpeningBalance: false,
+              financialYearId,
             },
           ],
         },
@@ -3635,17 +3699,94 @@ export async function updateAccount(
   return prisma.account.update({ where: { id }, data });
 }
 
-/** Soft-delete: hides account from lists; ledger entries are kept until vouchers are cancelled. */
+/** Permanently remove an account when it has no real transaction history (see assertAccountHardDeletableInTx). */
 export async function softDeleteAccount(id: number) {
-  const account = await prisma.account.findFirst({ where: { id, isActive: true } });
+  const account = await prisma.account.findFirst({
+    where: { id, isActive: true },
+    include: { ledger: true },
+  });
   if (!account) throw new AppError(404, 'Account not found');
   if (isInventoryAccountName(account.name)) {
     throw new AppError(400, 'The Inventory account cannot be deleted');
   }
   await assertNotMaalKhataLinkedAccount(id);
-  return prisma.account.update({
-    where: { id },
-    data: { isActive: false },
-    include: { category: true, ledger: true },
+
+  return prisma.$transaction(async (tx) => {
+    await assertAccountHardDeletableInTx(tx, account);
+
+    const obe = await tx.account.findFirst({
+      where: { isActive: true, name: { equals: OPENING_BALANCE_EQUITY_ACCOUNT_NAME } },
+      include: { ledger: true },
+    });
+    if (obe?.ledger) {
+      const offsetEntries = await tx.ledgerEntry.findMany({
+        where: {
+          ledgerId: obe.ledger.id,
+          notes: { contains: `offset for ${account.name}` },
+        },
+        select: { id: true },
+      });
+      if (offsetEntries.length > 0) {
+        await tx.ledgerEntry.deleteMany({
+          where: { id: { in: offsetEntries.map((e) => e.id) } },
+        });
+        await recomputeFullLedgerBalanceInTx(tx, obe.ledger.id);
+      }
+    }
+
+    await tx.financialYearClosingBalance.deleteMany({ where: { accountId: id } });
+
+    return tx.account.delete({
+      where: { id },
+      include: { category: true, ledger: true },
+    });
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+const ACCOUNT_DELETE_NON_ZERO_MSG =
+  'This account has a non-zero balance and cannot be deleted. Reverse the opening balance or clear all transactions first.';
+
+const ACCOUNT_DELETE_HISTORY_MSG =
+  'This account has transaction history with other accounts and cannot be deleted. You can still rename it via Edit.';
+
+async function assertAccountHardDeletableInTx(
+  tx: Prisma.TransactionClient,
+  account: { id: number; name: string; ledger: { id: number; balance: unknown } | null },
+) {
+  const [voucherRefs, jamaRefs, kachiLineRefs, kachiInvoiceRefs, pendingAdjRefs] = await Promise.all([
+    tx.voucher.count({
+      where: {
+        OR: [{ debitAccountId: account.id }, { creditAccountId: account.id }],
+      },
+    }),
+    tx.jamaNaamEntry.count({ where: { partyId: account.id } }),
+    tx.kachiMaalLine.count({ where: { partyAccountId: account.id } }),
+    tx.invoice.count({ where: { debitAccountId: account.id } }),
+    tx.pendingAdjustment.count({ where: { accountId: account.id } }),
+  ]);
+
+  if (voucherRefs > 0 || jamaRefs > 0 || kachiLineRefs > 0 || kachiInvoiceRefs > 0 || pendingAdjRefs > 0) {
+    throw new AppError(400, ACCOUNT_DELETE_HISTORY_MSG);
+  }
+
+  if (!account.ledger) return;
+
+  const entries = await tx.ledgerEntry.findMany({
+    where: { ledgerId: account.ledger.id },
+    select: { id: true, voucherId: true, isOpeningBalance: true, amount: true, type: true },
   });
+
+  if (entries.length === 0) return;
+
+  const balance = Number(account.ledger.balance);
+  if (Math.abs(balance) >= 0.005) {
+    throw new AppError(400, ACCOUNT_DELETE_NON_ZERO_MSG);
+  }
+
+  const hasNonOpeningActivity = entries.some(
+    (entry) => entry.voucherId != null || !entry.isOpeningBalance,
+  );
+  if (hasNonOpeningActivity) {
+    throw new AppError(400, ACCOUNT_DELETE_HISTORY_MSG);
+  }
 }

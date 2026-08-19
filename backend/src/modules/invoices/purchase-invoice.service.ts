@@ -20,7 +20,7 @@ import {
 import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
-import { postPurchaseInvoiceStockIn } from '../stock/stock.service';
+import { getCurrentStockBalance, postPurchaseInvoiceStockIn } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
@@ -132,6 +132,60 @@ async function postPurchaseInvoiceAccounting(
   },
   resolvedLines: ResolvedPurchaseLine[],
 ) {
+  // WAC update happens inside the same transaction as:
+  // 1) purchase voucher ledger posting, and
+  // 2) stock movement (stock IN) posting.
+  const incomingByProductId = new Map<
+    number,
+    { maalKhataAccountId: number; incomingQty: number; incomingCost: number }
+  >();
+  for (const line of resolvedLines) {
+    const entry =
+      incomingByProductId.get(line.productId) ?? {
+        maalKhataAccountId: line.maalKhataAccountId,
+        incomingQty: 0,
+        incomingCost: 0,
+      };
+    entry.incomingQty += Number(line.quantity);
+    entry.incomingCost += Number(line.lineTotal); // ledger debit amount for the product leg
+    incomingByProductId.set(line.productId, entry);
+  }
+
+  const productIds = [...incomingByProductId.keys()];
+  const products = await tx.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, averageCost: true },
+  });
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  // Pre-compute the WAC target values using *pre-incoming* stock + costs.
+  const newAverageCostByProductId = new Map<number, number>();
+  for (const productId of productIds) {
+    const incoming = incomingByProductId.get(productId)!;
+    const existingStockQty = await getCurrentStockBalance(productId, null, tx);
+
+    const product = productById.get(productId)!;
+    const ledger = await tx.ledger.findUnique({
+      where: { accountId: incoming.maalKhataAccountId },
+      select: { balance: true },
+    });
+    const existingAvgCostFromLedger =
+      existingStockQty > 0 ? Number(ledger?.balance ?? 0) / existingStockQty : null;
+
+    const existingAvgCost =
+      product.averageCost != null ? Number(product.averageCost) : existingAvgCostFromLedger;
+
+    const incomingUnitCost = incoming.incomingQty > 0 ? incoming.incomingCost / incoming.incomingQty : 0;
+
+    const newAverageCost =
+      existingStockQty <= 0 || existingAvgCost == null
+        ? incomingUnitCost
+        : (existingStockQty * existingAvgCost + incoming.incomingQty * incomingUnitCost) /
+          (existingStockQty + incoming.incomingQty);
+
+    newAverageCostByProductId.set(productId, newAverageCost);
+  }
+
   const mazduriTotal = roundMoney(resolvedLines.reduce((sum, line) => sum + line.mazduriAmount, 0));
   const purchaseMazduri =
     mazduriTotal > 0 ? await ensurePurchaseMazduriAccount(tx) : null;
@@ -166,6 +220,14 @@ async function postPurchaseInvoiceAccounting(
       quantity: line.quantity,
     })),
   });
+
+  // Commit computed WAC values after ledger + stock movement posting.
+  for (const [productId, avgCost] of newAverageCostByProductId.entries()) {
+    await tx.product.update({
+      where: { id: productId },
+      data: { averageCost: avgCost },
+    });
+  }
 }
 
 export async function createPurchaseInvoice(

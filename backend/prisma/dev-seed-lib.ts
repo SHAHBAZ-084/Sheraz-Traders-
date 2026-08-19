@@ -23,6 +23,7 @@ import {
 import { updateSystemPreferences } from '../src/modules/preferences/preferences.service';
 import { createStore } from '../src/modules/stores/stores.service';
 import { voucherDateInActiveYear } from '../src/test-helpers/financial-year';
+import { assertDevSeedSafeToRun } from '../src/lib/seed-guard';
 
 const KACHI_DEFAULT_BHARTII = 100;
 
@@ -207,6 +208,7 @@ function resolveAccountId(
 }
 
 export async function runDevSeed(config: DevSeedConfig) {
+  assertDevSeedSafeToRun(config.seedLabel);
   const data = loadSeedData(config.dataFile);
   const markerAccount = config.markerAccount ?? data.meta?.targetAccount ?? data.bankAccounts[0]?.name;
   if (!markerAccount) {

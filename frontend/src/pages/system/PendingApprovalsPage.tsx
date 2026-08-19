@@ -107,11 +107,7 @@ export function PendingApprovalsPage() {
     setError('');
     setMessage('');
     try {
-      if (item.kind === 'voucher') {
-        await api.approvePendingVoucher(item.id);
-      } else {
-        await api.approvePendingInvoice(item.id);
-      }
+      await approvePendingItem(item);
       setMessage(`Approved ${item.reference ?? item.type ?? 'item'}.`);
       await load();
     } catch (err) {
@@ -128,11 +124,7 @@ export function PendingApprovalsPage() {
     setError('');
     setMessage('');
     try {
-      if (item.kind === 'voucher') {
-        await api.rejectPendingVoucher(item.id);
-      } else {
-        await api.rejectPendingInvoice(item.id);
-      }
+      await rejectPendingItem(item);
       setMessage(`Cancelled/Rejected ${item.reference ?? item.type ?? 'item'}.`);
       await load();
     } catch (err) {
@@ -143,7 +135,7 @@ export function PendingApprovalsPage() {
   }
 
   return (
-    <PageShell title="Pending Approvals" subtitle="Review pending vouchers and invoices before they post to the ledger">
+    <PageShell title="Pending Approvals" subtitle="Review pending vouchers, invoices, accounts, products, and adjustments before they post">
       <Panel>
         {!isAdmin ? (
           <p className="mb-3 rounded bg-surface2 px-3 py-2 text-xs text-textSecondary font-medium">
@@ -155,7 +147,7 @@ export function PendingApprovalsPage() {
         {loading ? (
           <p className="text-sm text-textMuted">Loading…</p>
         ) : (items?.length ?? 0) === 0 ? (
-          <p className="text-sm text-textMuted">No pending vouchers or invoices.</p>
+          <p className="text-sm text-textMuted">No pending items.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

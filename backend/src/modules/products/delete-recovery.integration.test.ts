@@ -53,6 +53,7 @@ describe('delete recovery with single SQLite connection', () => {
     await withTimeout('listAccounts after delete', 10_000, async () => {
       const rows = await prisma.account.findMany({ where: { isActive: true }, take: 10 });
       expect(rows.every((a) => a.id !== account.id)).toBe(true);
+      expect(await prisma.account.findUnique({ where: { id: account.id } })).toBeNull();
     });
   });
 

@@ -12,6 +12,7 @@ import {
   assertActiveFinancialYear,
   assertVoucherDateInActiveFinancialYear,
   createMultiLegVoucherInTx,
+  ensureSalesRevenueAccount,
   getActiveFinancialYearId,
   WRITE_TRANSACTION_OPTIONS,
   type VoucherLeg,
@@ -60,11 +61,35 @@ async function assertSalePartyAccount(tx: Prisma.TransactionClient, accountId: n
   return assertPartyAccount(tx, accountId, 'Customer');
 }
 
-function buildSaleInvoiceLegs(
+async function averagePurchaseRateForProduct(tx: Prisma.TransactionClient, productId: number) {
+  // Fallback used only when Product.averageCost is still NULL.
+  const items = await tx.invoiceItem.findMany({
+    where: {
+      productId,
+      invoice: {
+        type: InvoiceType.PURCHASE_INVOICE,
+        status: InvoiceStatus.POSTED,
+      },
+    },
+    select: { quantity: true, unitPrice: true },
+  });
+
+  let totalQty = 0;
+  let totalValue = 0;
+  for (const item of items) {
+    const qty = Number(item.quantity);
+    totalQty += qty;
+    totalValue += qty * Number(item.unitPrice);
+  }
+  return totalQty > 0 ? totalValue / totalQty : null;
+}
+
+async function buildSaleInvoiceLegs(
+  tx: Prisma.TransactionClient,
   customerAccountId: number,
   resolvedLines: ResolvedSaleLine[],
   invoiceTotal: number,
-): { legs: VoucherLeg[]; productDescription: string } {
+): Promise<{ legs: VoucherLeg[]; productDescription: string }> {
   const productDescription = formatInvoiceProductLinesDescription(
     resolvedLines.map((line) => ({
       productName: line.productName,
@@ -73,6 +98,17 @@ function buildSaleInvoiceLegs(
     })),
   );
 
+  const salesRevenueAccount = await ensureSalesRevenueAccount(tx);
+  const salesRevenueAccountId = salesRevenueAccount.id;
+
+  const productIds = [...new Set(resolvedLines.map((l) => l.productId))];
+  const products = await tx.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, averageCost: true },
+  });
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  // Compute cost + profit per line using CURRENT averageCost per product.
   const legs: VoucherLeg[] = [
     {
       accountId: customerAccountId,
@@ -80,13 +116,49 @@ function buildSaleInvoiceLegs(
       amount: invoiceTotal,
       description: productDescription,
     },
-    ...resolvedLines.map((line) => ({
+  ];
+
+  for (const line of resolvedLines) {
+    const product = productById.get(line.productId);
+    const avgCostFromField = product?.averageCost != null ? Number(product.averageCost) : null;
+    const avgCost =
+      avgCostFromField != null ? avgCostFromField : await averagePurchaseRateForProduct(tx, line.productId);
+
+    if (avgCost == null) {
+      throw new AppError(
+        400,
+        'Product average cost is not initialized yet. Add a Purchase Invoice / Stock Adjustment first (or ensure Product has opening stock).',
+      );
+    }
+
+    const costAmount = roundMoney(avgCost * line.quantity);
+    const profitAmount = roundMoney(line.lineTotal - costAmount);
+
+    // Inventory leg (cost only)
+    legs.push({
       accountId: line.maalKhataAccountId,
       type: LedgerEntryType.CREDIT,
-      amount: line.lineTotal,
+      amount: costAmount,
       description: productDescription,
-    })),
-  ];
+    });
+
+    // Sales revenue leg (profit, can be a loss => debit)
+    if (profitAmount >= 0) {
+      legs.push({
+        accountId: salesRevenueAccountId,
+        type: LedgerEntryType.CREDIT,
+        amount: profitAmount,
+        description: productDescription,
+      });
+    } else {
+      legs.push({
+        accountId: salesRevenueAccountId,
+        type: LedgerEntryType.DEBIT,
+        amount: Math.abs(profitAmount),
+        description: productDescription,
+      });
+    }
+  }
 
   const totalDebits = roundMoney(
     legs.filter((l) => l.type === LedgerEntryType.DEBIT).reduce((s, l) => s + l.amount, 0),
@@ -114,7 +186,8 @@ async function postSaleInvoiceAccounting(
   },
   resolvedLines: ResolvedSaleLine[],
 ) {
-  const { legs, productDescription } = buildSaleInvoiceLegs(
+  const { legs, productDescription } = await buildSaleInvoiceLegs(
+    tx,
     invoice.debitAccountId,
     resolvedLines,
     Number(invoice.total),
@@ -188,7 +261,7 @@ export async function createSaleInvoice(
       });
     }
 
-    buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
+    await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
 
@@ -360,7 +433,7 @@ export async function updatePendingSaleInvoice(
       });
     }
 
-    buildSaleInvoiceLegs(data.customerAccountId, resolvedLines, totals.invoiceTotal);
+    await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 

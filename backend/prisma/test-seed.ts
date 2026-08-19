@@ -11,12 +11,10 @@
  */
 import { prisma } from '../src/lib/prisma';
 import { runDevSeed } from './dev-seed-lib';
+import { assertDevSeedSafeToRun } from '../src/lib/seed-guard';
 
 function assertSafeToRun() {
-  if (process.env.SHERAZ_TRADERS_PACKAGED === '1') {
-    console.error('Test seed cannot run inside the packaged Sheeraz Traders application.');
-    process.exit(1);
-  }
+  assertDevSeedSafeToRun('Test seed');
 }
 
 async function main() {

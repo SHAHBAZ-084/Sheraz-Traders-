@@ -302,6 +302,8 @@ model Product {
   categoryId Int?
   isActive   Boolean      @default(true)
   status     RecordStatus @default(ACTIVE)
+  /** Weighted average cost per unit across ALL stock sources. */
+  averageCost Decimal?
   createdById Int?
   pendingOpeningStoreId Int?
   pendingOpeningQty     Decimal?

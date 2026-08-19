@@ -69,8 +69,15 @@ describe('Invoice date must fall in active financial year', () => {
       )
     ).id;
 
-    productId = (await createProduct({ name: `FY Date Product ${Date.now()}` })).id;
     storeId = (await createStore(`FY Date Store ${Date.now()}`)).id;
+    productId = (
+      await createProduct({
+        name: `FY Date Product ${Date.now()}`,
+        openingStock: 10,
+        openingStockRate: 10,
+        openingStoreId: storeId,
+      })
+    ).id;
   });
 
   function inRangeDate(): string {

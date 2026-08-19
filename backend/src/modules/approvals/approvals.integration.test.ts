@@ -1,15 +1,30 @@
-import { AccountType, InvoiceStatus, Role, VoucherStatus, VoucherType } from '@prisma/client';
+import { AccountType, InvoiceStatus, RecordStatus, Role, VoucherStatus, VoucherType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import { voucherDateInActiveYear } from '../../test-helpers/financial-year';
-import { createVoucher, KACHI_MAAL_CATEGORY_NAMES, bootstrapChartOfAccounts } from '../accounting/accounting.service';
-import { createProduct } from '../products/products.service';
+import {
+  createAccount,
+  createAccountAdjustment,
+  createVoucher,
+  KACHI_MAAL_CATEGORY_NAMES,
+  bootstrapChartOfAccounts,
+  verifyLedgerIntegrity,
+} from '../accounting/accounting.service';
+import { createProduct, createStockAdjustment } from '../products/products.service';
 import { createStore } from '../stores/stores.service';
 import { createPurchaseInvoice } from '../invoices/purchase-invoice.service';
 import { createSaleInvoice } from '../invoices/sale-invoice.service';
 import { getCurrentStockBalance } from '../stock/stock.service';
-import { approvePendingInvoice, approvePendingVoucher, listPendingApprovals } from './approvals.service';
+import {
+  approvePendingAccount,
+  approvePendingAccountAdjustment,
+  approvePendingInvoice,
+  approvePendingProduct,
+  approvePendingStockAdjustment,
+  approvePendingVoucher,
+  listPendingApprovals,
+} from './approvals.service';
 
 async function ledgerBalance(accountId: number) {
   const ledger = await prisma.ledger.findUniqueOrThrow({ where: { accountId } });
@@ -185,5 +200,146 @@ describe('Pending approval workflow', () => {
 
     const posted = await prisma.invoice.findUniqueOrThrow({ where: { id: sale.id } });
     expect(posted.status).toBe(InvoiceStatus.POSTED);
+  });
+
+  it('pending stock adjustment stays off ledger/stock until ADMIN approves via stock-adjustment endpoint', async () => {
+    const adjProduct = await createProduct({
+      name: `Pending Stock Adj Product ${Date.now()}`,
+      openingStock: 20,
+      openingStockRate: 50,
+      openingStoreId: storeId,
+    });
+    const adjustmentDate = invoiceDate;
+    const stockBefore = await getCurrentStockBalance(adjProduct.id, storeId);
+    const ledgerBefore = Number(adjProduct.account.ledger?.balance ?? 0);
+
+    const pending = await createStockAdjustment({
+      adjustmentDate,
+      productId: adjProduct.id,
+      storeId,
+      quantity: 10,
+      rate: 100,
+      createdById: userId,
+      postImmediately: false,
+    });
+    expect(pending.pendingApproval).toBe(true);
+    expect(pending.id).toBeTruthy();
+
+    expect(await getCurrentStockBalance(adjProduct.id, storeId)).toBe(stockBefore);
+    const ledgerMid = await prisma.ledger.findUnique({ where: { accountId: adjProduct.accountId } });
+    expect(Number(ledgerMid?.balance ?? 0)).toBe(ledgerBefore);
+
+    const listed = await listPendingApprovals();
+    expect(listed.some((p) => p.kind === 'stock_adjustment' && p.id === pending.id)).toBe(true);
+
+    await approvePendingStockAdjustment(pending.id!, adminId);
+    expect(await getCurrentStockBalance(adjProduct.id, storeId)).toBe(stockBefore + 10);
+    const ledgerAfter = await prisma.ledger.findUniqueOrThrow({ where: { accountId: adjProduct.accountId } });
+    expect(Number(ledgerAfter.balance)).toBe(ledgerBefore + 1000);
+
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
+  });
+
+  it('pending account adjustment stays off ledger until ADMIN approves via account-adjustment endpoint', async () => {
+    const bankCategory = await prisma.accountCategory.findFirst({
+      where: { isActive: true, name: 'Bank' },
+    });
+    if (!bankCategory) throw new Error('Bank category missing');
+
+    const account = await createAccount({
+      categoryId: bankCategory.id,
+      name: `Pending Acct Adj ${Date.now()}`,
+      openingBalance: 500,
+      openingBalanceSide: 'DR',
+    });
+    const beforeBalance = Number(account.ledger?.balance ?? 0);
+
+    const pending = await createAccountAdjustment({
+      adjustmentDate: invoiceDate,
+      accountId: account.id,
+      amount: 300,
+      side: 'DR',
+      createdById: userId,
+      postImmediately: false,
+    });
+    expect(pending.pendingApproval).toBe(true);
+    expect(Number((await prisma.ledger.findUniqueOrThrow({ where: { accountId: account.id } })).balance)).toBe(
+      beforeBalance,
+    );
+
+    await approvePendingAccountAdjustment(pending.id!, adminId);
+    expect(Number((await prisma.ledger.findUniqueOrThrow({ where: { accountId: account.id } })).balance)).toBe(
+      beforeBalance + 300,
+    );
+
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
+  });
+
+  it('pending account and product activate only after ADMIN approves', async () => {
+    const capitalCategory = await prisma.accountCategory.findFirst({
+      where: { isActive: true, name: 'Capital' },
+    });
+    if (!capitalCategory) throw new Error('Capital category missing');
+
+    const pendingAccount = await createAccount({
+      categoryId: capitalCategory.id,
+      name: `Pending Account ${Date.now()}`,
+      createdById: userId,
+      postImmediately: false,
+    });
+    expect(pendingAccount.status).toBe(RecordStatus.PENDING_APPROVAL);
+    expect(pendingAccount.ledger).toBeNull();
+
+    await approvePendingAccount(pendingAccount.id, adminId);
+    const activeAccount = await prisma.account.findUniqueOrThrow({
+      where: { id: pendingAccount.id },
+      include: { ledger: true },
+    });
+    expect(activeAccount.status).toBe(RecordStatus.ACTIVE);
+    expect(activeAccount.ledger).toBeTruthy();
+
+    const pendingProduct = await createProduct({
+      name: `Pending Product ${Date.now()}`,
+      createdById: userId,
+      postImmediately: false,
+    });
+    expect(pendingProduct.status).toBe(RecordStatus.PENDING_APPROVAL);
+    expect(pendingProduct.account.ledger).toBeNull();
+
+    await approvePendingProduct(pendingProduct.id, adminId);
+    const activeProduct = await prisma.product.findUniqueOrThrow({
+      where: { id: pendingProduct.id },
+      include: { account: { include: { ledger: true } } },
+    });
+    expect(activeProduct.status).toBe(RecordStatus.ACTIVE);
+    expect(activeProduct.account.ledger).toBeTruthy();
+
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
+  });
+
+  it('approvePendingInvoice rejects a pending adjustment id (wrong endpoint)', async () => {
+    const bankCategory = await prisma.accountCategory.findFirst({
+      where: { isActive: true, name: 'Bank' },
+    });
+    if (!bankCategory) throw new Error('Bank category missing');
+
+    const account = await createAccount({
+      categoryId: bankCategory.id,
+      name: `Wrong Endpoint Adj ${Date.now()}`,
+    });
+
+    const pending = await createAccountAdjustment({
+      adjustmentDate: invoiceDate,
+      accountId: account.id,
+      amount: 100,
+      side: 'DR',
+      createdById: userId,
+      postImmediately: false,
+    });
+
+    await expect(approvePendingInvoice(pending.id!)).rejects.toThrow(/not found/i);
   });
 });

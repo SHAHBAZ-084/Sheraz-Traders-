@@ -230,6 +230,34 @@ async function addStandardStockToProductInTx(
 
   assertStoreForStock(data.storeId, 'Store is required when opening stock is greater than zero');
 
+  // Weighted average cost (WAC) update — applies to ALL stores because Product ledger is global.
+  // We update the stored averageCost inside the same transaction as stock movement + ledger posting.
+  const [productAvg, existingQty, ledger] = await Promise.all([
+    tx.product.findFirst({
+      where: { id: data.productId },
+      select: { averageCost: true },
+    }),
+    getCurrentStockBalance(data.productId, null, tx),
+    tx.ledger.findUnique({
+      where: { id: data.ledgerId },
+      select: { balance: true },
+    }),
+  ]);
+
+  const existingAverageCost =
+    productAvg?.averageCost != null
+      ? Number(productAvg.averageCost)
+      : existingQty > 0 && ledger
+        ? Number(ledger.balance) / existingQty
+        : null;
+
+  const incomingUnitCost = rate; // already matches Product ledger's cost per bag unit
+  const newAverageCost =
+    existingQty <= 0 || existingAverageCost == null
+      ? incomingUnitCost
+      : (existingQty * existingAverageCost + quantity * incomingUnitCost) /
+        (existingQty + quantity);
+
   if (data.mode === 'opening') {
     await postOpeningStockIn(tx, {
       productId: data.productId,
@@ -243,6 +271,10 @@ async function addStandardStockToProductInTx(
       amount,
       side: 'DR',
       notes: 'Opening Stock',
+    });
+    await tx.product.update({
+      where: { id: data.productId },
+      data: { averageCost: newAverageCost },
     });
     return;
   }
@@ -264,6 +296,11 @@ async function addStandardStockToProductInTx(
     notes,
     financialYearId: data.financialYearId!,
     entryDate,
+  });
+
+  await tx.product.update({
+    where: { id: data.productId },
+    data: { averageCost: newAverageCost },
   });
 }
 
@@ -301,6 +338,33 @@ async function addKachiStockToProductInTx(
       : 'Store is required for stock adjustment',
   );
 
+  // WAC update for Kachi: cost is per KG (because getCurrentStockBalance for Kachi sums weightKg).
+  const [productAvg, existingQty, ledger] = await Promise.all([
+    tx.product.findFirst({
+      where: { id: data.productId },
+      select: { averageCost: true },
+    }),
+    getCurrentStockBalance(data.productId, null, tx),
+    tx.ledger.findUnique({
+      where: { id: data.ledgerId },
+      select: { balance: true },
+    }),
+  ]);
+
+  const existingAverageCost =
+    productAvg?.averageCost != null
+      ? Number(productAvg.averageCost)
+      : existingQty > 0 && ledger
+        ? Number(ledger.balance) / existingQty
+        : null;
+
+  const incomingUnitCost = amount / weightKg; // derived from the exact amount we post to Product ledger
+  const newAverageCost =
+    existingQty <= 0 || existingAverageCost == null
+      ? incomingUnitCost
+      : (existingQty * existingAverageCost + weightKg * incomingUnitCost) /
+        (existingQty + weightKg);
+
   if (data.mode === 'opening') {
     await postOpeningKachiStockIn(tx, {
       productId: data.productId,
@@ -314,6 +378,10 @@ async function addKachiStockToProductInTx(
       amount,
       side: 'DR',
       notes: 'Opening Stock',
+    });
+    await tx.product.update({
+      where: { id: data.productId },
+      data: { averageCost: newAverageCost },
     });
     return;
   }
@@ -335,6 +403,11 @@ async function addKachiStockToProductInTx(
     notes,
     financialYearId: data.financialYearId!,
     entryDate,
+  });
+
+  await tx.product.update({
+    where: { id: data.productId },
+    data: { averageCost: newAverageCost },
   });
 }
 
@@ -517,7 +590,7 @@ export async function approveStockAdjustment(id: number, _approvedById: number) 
 
     const financialYearId = await assertVoucherDateInActiveFinancialYear(tx, pending.adjustmentDate, 'Invoice');
     const product = pending.product;
-    const ledgerId = product.account.ledger.id;
+    const ledgerId = product.account.ledger!.id;
     const accountName = product.account.name;
 
     if (product.kind === ProductKind.KACHI) {
