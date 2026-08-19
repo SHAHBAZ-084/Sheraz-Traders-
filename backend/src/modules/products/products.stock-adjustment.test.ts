@@ -86,7 +86,44 @@ describe('createStockAdjustment', () => {
     expect(ledgerEntry!.type).toBe(LedgerEntryType.DEBIT);
     expect(Number(ledgerEntry!.amount)).toBe(210_000);
 
+    const { getStockReport, getStockQuantityReport, getStockByStore, getStockSummary } = await import(
+      '../stock/stock.service'
+    );
+    const stockReport = await getStockReport({ productId: product.id, storeId: storeB.id });
+    expect(stockReport.totals.netBalance).toBe(50);
+    expect(stockReport.rows.some((row) => row.invoiceReference === 'Stock Adjustment')).toBe(true);
+
+    const qtyReport = await getStockQuantityReport({ storeId: storeB.id });
+    expect(qtyReport.products.find((row) => row.productId === product.id)?.totalQty).toBe(50);
+
+    const byStore = await getStockByStore(storeB.id);
+    expect(byStore.products.find((row) => row.productId === product.id)?.totalQty).toBe(50);
+
+    const summary = await getStockSummary();
+    expect(summary.find((row) => row.productId === product.id)?.totalQty).toBe(60);
+
     const integrity = await verifyLedgerIntegrity();
     expect(integrity.ok).toBe(true);
+  });
+
+  it('rejects zero or negative quantity — stock adjustments are IN-only', async () => {
+    const store = await createStore(`Adj Neg Store ${Date.now()}`);
+    const product = await createProduct({
+      name: `Adj Neg Product ${Date.now()}`,
+      openingStock: 10,
+      openingStockRate: 100,
+      openingStoreId: store.id,
+    });
+    const adjustmentDate = await voucherDateInActiveYear();
+
+    await expect(
+      createStockAdjustment({
+        adjustmentDate,
+        productId: product.id,
+        storeId: store.id,
+        quantity: -5,
+        rate: 100,
+      }),
+    ).rejects.toThrow(/Quantity must be greater than zero/i);
   });
 });

@@ -187,65 +187,8 @@ export async function listProductsByStore(storeId: number) {
 }
 
 export async function getStockSummary() {
-  const products = await prisma.product.findMany({
-    where: { ...SELECTABLE_PRODUCT },
-    select: { id: true, name: true, code: true },
-    orderBy: { name: 'asc' },
-  });
-  if (products.length === 0) return [];
-
-  const movements = await prisma.stockMovement.findMany({
-    where: {
-      productId: { in: products.map((p) => p.id) },
-      invoiceType: { in: [InvoiceType.SALE_INVOICE, InvoiceType.PURCHASE_INVOICE] },
-    },
-    select: { productId: true, direction: true, bags: true, invoiceType: true },
-  });
-
-  const nets = new Map<
-    number,
-    { totalQty: number; saleInvoiceQty: number; purchaseInvoiceQty: number }
-  >();
-  for (const m of movements) {
-    const row = nets.get(m.productId) ?? {
-      totalQty: 0,
-      saleInvoiceQty: 0,
-      purchaseInvoiceQty: 0,
-    };
-    const bags = Number(m.bags);
-    const signed = m.direction === StockDirection.IN ? bags : -bags;
-    row.totalQty += signed;
-    if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
-      row.saleInvoiceQty += bags;
-    }
-    if (m.invoiceType === InvoiceType.PURCHASE_INVOICE && m.direction === StockDirection.IN) {
-      row.purchaseInvoiceQty += bags;
-    }
-    nets.set(m.productId, row);
-  }
-
-  return products
-    .map((p) => {
-      const net = nets.get(p.id) ?? {
-        totalQty: 0,
-        saleInvoiceQty: 0,
-        purchaseInvoiceQty: 0,
-      };
-      return {
-        productId: p.id,
-        name: p.name,
-        code: p.code,
-        totalQty: net.totalQty,
-        saleInvoiceQty: net.saleInvoiceQty,
-        purchaseInvoiceQty: net.purchaseInvoiceQty,
-      };
-    })
-    .filter(
-      (p) =>
-        p.totalQty !== 0 ||
-        p.saleInvoiceQty !== 0 ||
-        p.purchaseInvoiceQty !== 0,
-    );
+  const rows = await loadStockQuantityRows({});
+  return rows.map(({ unit: _unit, ...row }) => row);
 }
 
 export type StockQuantityProductRow = {
@@ -258,7 +201,12 @@ export type StockQuantityProductRow = {
   purchaseInvoiceQty: number;
 };
 
-async function loadSalePurchaseStockRows(options: {
+/**
+ * Net on-hand quantity from ALL StockMovement rows (opening stock, stock
+ * adjustment, transfer, kachi, sale, purchase). Sale/purchase columns stay
+ * invoice-only so those totals are not mixed with adjustments.
+ */
+async function loadStockQuantityRows(options: {
   storeId?: number;
   categoryId?: number;
 }): Promise<StockQuantityProductRow[]> {
@@ -267,18 +215,18 @@ async function loadSalePurchaseStockRows(options: {
       ...SELECTABLE_PRODUCT,
       ...(options.categoryId != null ? { categoryId: options.categoryId } : {}),
     },
-    select: { id: true, name: true, code: true, unit: true },
+    select: { id: true, name: true, code: true, unit: true, kind: true },
     orderBy: { name: 'asc' },
   });
   if (products.length === 0) return [];
 
+  const kindById = new Map(products.map((p) => [p.id, p.kind]));
   const movements = await prisma.stockMovement.findMany({
     where: {
       ...(options.storeId != null ? { storeId: options.storeId } : {}),
       productId: { in: products.map((p) => p.id) },
-      invoiceType: { in: [InvoiceType.SALE_INVOICE, InvoiceType.PURCHASE_INVOICE] },
     },
-    select: { productId: true, direction: true, bags: true, invoiceType: true },
+    select: { productId: true, direction: true, bags: true, weightKg: true, invoiceType: true },
   });
 
   const nets = new Map<
@@ -291,14 +239,15 @@ async function loadSalePurchaseStockRows(options: {
       saleInvoiceQty: 0,
       purchaseInvoiceQty: 0,
     };
-    const bags = Number(m.bags);
-    const signed = m.direction === StockDirection.IN ? bags : -bags;
-    row.totalQty += signed;
+    const kind = kindById.get(m.productId) ?? ProductKind.STANDARD;
+    row.totalQty += movementDelta(m, kind);
+    const qty =
+      kind === ProductKind.KACHI && m.weightKg != null ? Number(m.weightKg) : Number(m.bags);
     if (m.invoiceType === InvoiceType.SALE_INVOICE && m.direction === StockDirection.OUT) {
-      row.saleInvoiceQty += bags;
+      row.saleInvoiceQty += qty;
     }
     if (m.invoiceType === InvoiceType.PURCHASE_INVOICE && m.direction === StockDirection.IN) {
-      row.purchaseInvoiceQty += bags;
+      row.purchaseInvoiceQty += qty;
     }
     nets.set(m.productId, row);
   }
@@ -332,14 +281,14 @@ function optionalPositiveId(value?: number | null): number | undefined {
   return value != null && value > 0 ? value : undefined;
 }
 
-/** Store-scoped bag balances for Sale Invoice / Purchase Invoice stock only. */
+/** Store-scoped on-hand quantity from all stock movements, including adjustments. */
 export async function getStockByStore(storeId: number, categoryId?: number) {
   const store = await prisma.store.findFirst({ where: { id: storeId } });
   if (!store) throw new AppError(404, 'Store not found');
 
   return {
     store: { id: store.id, name: store.name },
-    products: await loadSalePurchaseStockRows({
+    products: await loadStockQuantityRows({
       storeId,
       categoryId: optionalPositiveId(categoryId),
     }),
@@ -367,7 +316,7 @@ export async function getStockQuantityReport(params: {
     storeId: null,
     storeName: null,
     categoryId: categoryId ?? null,
-    products: await loadSalePurchaseStockRows({ categoryId }),
+    products: await loadStockQuantityRows({ categoryId }),
   };
 }
 
