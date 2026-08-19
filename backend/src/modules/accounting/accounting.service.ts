@@ -2654,14 +2654,22 @@ export async function getDashboardSummary() {
     financialYearId = undefined;
   }
 
+  const cashCategory = await prisma.accountCategory.findFirst({
+    where: { isActive: true, name: 'Cash' },
+    select: { id: true },
+  });
+
   const accounts = await prisma.account.findMany({
-    where: { isActive: true },
-    include: { category: true, ledger: true },
+    where: {
+      ...SELECTABLE_ACCOUNT,
+      ...(cashCategory ? { categoryId: cashCategory.id } : { id: -1 }),
+    },
+    include: { ledger: true },
   });
 
   let cashBalance = 0;
   for (const account of accounts) {
-    if (account.category && isBankOrCashCategory(account.category.name) && account.ledger) {
+    if (account.ledger) {
       cashBalance += Number(account.ledger.balance);
     }
   }
