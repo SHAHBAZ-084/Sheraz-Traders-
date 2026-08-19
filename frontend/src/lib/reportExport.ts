@@ -74,8 +74,21 @@ async function embedLetterheadFromElement(doc: jsPDF, element: HTMLElement, star
   return startY + imgHeight + 4;
 }
 
-const PDF_AMOUNT_FONT_SIZE = 10;
+const PDF_AMOUNT_FONT_SIZE = 12;
 const PDF_BODY_FONT_SIZE = 8;
+/** Helvetica digit width as a fraction of font size (points). */
+const HELVETICA_DIGIT_WIDTH = 0.56;
+const PT_TO_MM = 0.352778;
+const PDF_CELL_PAD_X_MM = 4;
+
+function pdfWidthForSample(sample: string, fontSizePt: number): number {
+  return Math.ceil(sample.length * fontSizePt * HELVETICA_DIGIT_WIDTH * PT_TO_MM + PDF_CELL_PAD_X_MM);
+}
+
+/** Debit/Credit: 8-digit millions e.g. 11,300,000.00 */
+const PDF_AMOUNT_COL_WIDTH_MM = pdfWidthForSample('99,999,999.99', PDF_AMOUNT_FONT_SIZE);
+/** Balance/Value with trailing Dr/Cr — extra glyphs Debit/Credit do not have */
+const PDF_BALANCE_COL_WIDTH_MM = pdfWidthForSample('99,999,999.99 Dr', PDF_AMOUNT_FONT_SIZE);
 
 function isPdfAmountColumn(header: string): boolean {
   const label = header.toLowerCase();
@@ -86,8 +99,14 @@ function isPdfAmountColumn(header: string): boolean {
     label.includes('balance') ||
     label.includes('profit') ||
     label.includes('price') ||
-    label.includes('mazduri')
+    label.includes('mazduri') ||
+    label === 'value'
   );
+}
+
+function isPdfBalanceColumn(header: string): boolean {
+  const label = header.toLowerCase();
+  return label.includes('balance') || label === 'value';
 }
 
 function buildPdfColumnStyles(headers: string[]): Record<number, Partial<Styles>> {
@@ -96,10 +115,11 @@ function buildPdfColumnStyles(headers: string[]): Record<number, Partial<Styles>
   headers.forEach((header, index) => {
     const label = header.toLowerCase();
     const amountStyle: Partial<Styles> = {
-      cellWidth: 20,
+      cellWidth: isPdfBalanceColumn(header) ? PDF_BALANCE_COL_WIDTH_MM : PDF_AMOUNT_COL_WIDTH_MM,
       halign: 'right',
       fontSize: PDF_AMOUNT_FONT_SIZE,
       fontStyle: 'normal',
+      overflow: 'linebreak',
     };
 
     if (label.includes('date')) {
@@ -144,6 +164,19 @@ function buildPdfColumnStyles(headers: string[]): Record<number, Partial<Styles>
 
 export function downloadExcel(filename: string, sheetName: string, headers: string[], rows: (string | number)[][]) {
   const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet['!cols'] = headers.map((header, index) => {
+    let maxLen = header.length;
+    for (const row of rows) {
+      maxLen = Math.max(maxLen, String(row[index] ?? '').length);
+    }
+    if (isPdfBalanceColumn(header)) {
+      return { wch: Math.max(maxLen + 2, 20) };
+    }
+    if (isPdfAmountColumn(header)) {
+      return { wch: Math.max(maxLen + 2, 14) };
+    }
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+  });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.slice(0, 31));
   const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
@@ -165,7 +198,7 @@ export async function downloadPdf(
   },
 ) {
   const doc = new jsPDF({
-    orientation: options?.orientation ?? (rows[0]?.length > 6 ? 'landscape' : 'portrait'),
+    orientation: options?.orientation ?? ((rows[0]?.length ?? headers.length) >= 6 ? 'landscape' : 'portrait'),
   });
   let y = 14;
 

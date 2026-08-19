@@ -53,8 +53,61 @@ export function formatLedgerBalance(balance: number | string) {
   return n > 0 ? `${abs} Dr` : `${abs} Cr`;
 }
 
+/** Day-first display locale (19 Aug 2026 / 19/08/2026). Stored values stay YYYY-MM-DD. */
+export const DATE_DISPLAY_LOCALE = 'en-GB';
+
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+export function parseDateValue(date: string | Date): Date {
+  if (date instanceof Date) return date;
+  const iso = date.match(ISO_DATE_RE);
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  }
+  return new Date(date);
+}
+
 export function formatDate(date: string | Date) {
-  return new Date(date).toLocaleDateString('en-PK', { year: 'numeric', month: 'short', day: 'numeric' });
+  return parseDateValue(date).toLocaleDateString(DATE_DISPLAY_LOCALE, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export function formatDateTime(date: string | Date) {
+  const d = parseDateValue(date);
+  return `${formatDate(d)} ${d.toLocaleTimeString(DATE_DISPLAY_LOCALE, {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
+
+/** Visual date for inputs: DD/MM/YYYY. Empty string stays empty. */
+export function isoToDisplayDate(iso: string): string {
+  const trimmed = iso.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(ISO_DATE_RE);
+  if (!match) return trimmed;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+/** Parse a typed date into YYYY-MM-DD, or null if incomplete/invalid. */
+export function displayDateToIso(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (ISO_DATE_RE.test(trimmed) && trimmed.length === 10) return trimmed.slice(0, 10);
+
+  const match = trimmed.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+    return null;
+  }
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 const VOUCHER_TYPE_LABELS: Record<string, string> = {

@@ -79,10 +79,16 @@
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "publisherName": "Sheeraz Traders",
-      "legalTrademarks": "Sheeraz Traders"
+      "legalTrademarks": "Sheeraz Traders",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
@@ -96,9 +102,14 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
       "artifactName": "${productName} Setup ${version}.${ext}",
       "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "menuCategory": "Sheeraz Traders",
+      "displayLanguageSelector": false
     }
   },
   "devDependencies": {

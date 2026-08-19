@@ -2,11 +2,10 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { PageShell, Panel, PrimaryButton, SecondaryButton, Tile, FieldLabel, TextInput } from '../../components/ui/PageShell';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { api, BackupStatus } from '../../lib/api';
-import { formatDate } from '../../lib/format';
+import { formatDateTime } from '../../lib/format';
 
 function formatBackupTimestamp(iso: string): string {
-  const date = new Date(iso);
-  return `${formatDate(iso)} ${date.toLocaleTimeString()}`;
+  return formatDateTime(iso);
 }
 
 export function DatabaseMaintenancePage() {

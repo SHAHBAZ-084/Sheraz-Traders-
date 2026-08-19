@@ -1,5 +1,6 @@
 import { forwardRef, ReactNode, RefObject } from 'react';
 import { containsUrduScript } from '../../lib/urduScript';
+import { DateInput } from './DateInput';
 
 function reactNodeText(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return '';
@@ -114,8 +115,11 @@ export function FormRow({ label, children }: { label: ReactNode; children: React
 
 export const TextInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function TextInput(props, ref) {
-    const { className = '', ...rest } = props;
-    return <input ref={ref} {...rest} className={`app-input ${className}`.trim()} />;
+    const { className = '', type, ...rest } = props;
+    if (type === 'date') {
+      return <DateInput ref={ref} className={className} {...rest} />;
+    }
+    return <input ref={ref} type={type} {...rest} className={`app-input ${className}`.trim()} />;
   },
 );
 

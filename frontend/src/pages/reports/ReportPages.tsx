@@ -323,7 +323,8 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
             <ReportLetterhead
               ref={letterheadRef}
               title="Account Ledger"
-              subtitle={`${ledger.account.name} · ${fySubtitle}`}
+              emphasis={ledger.account.name}
+              subtitle={fySubtitle}
             />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportLedger('pdf')}>Download PDF</SecondaryButton>
@@ -525,9 +526,9 @@ export function TrialBalancePage() {
             <ListPagination total={total} offset={offset} onPageChange={setOffset} className="mt-4" />
             <p className="mt-4 text-sm text-textSecondary">
               Total debit{' '}
-              <span className={ledgerDebitAmountClass(data.totalDebit > 0)}>{formatLedgerAmount(data.totalDebit, 2)}</span>
+              <span className={`report-amount-cell ${ledgerDebitAmountClass(data.totalDebit > 0)}`}>{formatLedgerAmount(data.totalDebit, 2)}</span>
               {' · '}Total credit{' '}
-              <span className={ledgerCreditAmountClass(data.totalCredit > 0)}>{formatLedgerAmount(data.totalCredit, 2)}</span>
+              <span className={`report-amount-cell ${ledgerCreditAmountClass(data.totalCredit > 0)}`}>{formatLedgerAmount(data.totalCredit, 2)}</span>
               {' · '}
               {data.isBalanced ? 'Balanced' : 'Out of balance'}
             </p>
@@ -645,9 +646,13 @@ export function StockReportPage() {
           <div className="report-print-area mt-6 space-y-4">
             <ReportLetterhead
               title="Stock Report"
+              emphasis={(() => {
+                const product = products.find((p) => String(p.id) === productId);
+                return product?.name;
+              })()}
               subtitle={(() => {
                 const product = products.find((p) => String(p.id) === productId);
-                return product ? `${product.code} — ${product.name}` : undefined;
+                return product?.code;
               })()}
             />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
@@ -900,11 +905,8 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
       parts.push(historicalScope.financialYearLabel);
     }
     parts.push(`As of ${formatDate(datedOn)}`);
-    if (filterMode === 'product' && selectedProductCategoryName) {
-      parts.push(`Product category: ${selectedProductCategoryName}`);
-    }
     return parts.join(' · ');
-  }, [historicalScope?.financialYearLabel, datedOn, filterMode, selectedProductCategoryName]);
+  }, [historicalScope?.financialYearLabel, datedOn]);
 
   const panel = (
     <ReportPanel embedded={embedded} title="Account Balance">
@@ -998,7 +1000,12 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
           </p>
         ) : report ? (
           <div className="report-print-area">
-            <ReportLetterhead ref={letterheadRef} title="Account Balance" subtitle={balanceSubtitle} />
+            <ReportLetterhead
+              ref={letterheadRef}
+              title="Account Balance"
+              emphasis={filterMode === 'product' ? selectedProductCategoryName : undefined}
+              subtitle={balanceSubtitle}
+            />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
@@ -1290,7 +1297,7 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
                     </td>
                     <td className={`pr-2 font-medium ${voucherFromColumnClass(v)}`}>{voucherFromAccount(v)}</td>
                     <td className={`pr-2 font-medium ${voucherToColumnClass(v)}`}>{voucherToAccount(v)}</td>
-                    <td className="pr-2 text-right tabular-nums">{formatLedgerAmount(v.amount)}</td>
+                    <td className={`pr-2 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatLedgerAmount(v.amount)}</td>
                     <td className="pr-2 text-textSecondary">{v.reference ?? ''}</td>
                     <td>
                       <span
@@ -1309,7 +1316,7 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
               <tfoot>
                 <tr>
                   <td colSpan={5}>Page total</td>
-                  <td className="text-right tabular-nums">{formatLedgerAmount(totals.totalAmount)}</td>
+                  <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatLedgerAmount(totals.totalAmount)}</td>
                   <td colSpan={2} />
                 </tr>
                 {voucherType === 'all' ? (
@@ -1585,10 +1592,10 @@ export function ProfitLossStatementPage() {
                     <td className="pr-3 whitespace-nowrap">{formatDate(row.date)}</td>
                     <td className="pr-3">{row.productName}</td>
                     <td className="pr-3 font-mono text-xs">{row.reference}</td>
-                    <td className="pr-3 text-right tabular-nums">{formatProfitLossPrice(row.purchasePrice)}</td>
-                    <td className="pr-3 text-right tabular-nums">{formatProfitLossPrice(row.salePrice)}</td>
+                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatProfitLossPrice(row.purchasePrice)}</td>
+                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatProfitLossPrice(row.salePrice)}</td>
                     <td
-                      className={`text-right tabular-nums font-medium ${
+                      className={`text-right tabular-nums font-medium ${REPORT_AMOUNT_CELL} ${
                         row.profit >= 0 ? ledgerCreditAmountClass(true) : ledgerDebitAmountClass(true)
                       }`}
                     >
@@ -1600,14 +1607,14 @@ export function ProfitLossStatementPage() {
               <tfoot>
                 <tr className="report-table-row--emphasis">
                   <td colSpan={3}>Total</td>
-                  <td className="pr-3 text-right tabular-nums font-semibold">
+                  <td className={`pr-3 text-right tabular-nums font-semibold ${REPORT_AMOUNT_CELL}`}>
                     {formatLedgerAmount(report.totalPurchase)}
                   </td>
-                  <td className="pr-3 text-right tabular-nums font-semibold">
+                  <td className={`pr-3 text-right tabular-nums font-semibold ${REPORT_AMOUNT_CELL}`}>
                     {formatLedgerAmount(report.totalSale)}
                   </td>
                   <td
-                    className={`text-right tabular-nums font-semibold ${
+                    className={`text-right tabular-nums font-semibold ${REPORT_AMOUNT_CELL} ${
                       report.netProfit >= 0 ? ledgerCreditAmountClass(true) : ledgerDebitAmountClass(true)
                     }`}
                   >
@@ -1712,8 +1719,10 @@ export function StockValueReportPage() {
   const subtitle = [
     `As of ${formatDate(datedOn)}`,
     storeName ?? 'All stores',
-    categoryName ? `Category: ${categoryName}` : 'All categories',
-  ].join(' · ');
+    categoryName ? undefined : 'All categories',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <PageShell title="Stock Value Report" subtitle="Product stock value from ledger ending balances">
@@ -1761,7 +1770,12 @@ export function StockValueReportPage() {
           <p className={reportEmptyClass()}>No products match these filters</p>
         ) : report ? (
           <div className="report-print-area">
-            <ReportLetterhead ref={letterheadRef} title="Stock Value Report" subtitle={subtitle} />
+            <ReportLetterhead
+              ref={letterheadRef}
+              title="Stock Value Report"
+              emphasis={categoryName}
+              subtitle={subtitle}
+            />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
@@ -1874,8 +1888,10 @@ export function StockQuantityReportPage() {
   const categoryName = productCategories.find((c) => String(c.id) === categoryId)?.name;
   const subtitle = [
     storeName ?? 'All stores',
-    categoryName ? `Category: ${categoryName}` : 'All categories',
-  ].join(' · ');
+    categoryName ? undefined : 'All categories',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <PageShell title="Stock Quantity Report" subtitle="On-hand quantity by store and product">
@@ -1919,7 +1935,12 @@ export function StockQuantityReportPage() {
           <p className={reportEmptyClass()}>No stock quantities match these filters</p>
         ) : report ? (
           <div className="report-print-area">
-            <ReportLetterhead ref={letterheadRef} title="Stock Quantity Report" subtitle={subtitle} />
+            <ReportLetterhead
+              ref={letterheadRef}
+              title="Stock Quantity Report"
+              emphasis={categoryName}
+              subtitle={subtitle}
+            />
             <div className="mb-4 flex flex-wrap gap-2 print:hidden">
               <SecondaryButton type="button" onClick={() => exportReport('pdf')}>Download PDF</SecondaryButton>
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>

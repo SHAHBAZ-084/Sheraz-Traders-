@@ -7,8 +7,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { rcedit } from 'rcedit';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, '..');
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(scriptDir, '..');
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 export default async function embedWinIcon(context) {
   if (context.electronPlatformName !== 'win32') return;
@@ -22,8 +23,15 @@ export default async function embedWinIcon(context) {
 
   await rcedit(exe, {
     icon: ico,
+    'file-version': pkg.version,
+    'product-version': pkg.version,
     'version-string': {
-      ProductName: product,
+      CompanyName: 'Sheeraz Traders',
+      FileDescription: 'Sheeraz Traders — Grain Market POS',
+      InternalName: 'Sheeraz Traders',
+      OriginalFilename: `${product}.exe`,
+      ProductName: 'Sheeraz Traders',
+      LegalCopyright: `Copyright © Sheeraz Traders`,
     },
   });
 

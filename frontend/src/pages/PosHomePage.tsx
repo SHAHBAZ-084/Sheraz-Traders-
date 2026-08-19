@@ -107,7 +107,7 @@ export function PosHomePage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatBox
           label="Cash Balance"
-          value={summary ? formatLedgerAmount(summary.cashBalance) : '—'}
+          value={summary ? formatLedgerAmount(Math.round(summary.cashBalance), 0) : '—'}
         />
         <Tile className="flex min-h-[4.5rem] min-w-0 flex-col sm:col-span-2">
           <div className="flex items-center justify-between gap-2">

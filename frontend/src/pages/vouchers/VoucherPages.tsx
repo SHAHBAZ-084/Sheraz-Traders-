@@ -1104,11 +1104,11 @@ export function VoucherDetailCard({
   if (creator) auditParts.push(`Created by ${creator}`);
   const modifier = userLabel(voucher.modifiedBy);
   if (modifier && voucher.updatedAt && voucher.updatedAt !== voucher.createdAt) {
-    auditParts.push(`Updated by ${modifier} on ${new Date(voucher.updatedAt).toLocaleDateString()}`);
+    auditParts.push(`Updated by ${modifier} on ${formatDate(voucher.updatedAt)}`);
   }
   if (isCancelled && voucher.deletedBy && voucher.deletedAt) {
     const canceller = userLabel(voucher.deletedBy);
-    if (canceller) auditParts.push(`Cancelled by ${canceller} on ${new Date(voucher.deletedAt).toLocaleDateString()}`);
+    if (canceller) auditParts.push(`Cancelled by ${canceller} on ${formatDate(voucher.deletedAt)}`);
   }
 
   async function submitAmount(e: FormEvent) {

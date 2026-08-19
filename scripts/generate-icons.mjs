@@ -80,6 +80,87 @@ async function renderIconPng(sharp, source, size, { compact = false } = {}) {
     .toBuffer();
 }
 
+function writeBmp24(filePath, width, height, rgba) {
+  const rowSize = Math.ceil((width * 3) / 4) * 4;
+  const pixelSize = rowSize * height;
+  const buf = Buffer.alloc(54 + pixelSize);
+  buf.write('BM', 0);
+  buf.writeUInt32LE(54 + pixelSize, 2);
+  buf.writeUInt32LE(54, 10);
+  buf.writeUInt32LE(40, 14);
+  buf.writeInt32LE(width, 18);
+  buf.writeInt32LE(height, 22);
+  buf.writeUInt16LE(1, 26);
+  buf.writeUInt16LE(24, 28);
+  buf.writeUInt32LE(pixelSize, 34);
+
+  for (let y = 0; y < height; y += 1) {
+    const srcY = height - 1 - y;
+    for (let x = 0; x < width; x += 1) {
+      const i = (srcY * width + x) * 4;
+      const o = 54 + y * rowSize + x * 3;
+      buf[o] = rgba[i + 2];
+      buf[o + 1] = rgba[i + 1];
+      buf[o + 2] = rgba[i];
+    }
+  }
+
+  fs.writeFileSync(filePath, buf);
+}
+
+async function writeInstallerBitmaps(sharp, source) {
+  const bg = { r: ICON_BG.r, g: ICON_BG.g, b: ICON_BG.b, alpha: 1 };
+
+  const sidebar = await sharp({
+    create: { width: 164, height: 314, channels: 3, background: bg },
+  })
+    .composite([
+      {
+        input: await sharp(source)
+          .resize(140, 140, { fit: 'contain', background: bg })
+          .flatten({ background: bg })
+          .png()
+          .toBuffer(),
+        top: 36,
+        left: 12,
+      },
+    ])
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const header = await sharp({
+    create: { width: 150, height: 57, channels: 3, background: bg },
+  })
+    .composite([
+      {
+        input: await sharp(source)
+          .resize(44, 44, { fit: 'contain', background: bg })
+          .flatten({ background: bg })
+          .png()
+          .toBuffer(),
+        top: 6,
+        left: 8,
+      },
+    ])
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  writeBmp24(path.join(buildDir, 'installerSidebar.bmp'), sidebar.info.width, sidebar.info.height, padRgbToRgba(sidebar.data));
+  writeBmp24(path.join(buildDir, 'installerHeader.bmp'), header.info.width, header.info.height, padRgbToRgba(header.data));
+  fs.copyFileSync(path.join(buildDir, 'installerSidebar.bmp'), path.join(buildDir, 'uninstallerSidebar.bmp'));
+}
+
+function padRgbToRgba(rgb) {
+  const out = Buffer.alloc((rgb.length / 3) * 4);
+  for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+    out[j] = rgb[i];
+    out[j + 1] = rgb[i + 1];
+    out[j + 2] = rgb[i + 2];
+    out[j + 3] = 255;
+  }
+  return out;
+}
+
 async function main() {
   const source = sourceCandidates.find((candidate) => fs.existsSync(candidate));
   if (!source) {
@@ -107,6 +188,8 @@ async function main() {
   for (const tempPath of tempPngs) {
     fs.unlinkSync(tempPath);
   }
+
+  await writeInstallerBitmaps(sharp, source);
 
   // electron-builder / NSIS also resolve icons from the project root.
   fs.copyFileSync(iconIco, path.join(root, 'icon.ico'));

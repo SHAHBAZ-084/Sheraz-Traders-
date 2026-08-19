@@ -15,6 +15,10 @@ const LOADING_GRACE_MS = 400;
 const HEALTH_POLL_INTERVAL_MS = 100;
 const HEALTH_MAX_ATTEMPTS = 100;
 
+/** Chromium date widgets follow app ICU locale, not html lang. Force day-first (DD/MM/YYYY). */
+app.commandLine.appendSwitch('lang', 'en-GB');
+app.commandLine.appendSwitch('accept-lang', 'en-GB,en');
+
 function resolveAppIcon(): string | undefined {
   const fileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
   const candidates = isDev

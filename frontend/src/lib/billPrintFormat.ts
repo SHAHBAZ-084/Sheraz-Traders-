@@ -1,4 +1,5 @@
 import type { InvoiceDetail, MaalLineDetail, SystemPreferences } from './api';
+import { parseDateValue } from './format';
 
 export type BillLineRow = {
   variety: string;
@@ -22,7 +23,7 @@ export function parseInvoiceDisplayNumber(reference: string) {
 }
 
 export function formatBillDate(date: string | Date) {
-  const d = new Date(date);
+  const d = parseDateValue(date);
   const day = String(d.getDate()).padStart(2, '0');
   const month = d.toLocaleDateString('en-GB', { month: 'short' });
   const year = String(d.getFullYear()).slice(-2);
