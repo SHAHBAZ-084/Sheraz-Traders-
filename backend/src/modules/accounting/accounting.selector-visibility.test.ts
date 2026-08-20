@@ -34,6 +34,18 @@ describe('Opening Balance Equity selector visibility', () => {
     const manageAccounts = await listAccounts({ forSelectors: false });
     expect(manageAccounts.items.some((a) => a.id === obe!.id)).toBe(true);
 
+    const date = new Date();
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const allGroups = await getAccountBalancesAsOf({ date: iso, side: 'both' });
+    expect(allGroups.accounts.some((a) => a.accountId === obe!.id)).toBe(false);
+
+    const equityCategory = await getAccountBalancesAsOf({
+      date: iso,
+      categoryId: obe!.categoryId,
+      side: 'both',
+    });
+    expect(equityCategory.accounts.some((a) => a.accountId === obe!.id)).toBe(false);
+
     const trialBalance = await getTrialBalance();
     const tbRow = trialBalance.accounts.find((a) => a.accountId === obe!.id);
     expect(tbRow).toBeTruthy();

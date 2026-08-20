@@ -47,21 +47,16 @@ function ReportPanel({
   );
 }
 
-function reportFilterClass(embedded?: boolean, variant: 'ledger' | 'balance' | 'vouchers' | 'profitLoss' | 'stockValue' | 'stockQuantity' = 'ledger') {
+/** Same column sizing as Account Ledger — keeps SearchSelect/date fields consistent app-wide. */
+const STANDARD_REPORT_FILTER_GRID =
+  'mb-4 grid gap-4 overflow-visible print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto] xl:items-end';
+
+function reportFilterClass(
+  embedded?: boolean,
+  _variant: 'ledger' | 'balance' | 'vouchers' | 'profitLoss' | 'stockValue' | 'stockQuantity' = 'ledger',
+) {
   if (embedded) return 'fy-report-filters print:hidden';
-
-  const standalone = {
-    ledger:
-      'mb-4 grid gap-4 overflow-visible print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto] xl:items-end',
-    balance: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end',
-    vouchers: 'mb-4 grid gap-4 print:hidden lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end',
-    profitLoss:
-      'grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] lg:items-end',
-    stockValue: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end',
-    stockQuantity: 'mb-4 grid gap-4 print:hidden sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end',
-  };
-
-  return standalone[variant];
+  return STANDARD_REPORT_FILTER_GRID;
 }
 
 function reportEmptyClass(embedded?: boolean) {
@@ -1499,8 +1494,7 @@ export function ProfitLossStatementPage() {
   return (
     <PageShell title="Profit & Loss Statement" subtitle="Sale invoice profit/loss and Kachi Maal daami">
       <Panel className="overflow-visible">
-        <div className="mb-4 print:hidden">
-          <div className={reportFilterClass(false, 'profitLoss')}>
+        <div className={reportFilterClass(false, 'profitLoss')}>
             <div>
               <FieldLabel>From Date</FieldLabel>
               <TextInput
@@ -1552,7 +1546,6 @@ export function ProfitLossStatementPage() {
             <PrimaryButton type="button" onClick={() => void loadReport()} disabled={loading}>
               {loading ? 'Loading…' : 'Load Report'}
             </PrimaryButton>
-          </div>
         </div>
 
         {error ? <p className="mb-4 text-sm text-danger">{error}</p> : null}

@@ -3151,6 +3151,7 @@ export async function getAccountBalancesAsOf(params: {
 
   const where = {
     ...SELECTABLE_ACCOUNT,
+    excludeFromSelectors: false,
     ...(params.categoryId != null ? { categoryId: params.categoryId } : {}),
     ...(productLinkedAccountIds != null ? { id: { in: productLinkedAccountIds } } : {}),
   };
