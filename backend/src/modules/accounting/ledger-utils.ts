@@ -51,34 +51,30 @@ export function defaultOpeningSide(
 }
 
 export function entryEffectiveDate(entry: {
-  createdAt: Date;
-  isOpeningBalance: boolean;
-  voucher?: { date: Date } | null;
+  date: Date;
 }): Date {
-  if (entry.isOpeningBalance) return entry.createdAt;
-  return entry.voucher?.date ?? entry.createdAt;
+  return entry.date;
 }
 
 export function compareLedgerEntries(
   a: {
     id: number;
-    createdAt: Date;
+    date: Date;
     isOpeningBalance: boolean;
-    voucher?: { date: Date; number: number } | null;
+    voucher?: { number: number } | null;
   },
   b: {
     id: number;
-    createdAt: Date;
+    date: Date;
     isOpeningBalance: boolean;
-    voucher?: { date: Date; number: number } | null;
+    voucher?: { number: number } | null;
   },
 ): number {
   // Opening balance is always the first row in a ledger, regardless of createdAt.
   if (a.isOpeningBalance !== b.isOpeningBalance) {
     return a.isOpeningBalance ? -1 : 1;
   }
-  const cmp =
-    new Date(entryEffectiveDate(a)).getTime() - new Date(entryEffectiveDate(b)).getTime();
+  const cmp = entryEffectiveDate(a).getTime() - entryEffectiveDate(b).getTime();
   if (cmp !== 0) return cmp;
   const aNo = a.isOpeningBalance ? 0 : (a.voucher?.number ?? 0);
   const bNo = b.isOpeningBalance ? 0 : (b.voucher?.number ?? 0);

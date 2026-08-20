@@ -195,6 +195,13 @@ model LedgerEntry {
   isReversal       Boolean         @default(false)
   isOpeningBalance Boolean         @default(false)
   createdAt        DateTime        @default(now())
+  /**
+   * Effective transaction date used for chronological ordering and
+   * date-range filtering in ledger/report queries.
+   *
+   * Always populated at creation time for non-voucher sources too.
+   */
+  date             DateTime        @default(now())
   financialYearId  Int?
 
   ledger        Ledger         @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
@@ -204,7 +211,9 @@ model LedgerEntry {
   @@index([ledgerId])
   @@index([voucherId])
   @@index([createdAt])
+  @@index([date])
   @@index([ledgerId, createdAt])
+  @@index([ledgerId, date])
   @@index([ledgerId, id])
   @@index([financialYearId])
 }

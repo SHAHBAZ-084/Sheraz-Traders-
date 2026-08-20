@@ -410,7 +410,7 @@ export async function recomputeLedgerRunningBalancesInTx(
 
   const entries = await tx.ledgerEntry.findMany({
     where: ledgerEntriesForYearWhere(ledgerId, financialYearId, yearStart, yearEnd),
-    include: { voucher: { select: { date: true, number: true } } },
+    include: { voucher: { select: { number: true } } },
     orderBy: { id: 'asc' },
   });
 
@@ -438,9 +438,9 @@ type LedgerEntryTip = {
   type: LedgerEntryType;
   amount: Prisma.Decimal | number;
   balance: Prisma.Decimal | number;
-  createdAt: Date;
+  date: Date;
   isOpeningBalance: boolean;
-  voucher: { date: Date; number: number } | null;
+  voucher: { number: number } | null;
 };
 
 /** Latest entry by ledger sort order, excluding freshly posted ids. */
@@ -450,13 +450,13 @@ async function findLatestLedgerEntryExcluding(
   excludeIds: number[],
 ): Promise<LedgerEntryTip | null> {
   const exclude = excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {};
-  const include = { voucher: { select: { date: true, number: true } } } as const;
+  const include = { voucher: { select: { number: true } } } as const;
 
   const latestLinked = await tx.ledgerEntry.findFirst({
     where: { ledgerId, ...exclude, voucherId: { not: null } },
     include,
     orderBy: [
-      { voucher: { date: 'desc' } },
+      { date: 'desc' },
       { voucher: { number: 'desc' } },
       { id: 'desc' },
     ],
@@ -465,13 +465,13 @@ async function findLatestLedgerEntryExcluding(
   const latestOpening = await tx.ledgerEntry.findFirst({
     where: { ledgerId, ...exclude, isOpeningBalance: true },
     include,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
   });
 
   const latestOrphan = await tx.ledgerEntry.findFirst({
     where: { ledgerId, ...exclude, voucherId: null, isOpeningBalance: false },
     include,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
   });
 
   const candidates = [latestLinked, latestOpening, latestOrphan].filter(
@@ -510,7 +510,7 @@ async function applyPostedLedgerEntriesInTx(
 
   const newEntries = await tx.ledgerEntry.findMany({
     where: { id: { in: newEntryIds } },
-    include: { voucher: { select: { date: true, number: true } } },
+    include: { voucher: { select: { number: true } } },
   });
   if (newEntries.length !== newEntryIds.length) {
     await recomputeLedgerRunningBalancesInTx(tx, ledgerId, financialYearId);
@@ -562,7 +562,7 @@ async function recomputeFullLedgerBalanceInTx(
 ): Promise<number> {
   const entries = await tx.ledgerEntry.findMany({
     where: { ledgerId },
-    include: { voucher: { select: { date: true, number: true } } },
+    include: { voucher: { select: { number: true } } },
     orderBy: { id: 'asc' },
   });
   entries.sort(compareLedgerEntries);
@@ -837,11 +837,13 @@ async function postOpeningBalanceOffset(
   accountName: string,
   amount: number,
   side: 'DR' | 'CR',
+  options?: { entryDate?: Date; isOpeningBalance?: boolean; notes?: string },
 ) {
   const equityAccount = await findOrCreateOpeningBalanceEquityAccount(tx);
   const equityLedger = equityAccount.ledger!;
   const offsetType = side === 'DR' ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT;
   const financialYearId = await getActiveFinancialYearId(tx);
+  const isOpeningBalance = options?.isOpeningBalance !== false;
 
   const entry = await tx.ledgerEntry.create({
     data: {
@@ -849,9 +851,10 @@ async function postOpeningBalanceOffset(
       type: offsetType,
       amount,
       balance: 0,
-      notes: `Opening Balance — offset for ${accountName}`,
-      isOpeningBalance: true,
+      notes: options?.notes ?? `Opening Balance — offset for ${accountName}`,
+      isOpeningBalance,
       financialYearId,
+      ...(options?.entryDate ? { date: options.entryDate } : {}),
     },
   });
   await applyPostedLedgerEntriesInTx(tx, equityLedger.id, financialYearId, [entry.id]);
@@ -860,6 +863,7 @@ async function postOpeningBalanceOffset(
 /**
  * Balanced opening-balance pair (account/product ledger + Opening Balance Equity).
  * Used by account creation and valued product opening stock.
+ * Account adjustments reuse this helper with isOpeningBalance: false + entryDate.
  */
 export async function postOpeningBalanceInTx(
   tx: Prisma.TransactionClient,
@@ -869,12 +873,15 @@ export async function postOpeningBalanceInTx(
     amount: number;
     side: 'DR' | 'CR';
     notes?: string;
+    entryDate?: Date;
+    isOpeningBalance?: boolean;
   },
 ) {
   const amount = Math.abs(Number(data.amount));
   if (!(amount > 0)) return;
 
   const financialYearId = await getActiveFinancialYearId(tx);
+  const isOpeningBalance = data.isOpeningBalance !== false;
   const entry = await tx.ledgerEntry.create({
     data: {
       ledgerId: data.ledgerId,
@@ -882,11 +889,18 @@ export async function postOpeningBalanceInTx(
       amount,
       balance: 0,
       notes: data.notes ?? 'Opening Balance',
-      isOpeningBalance: true,
+      isOpeningBalance,
       financialYearId,
+      ...(data.entryDate ? { date: data.entryDate } : {}),
     },
   });
-  await postOpeningBalanceOffset(tx, data.accountName, amount, data.side);
+  await postOpeningBalanceOffset(tx, data.accountName, amount, data.side, {
+    entryDate: data.entryDate,
+    isOpeningBalance,
+    notes: isOpeningBalance
+      ? undefined
+      : `${data.notes ?? 'Adjustment'} — offset for ${data.accountName}`,
+  });
   await applyPostedLedgerEntriesInTx(tx, data.ledgerId, financialYearId, [entry.id]);
 }
 
@@ -923,6 +937,7 @@ export async function postStockAdjustmentBalanceInTx(
       isOpeningBalance: false,
       financialYearId: data.financialYearId,
       createdAt: data.entryDate,
+      date: data.entryDate,
     },
   });
 
@@ -936,6 +951,7 @@ export async function postStockAdjustmentBalanceInTx(
       isOpeningBalance: false,
       financialYearId: data.financialYearId,
       createdAt: data.entryDate,
+      date: data.entryDate,
     },
   });
 
@@ -1011,6 +1027,8 @@ export async function createAccountAdjustment(data: {
       amount,
       side: data.side,
       notes: 'Account Adjustment',
+      entryDate: adjustmentDate,
+      isOpeningBalance: false,
     });
 
     const ledger = await tx.ledger.findUnique({ where: { id: account.ledger!.id } });
@@ -1044,6 +1062,8 @@ export async function approveAccountAdjustment(id: number, _approvedById: number
       amount,
       side,
       notes: 'Account Adjustment',
+      entryDate: pending.adjustmentDate,
+      isOpeningBalance: false,
     });
     await tx.pendingAdjustment.update({
       where: { id: pending.id },
@@ -1265,7 +1285,7 @@ function ledgerEntriesForYearWhere(
       {
         isOpeningBalance: true,
         financialYearId: null,
-        createdAt: {
+        date: {
           gte: yearStart,
           ...(yearEnd ? { lte: yearEnd } : {}),
         },
@@ -1941,8 +1961,10 @@ async function mergeInventoryAccountIntoCanonical(
 
     const entries = await tx.ledgerEntry.findMany({
       where: { ledgerId: canonical.ledger!.id },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      include: { voucher: { select: { number: true } } },
     });
+
+    entries.sort(compareLedgerEntries);
 
     let balance = 0;
     // Sequential: each entry balance is a cumulative running total after ledger merge.
@@ -2272,6 +2294,7 @@ export async function createVoucherInTx(
       data.amount,
       data.description,
       financialYearId,
+      voucherDate,
     );
 
     await assertTrialBalanceInDev(tx);
@@ -2363,6 +2386,7 @@ export async function approveVoucher(voucherId: number, approvedById: number) {
         Number(voucher.amount),
         voucher.description,
         finYearId,
+        voucher.date,
       );
     } else {
       await assertVoucherEntriesBalanced(tx, voucher.id, 2);
@@ -2413,15 +2437,17 @@ async function postVoucherLedgerEntries(
   amount: number,
   notes: string | null | undefined,
   financialYearId: number,
+  date: Date,
 ) {
   const debitLedger = await tx.ledger.findUniqueOrThrow({ where: { accountId: debitAccountId } });
   const creditLedger = await tx.ledger.findUniqueOrThrow({ where: { accountId: creditAccountId } });
 
   const debitEntry = await tx.ledgerEntry.create({
     data: {
-        ledgerId: debitLedger.id,
-        voucherId,
+      ledgerId: debitLedger.id,
+      voucherId,
       financialYearId,
+      date,
         type: LedgerEntryType.DEBIT,
         amount,
         balance: 0,
@@ -2431,9 +2457,10 @@ async function postVoucherLedgerEntries(
   });
   const creditEntry = await tx.ledgerEntry.create({
     data: {
-        ledgerId: creditLedger.id,
-        voucherId,
+      ledgerId: creditLedger.id,
+      voucherId,
       financialYearId,
+      date,
         type: LedgerEntryType.CREDIT,
         amount,
         balance: 0,
@@ -2461,6 +2488,7 @@ async function postMultiLegVoucherEntries(
   voucherId: number,
   legs: VoucherLeg[],
   financialYearId: number,
+  date: Date,
 ) {
   const ledgerByAccountId = new Map<number, number>();
   const newEntryIdsByLedger = new Map<number, number[]>();
@@ -2483,6 +2511,7 @@ async function postMultiLegVoucherEntries(
         ledgerId,
         voucherId,
         financialYearId,
+        date,
         type: leg.type,
         amount: leg.amount,
         balance: 0,
@@ -2561,7 +2590,7 @@ export async function createMultiLegVoucherInTx(
     },
   });
 
-  await postMultiLegVoucherEntries(tx, voucher.id, data.legs, financialYearId);
+  await postMultiLegVoucherEntries(tx, voucher.id, data.legs, financialYearId, voucherDate);
   await assertTrialBalanceInDev(tx);
 
   return voucher;
@@ -2587,7 +2616,7 @@ function roundMoney(value: number) {
 
 async function reverseVoucherLedgerEntries(
   tx: Prisma.TransactionClient,
-  voucher: { id: number },
+  voucher: { id: number; date: Date },
   notes: string,
 ) {
   const entries = await tx.ledgerEntry.findMany({
@@ -2603,6 +2632,7 @@ async function reverseVoucherLedgerEntries(
         financialYearId: entry.financialYearId,
         type: entry.type === LedgerEntryType.DEBIT ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
         amount: entry.amount,
+        date: voucher.date,
         balance: 0,
         notes,
         isReversal: true,
@@ -2992,8 +3022,8 @@ type LedgerEntryForBalance = {
   type: LedgerEntryType;
   amount: unknown;
   isOpeningBalance: boolean;
-  createdAt: Date;
-  voucher: { date: Date; number: number } | null;
+  date: Date;
+  voucher: { number: number } | null;
 };
 
 function computeAccountBalanceRow(
@@ -3196,7 +3226,7 @@ export async function getAccountBalancesAsOf(params: {
           ],
         },
         include: {
-          voucher: { select: { date: true, status: true, number: true } },
+          voucher: { select: { number: true } },
         },
       })
     : [];
@@ -3392,7 +3422,7 @@ const ledgerEntryReportSelect = {
   notes: true,
   mazduriAmount: true,
   isOpeningBalance: true,
-  createdAt: true,
+  date: true,
   voucher: {
     select: {
       type: true,

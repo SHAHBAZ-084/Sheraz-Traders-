@@ -38,15 +38,15 @@ describe('compareLedgerEntries', () => {
   it('sorts by voucher date then voucher number', () => {
     const early = {
       id: 2,
-      createdAt: new Date('2026-07-20'),
+      date: new Date('2026-07-01'),
       isOpeningBalance: false,
-      voucher: { date: new Date('2026-07-01'), number: 2 },
+      voucher: { number: 2 },
     };
     const late = {
       id: 1,
-      createdAt: new Date('2026-07-01'),
+      date: new Date('2026-07-15'),
       isOpeningBalance: false,
-      voucher: { date: new Date('2026-07-15'), number: 1 },
+      voucher: { number: 1 },
     };
     expect(compareLedgerEntries(early, late)).toBeLessThan(0);
   });
@@ -54,15 +54,15 @@ describe('compareLedgerEntries', () => {
   it('always places opening balance before same-day vouchers', () => {
     const opening = {
       id: 99,
-      createdAt: new Date('2026-07-30T18:00:00'),
+      date: new Date('2026-07-30T18:00:00'),
       isOpeningBalance: true,
       voucher: null,
     };
     const payment = {
       id: 1,
-      createdAt: new Date('2026-07-30T10:00:00'),
+      date: new Date('2026-07-30T10:00:00'),
       isOpeningBalance: false,
-      voucher: { date: new Date('2026-07-30T12:00:00'), number: 1 },
+      voucher: { number: 1 },
     };
     expect(compareLedgerEntries(opening, payment)).toBeLessThan(0);
     expect(compareLedgerEntries(payment, opening)).toBeGreaterThan(0);
