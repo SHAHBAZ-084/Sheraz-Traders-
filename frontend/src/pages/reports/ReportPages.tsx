@@ -865,18 +865,21 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
         row.accountName,
         formatLedgerBalance(row.balance),
       ]);
-      const totalRow = [
-        'Total',
-        formatLedgerBalance(exportData.totalDebit - exportData.totalCredit),
+      const totalRows: (string | number)[][] = [
+        ['Total Debit', formatLedgerBalance(exportData.totalDebit)],
+        [
+          'Total Credit',
+          formatLedgerBalance(exportData.totalCredit > 0 ? -exportData.totalCredit : 0),
+        ],
       ];
       const safeDate = datedOn.replace(/[^\d-]/g, '');
       const base = `account-balance-${safeDate}`;
       if (format === 'excel') {
-        downloadExcel(`${base}.xlsx`, 'Account Balance', headers, [...rows, totalRow]);
+        downloadExcel(`${base}.xlsx`, 'Account Balance', headers, [...rows, ...totalRows]);
       } else {
         await downloadPdf(`${base}.pdf`, 'Account Balance', headers, rows, {
           letterheadElement: letterheadRef.current,
-          footerRows: [totalRow],
+          footerRows: totalRows,
         });
       }
     })();
@@ -1020,9 +1023,15 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                 {isLastAccountBalancePage ? (
                   <tbody>
                     <tr className="report-table-row--total">
-                      <td>Grand Total</td>
-                      <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${accountBalanceAmountClass(report.totalDebit - report.totalCredit)}`}>
-                        {formatLedgerBalance(report.totalDebit - report.totalCredit)}
+                      <td>Total Debit</td>
+                      <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>
+                        {formatLedgerBalance(report.totalDebit)}
+                      </td>
+                    </tr>
+                    <tr className="report-table-row--total">
+                      <td>Total Credit</td>
+                      <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>
+                        {formatLedgerBalance(report.totalCredit > 0 ? -report.totalCredit : 0)}
                       </td>
                     </tr>
                   </tbody>
