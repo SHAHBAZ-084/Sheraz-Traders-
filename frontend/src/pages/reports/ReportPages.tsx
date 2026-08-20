@@ -725,14 +725,17 @@ type BalanceSideFilter = 'both' | 'debit' | 'credit';
 type AccountBalanceFilterMode = 'account' | 'product';
 type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI';
 
+function accountBalanceAmountClass(balance: number) {
+  if (balance > 0) return ledgerDebitAmountClass(true);
+  if (balance < 0) return ledgerCreditAmountClass(true);
+  return '';
+}
+
 function AccountBalanceTableHeader() {
   return (
     <thead>
       <tr>
-        <th className="pr-3">Account Code</th>
         <th className="pr-3">Account Name</th>
-        <th className={`pr-3 text-right ${REPORT_AMOUNT_COL}`}>Debit</th>
-        <th className={`pr-3 text-right ${REPORT_AMOUNT_COL}`}>Credit</th>
         <th className={`text-right ${REPORT_BALANCE_COL}`}>Balance</th>
       </tr>
     </thead>
@@ -744,18 +747,22 @@ function BalanceTable({
   totalDebit,
   totalCredit,
   categoryName,
+  showTotal = true,
 }: {
   rows: AccountBalanceResult['accounts'];
   totalDebit: number;
   totalCredit: number;
   categoryName?: string;
+  /** Hide category Total when this category continues on the next page. */
+  showTotal?: boolean;
 }) {
+  const netTotal = totalDebit - totalCredit;
   return (
     <tbody>
       {categoryName ? (
         <tr>
-          <td colSpan={5} className="border-b border-border pb-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">
+          <td colSpan={2} className="border-b border-border pb-1.5 pt-2">
+            <p className="text-base font-bold uppercase tracking-wide text-textPrimary">
               {categoryName}
             </p>
           </td>
@@ -763,25 +770,20 @@ function BalanceTable({
       ) : null}
       {rows.map((row) => (
         <tr key={row.accountId}>
-          <td className="pr-3 font-mono text-xs text-textSecondary">{row.accountCode}</td>
           <td className="pr-3">{row.accountName}</td>
-          <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(row.debit > 0)}`}>
-            {row.debit > 0 ? formatLedgerAmount(row.debit) : ''}
-          </td>
-          <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(row.credit > 0)}`}>
-            {row.credit > 0 ? formatLedgerAmount(row.credit) : ''}
-          </td>
-          <td className={`text-right font-medium tabular-nums text-accent ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>
+          <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${accountBalanceAmountClass(row.balance)}`}>
             {formatLedgerBalance(row.balance)}
           </td>
         </tr>
       ))}
-      <tr className="report-table-row--total">
-        <td colSpan={2}>Total</td>
-        <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(totalDebit > 0)}`}>{formatLedgerAmount(totalDebit)}</td>
-        <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(totalCredit > 0)}`}>{formatLedgerAmount(totalCredit)}</td>
-        <td className={REPORT_BALANCE_COL} />
-      </tr>
+      {showTotal ? (
+        <tr className="report-table-row--total">
+          <td>Total</td>
+          <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${accountBalanceAmountClass(netTotal)}`}>
+            {formatLedgerBalance(netTotal)}
+          </td>
+        </tr>
+      ) : null}
     </tbody>
   );
 }
@@ -858,20 +860,14 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
         total > report.accounts.length
           ? await api.getAccountBalanceReport(balanceReportQuery(0, total))
           : report;
-      const headers = ['Account Code', 'Account Name', 'Debit', 'Credit', 'Balance'];
+      const headers = ['Account Name', 'Balance'];
       const rows = exportData.accounts.map((row) => [
-      row.accountCode,
-      row.accountName,
-      row.debit > 0 ? formatLedgerAmount(row.debit) : '',
-      row.credit > 0 ? formatLedgerAmount(row.credit) : '',
-      formatLedgerBalance(row.balance),
-    ]);
+        row.accountName,
+        formatLedgerBalance(row.balance),
+      ]);
       const totalRow = [
         'Total',
-        '',
-        formatLedgerAmount(exportData.totalDebit),
-        formatLedgerAmount(exportData.totalCredit),
-        '',
+        formatLedgerBalance(exportData.totalDebit - exportData.totalCredit),
       ];
       const safeDate = datedOn.replace(/[^\d-]/g, '');
       const base = `account-balance-${safeDate}`;
@@ -880,7 +876,6 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
       } else {
         await downloadPdf(`${base}.pdf`, 'Account Balance', headers, rows, {
           letterheadElement: letterheadRef.current,
-          orientation: 'landscape',
           footerRows: [totalRow],
         });
       }
@@ -889,6 +884,9 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
 
   const showGrouped =
     filterMode === 'account' && !categoryId && (report?.groups?.length ?? 0) > 0;
+
+  const isLastAccountBalancePage =
+    total === 0 || offset + (report?.accounts?.length ?? 0) >= total;
 
   const selectedProductCategoryName = productCategories.find(
     (category) => String(category.id) === productCategoryId,
@@ -1016,16 +1014,19 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                     rows={group.accounts}
                     totalDebit={group.totalDebit}
                     totalCredit={group.totalCredit}
+                    showTotal={group.categoryComplete}
                   />
                 ))}
-                <tbody>
-                  <tr className="report-table-row--total">
-                    <td colSpan={2}>Grand Total</td>
-                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerDebitAmountClass(report.totalDebit > 0)}`}>{formatLedgerAmount(report.totalDebit)}</td>
-                    <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL} ${ledgerCreditAmountClass(report.totalCredit > 0)}`}>{formatLedgerAmount(report.totalCredit)}</td>
-                    <td className={REPORT_BALANCE_COL} />
-                  </tr>
-                </tbody>
+                {isLastAccountBalancePage ? (
+                  <tbody>
+                    <tr className="report-table-row--total">
+                      <td>Grand Total</td>
+                      <td className={`text-right font-medium tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL} ${accountBalanceAmountClass(report.totalDebit - report.totalCredit)}`}>
+                        {formatLedgerBalance(report.totalDebit - report.totalCredit)}
+                      </td>
+                    </tr>
+                  </tbody>
+                ) : null}
               </ReportTable>
             ) : (
               <ReportTable>
@@ -1034,6 +1035,7 @@ export function AccountBalancePage({ historicalScope, embedded }: ReportPageOpti
                   rows={report.accounts}
                   totalDebit={report.totalDebit}
                   totalCredit={report.totalCredit}
+                  showTotal={isLastAccountBalancePage}
                 />
               </ReportTable>
             )}

@@ -1001,6 +1001,8 @@ export const api = {
         categoryName: string;
         totalDebit: number;
         totalCredit: number;
+        /** False when this category continues on a later page — hide Total until then. */
+        categoryComplete: boolean;
         accounts: {
           accountId: number;
           accountCode: string;

@@ -66,6 +66,62 @@ describe('getAccountBalancesAsOf pagination totals', () => {
     expect(expenseGroup).toBeTruthy();
     expect(expenseGroup!.totalDebit).toBeCloseTo(full.totalDebit, 2);
     expect(expenseGroup!.totalCredit).toBe(full.totalCredit);
+    expect(expenseGroup!.categoryComplete).toBe(true);
+  });
+
+  it('marks categoryComplete only on the page that ends that category', async () => {
+    await bootstrapChartOfAccounts();
+    const { prisma } = await import('../../lib/prisma');
+    const expenseCat = await prisma.accountCategory.findFirst({ where: { name: 'Expenses' } });
+    if (!expenseCat) throw new Error('Expenses category missing');
+
+    const stamp = Date.now();
+    for (let i = 0; i < 5; i += 1) {
+      await createAccount({
+        categoryId: expenseCat.id,
+        name: `AB Cat Complete ${stamp} ${i}`,
+        openingBalance: 1000 * (i + 1),
+        openingBalanceSide: 'DR',
+      });
+    }
+
+    const date = todayIsoDate();
+    const full = await getAccountBalancesAsOf({ date, categoryId: expenseCat.id, side: 'both' });
+    const expenseRows = full.accounts.filter((row) => row.categoryId === expenseCat.id);
+    expect(expenseRows.length).toBeGreaterThanOrEqual(5);
+
+    // Find where Expenses sits in the All Groups flat list
+    const allFlat = await getAccountBalancesAsOf({ date, side: 'both' });
+    const expenseIndexes = allFlat.accounts
+      .map((row, index) => (row.categoryId === expenseCat.id ? index : -1))
+      .filter((index) => index >= 0);
+    const firstExpense = expenseIndexes[0]!;
+    const lastExpense = expenseIndexes[expenseIndexes.length - 1]!;
+
+    // Page that cuts through Expenses before the last account
+    if (lastExpense > firstExpense) {
+      const midPage = await getAccountBalancesAsOf({
+        date,
+        side: 'both',
+        limit: 1,
+        offset: firstExpense,
+      });
+      const midGroup = midPage.groups.find((g) => g.categoryId === expenseCat.id);
+      expect(midGroup).toBeTruthy();
+      if (firstExpense < lastExpense) {
+        expect(midGroup!.categoryComplete).toBe(false);
+      }
+    }
+
+    const endPage = await getAccountBalancesAsOf({
+      date,
+      side: 'both',
+      limit: 1,
+      offset: lastExpense,
+    });
+    const endGroup = endPage.groups.find((g) => g.categoryId === expenseCat.id);
+    expect(endGroup).toBeTruthy();
+    expect(endGroup!.categoryComplete).toBe(true);
   });
 
   it('restricts balances to product ledger accounts in the selected product category', async () => {

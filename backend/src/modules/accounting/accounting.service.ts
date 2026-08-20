@@ -3103,7 +3103,14 @@ function buildAccountBalanceGroupTotals(rows: AccountBalanceRow[]) {
 function buildAccountBalanceDisplayGroups(
   paginatedRows: AccountBalanceRow[],
   groupTotalsMap: Map<number, { totalDebit: number; totalCredit: number }>,
+  allRows: AccountBalanceRow[],
+  pageEndExclusive: number,
 ) {
+  const lastIndexByCategory = new Map<number, number>();
+  allRows.forEach((row, index) => {
+    lastIndexByCategory.set(row.categoryId, index);
+  });
+
   const groupsMap = new Map<
     number,
     {
@@ -3112,6 +3119,8 @@ function buildAccountBalanceDisplayGroups(
       accounts: AccountBalanceRow[];
       totalDebit: number;
       totalCredit: number;
+      /** True only when this page includes the last account of the category. */
+      categoryComplete: boolean;
     }
   >();
   for (const row of paginatedRows) {
@@ -3120,12 +3129,14 @@ function buildAccountBalanceDisplayGroups(
     if (existing) {
       existing.accounts.push(row);
     } else {
+      const lastIndex = lastIndexByCategory.get(row.categoryId) ?? -1;
       groupsMap.set(row.categoryId, {
         categoryId: row.categoryId,
         categoryName: row.categoryName,
         accounts: [row],
         totalDebit: groupTotals.totalDebit,
         totalCredit: groupTotals.totalCredit,
+        categoryComplete: lastIndex >= 0 && lastIndex < pageEndExclusive,
       });
     }
   }
@@ -3250,12 +3261,20 @@ export async function getAccountBalancesAsOf(params: {
   const totalCount = allRows.length;
   const groupTotalsMap = buildAccountBalanceGroupTotals(allRows);
 
+  const pageStart = params.offset ?? 0;
   const paginatedRows =
     params.limit != null
-      ? allRows.slice(params.offset ?? 0, (params.offset ?? 0) + params.limit)
+      ? allRows.slice(pageStart, pageStart + params.limit)
       : allRows;
+  const pageEndExclusive =
+    params.limit != null ? pageStart + params.limit : allRows.length;
 
-  const groups = buildAccountBalanceDisplayGroups(paginatedRows, groupTotalsMap);
+  const groups = buildAccountBalanceDisplayGroups(
+    paginatedRows,
+    groupTotalsMap,
+    allRows,
+    pageEndExclusive,
+  );
 
   return {
     date: params.date,
