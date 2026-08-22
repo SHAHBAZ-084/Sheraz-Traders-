@@ -102,7 +102,7 @@ function LinesTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.clientId} className="border-b border-border/50">
-              <td className="px-3 py-2">{row.productName}</td>
+              <td className="px-3 py-2 inv-bill-product-name">{row.productName}</td>
               <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.rate)}</td>
               {hasAnyMazduri ? (
@@ -568,7 +568,7 @@ export function PurchaseInvoicePage() {
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Payment (optional)">
-                <InvoiceFieldRow cols={3}>
+                <InvoiceFieldRow cols={3} className="inv-sp-embedded-pay-row">
                   <InvoiceField>
                     <FieldLabel>Bank / Cash category</FieldLabel>
                     <SearchSelect

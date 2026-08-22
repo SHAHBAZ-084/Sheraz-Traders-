@@ -27,14 +27,11 @@ const DEFAULT_PREFS: SystemPreferences = {
   updatedAt: '',
 };
 
-const billFont =
-  'font-[Arial,Helvetica,sans-serif] text-[13px] leading-snug text-black lining-nums';
-
 function BillHeader({ title }: { title: string }) {
   return (
     <header className="text-center text-black">
       <BusinessLetterhead />
-      <h2 className="mt-4 text-[15px] font-bold tracking-wide">{title}</h2>
+      <h2 className="invoice-bill__title">{title}</h2>
     </header>
   );
 }
@@ -51,7 +48,7 @@ function MetaRow({
   gariNo: string;
 }) {
   return (
-    <div className="mt-4 flex justify-between gap-2 border-b border-black pb-2 text-[12px]">
+    <div className="invoice-bill__meta">
       <span>
         <span className="underline decoration-1 underline-offset-2">Invoice#</span>
         &nbsp;{invoiceNo}
@@ -76,7 +73,6 @@ function PartyBlock({
   address,
   phone,
   product,
-  productInsideBox = false,
 }: {
   billToLabel: string;
   partyCode?: string;
@@ -84,44 +80,22 @@ function PartyBlock({
   address?: string | null;
   phone?: string | null;
   product: string;
-  productInsideBox?: boolean;
 }) {
   const codePrefix = partyCode ? `[${partyCode}] ` : '';
-  const partyContent = (
-    <>
-      <div>
-        {codePrefix}
-        {partyName}
-      </div>
-      {address ? <div className="mt-0.5 whitespace-pre-wrap">{address}</div> : null}
-      {phone ? <div className="mt-0.5">{phone}</div> : null}
-    </>
-  );
-
-  if (productInsideBox) {
-    return (
-      <div className="mt-3 border border-black px-3 py-2 text-[12px]">
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 flex-1">
-            <span className="font-semibold">{billToLabel}</span>
-            <div className="mt-1">{partyContent}</div>
-          </div>
-          <div className="shrink-0">
-            <strong>Product:</strong>&nbsp;{product || '—'}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="mt-4 flex items-start justify-between gap-6 text-[12px]">
+    <div className="invoice-bill__party-row">
       <div className="min-w-0 flex-1">
-        <span className="font-semibold">{billToLabel}</span>
-        <div className="mt-1">{partyContent}</div>
+        <span className="invoice-bill__party-label">{billToLabel}</span>
+        <div className="invoice-bill__party-name">
+          {codePrefix}
+          {partyName}
+        </div>
+        {address ? <div className="mt-0.5 whitespace-pre-wrap text-[11px]">{address}</div> : null}
+        {phone ? <div className="mt-0.5 text-[11px]">{phone}</div> : null}
       </div>
-      <div className="shrink-0 pt-1">
-        <strong>Product:</strong>&nbsp;{product || '—'}
+      <div className="invoice-bill__product shrink-0">
+        <span className="invoice-bill__product-label">Product:</span>&nbsp;{product || '—'}
       </div>
     </div>
   );
@@ -129,28 +103,28 @@ function PartyBlock({
 
 function LineTable({ rows }: { rows: BillLineRow[] }) {
   return (
-    <table className="mt-3 w-full border-collapse text-[12px]">
+    <table className="invoice-bill__table">
       <thead>
-        <tr className="border-b border-black">
-          <th className="py-1.5 pr-2 text-left font-semibold">Variety</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Bags</th>
-          <th className="px-1 py-1.5 text-right font-semibold">CompWeight</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Kaat</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Net Weight</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Rate</th>
-          <th className="py-1.5 pl-1 text-right font-semibold">Amount</th>
+        <tr>
+          <th>Variety</th>
+          <th className="invoice-bill__num">Bags</th>
+          <th className="invoice-bill__num">CompWeight</th>
+          <th className="invoice-bill__num">Kaat</th>
+          <th className="invoice-bill__num">Net Weight</th>
+          <th className="invoice-bill__num">Rate</th>
+          <th className="invoice-bill__num">Amount</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row, i) => (
           <tr key={i}>
-            <td className="py-1.5 pr-2">{row.variety || '\u00A0'}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{row.bags || '0'}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.compWeight)}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.kaat)}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.netWeight)}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{formatBillAmount(row.rate)}</td>
-            <td className="py-1.5 pl-1 text-right tabular-nums">{formatBillAmount(row.amount)}</td>
+            <td className="invoice-bill__product-cell">{row.variety || '\u00A0'}</td>
+            <td className="invoice-bill__num">{row.bags || '0'}</td>
+            <td className="invoice-bill__num">{formatBillAmount(row.compWeight)}</td>
+            <td className="invoice-bill__num">{formatBillAmount(row.kaat)}</td>
+            <td className="invoice-bill__num">{formatBillAmount(row.netWeight)}</td>
+            <td className="invoice-bill__num">{formatBillAmount(row.rate)}</td>
+            <td className="invoice-bill__num">{formatBillAmount(row.amount)}</td>
           </tr>
         ))}
       </tbody>
@@ -162,23 +136,24 @@ function TotalsStack({
   lines,
   netAmount,
 }: {
-  lines: Array<{ label: string; value: string; bold?: boolean; boxed?: boolean }>;
+  lines: Array<{ label: string; value: string; bold?: boolean }>;
   netAmount: string;
 }) {
   return (
-    <div className="mt-4 flex justify-end">
-      <div className="min-w-[280px] space-y-1 text-[12px]">
+    <div className="invoice-bill__totals">
+      <div className="invoice-bill__totals-inner">
         {lines.map((line) => (
-          <div key={line.label} className="flex justify-between gap-8">
+          <div
+            key={line.label}
+            className={`invoice-bill__totals-line${line.bold ? ' invoice-bill__totals-line--bold' : ''}`}
+          >
             <span>{line.label}</span>
-            <span className={`tabular-nums ${line.bold ? 'font-bold' : ''}`}>{line.value}</span>
+            <span>{line.value}</span>
           </div>
         ))}
-        <div className="flex items-center justify-between gap-4 pt-2">
-          <span className="font-bold">Net Amount:</span>
-          <span className="border-2 border-black px-3 py-0.5 text-[13px] font-bold tabular-nums">
-            {netAmount}
-          </span>
+        <div className="invoice-bill__net">
+          <span>Net Amount:</span>
+          <span className="invoice-bill__net-value">{netAmount}</span>
         </div>
       </div>
     </div>
@@ -197,22 +172,22 @@ function BillFromSection({
   netAmount: string;
 }) {
   return (
-    <section className="mt-8">
-      <p className="text-[12px] font-semibold">
+    <section className="invoice-bill__from">
+      <p className="invoice-bill__from-title">
         Bill From:&nbsp;{supplierName}
       </p>
       <LineTable rows={rows} />
-      <div className="mt-4 flex justify-end">
-        <div className="min-w-[280px] space-y-1 text-[12px]">
+      <div className="invoice-bill__totals">
+        <div className="invoice-bill__totals-inner">
           {totals.map((line) => (
-            <div key={line.label} className="flex justify-between gap-8">
+            <div key={line.label} className="invoice-bill__totals-line">
               <span>{line.label}</span>
-              <span className="tabular-nums">{line.value}</span>
+              <span>{line.value}</span>
             </div>
           ))}
-          <div className="flex justify-between gap-8 pt-1 font-bold underline decoration-1 underline-offset-2">
+          <div className="invoice-bill__net">
             <span>Net Amount</span>
-            <span className="tabular-nums">{netAmount}</span>
+            <span className="invoice-bill__net-value">{netAmount}</span>
           </div>
         </div>
       </div>
@@ -285,10 +260,10 @@ function MaalBillBody({
 
 function BillSignature() {
   return (
-    <div className="mt-16 flex justify-end text-[12px]">
-      <div className="w-[160px]">
+    <div className="invoice-bill__signature">
+      <div>
         <div>Signature</div>
-        <div className="mt-1 border-b border-black" />
+        <div className="invoice-bill__signature-line" />
       </div>
     </div>
   );
@@ -312,31 +287,29 @@ function InvoiceBillHeader({
     <header className="text-black">
       <BusinessLetterhead />
 
-      <div className="mt-4 text-center">
-        <h2 className="inline-block text-[18px] font-bold tracking-[0.08em] text-black">
-          {title}
-        </h2>
-        <div className="mx-auto mt-1 h-[3px] w-40 bg-[var(--fill-financial,#C08A2E)]" />
+      <div className="text-center">
+        <h2 className="invoice-bill__title invoice-bill__title--sp">{title}</h2>
+        <div className="invoice-bill__title-underline" />
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 border border-black px-3 py-2 text-[12px]">
+      <div className="invoice-bill__meta-grid">
         <div>
-          <span className="font-semibold">Invoice #</span>
+          <span className="invoice-bill__meta-label">Invoice #</span>
           <div className="mt-0.5 tabular-nums">{invoice.reference}</div>
         </div>
         <div className="text-center">
-          <span className="font-semibold">Date</span>
+          <span className="invoice-bill__meta-label">Date</span>
           <div className="mt-0.5">{formatBillDate(invoiceBillDate(invoice))}</div>
         </div>
         <div className="text-right">
-          <span className="font-semibold">Bill No</span>
+          <span className="invoice-bill__meta-label">Bill No</span>
           <div className="mt-0.5">{invoice.billNo?.trim() || '—'}</div>
         </div>
       </div>
 
-      <div className="mt-3 border border-black px-3 py-2 text-[12px]">
-        <span className="font-semibold text-[var(--fill-primary,#1B4332)]">{partyLabel}</span>
-        <div className="mt-1 font-medium">
+      <div className="invoice-bill__party">
+        <span className="invoice-bill__party-label">{partyLabel}</span>
+        <div className="invoice-bill__party-name">
           {partyCode ? `[${partyCode}] ` : ''}
           {partyName || '—'}
         </div>
@@ -357,24 +330,24 @@ function SimpleInvoiceLineTable({
     : safeRows;
 
   return (
-    <table className="mt-4 w-full border-collapse text-[12px]">
+    <table className="invoice-bill__table">
       <thead>
-        <tr className="border-b border-black">
-          <th className="py-1.5 pr-2 text-left font-semibold">Product</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Qty</th>
-          <th className="px-1 py-1.5 text-right font-semibold">Rate</th>
-          <th className="py-1.5 pl-1 text-right font-semibold">Amount</th>
+        <tr>
+          <th>Product</th>
+          <th className="invoice-bill__num">Qty</th>
+          <th className="invoice-bill__num">Rate</th>
+          <th className="invoice-bill__num">Amount</th>
         </tr>
       </thead>
       <tbody>
         {display.map((row, i) => (
-          <tr key={i} className="border-b border-black/20">
-            <td className="py-1.5 pr-2">{row.product}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">{empty ? '\u00A0' : row.quantity}</td>
-            <td className="px-1 py-1.5 text-right tabular-nums">
+          <tr key={i}>
+            <td className="invoice-bill__product-cell">{row.product}</td>
+            <td className="invoice-bill__num">{empty ? '\u00A0' : row.quantity}</td>
+            <td className="invoice-bill__num">
               {empty ? '\u00A0' : formatBillAmount(row.rate)}
             </td>
-            <td className="py-1.5 pl-1 text-right tabular-nums">
+            <td className="invoice-bill__num">
               {empty ? '\u00A0' : formatBillAmount(row.lineTotal)}
             </td>
           </tr>
@@ -466,7 +439,7 @@ export function InvoiceBillView({
   const title = BILL_TITLES[invoice.type] ?? 'Bill';
 
   return (
-    <div className={`${billFont} bg-white px-6 py-8`}>
+    <div className="invoice-bill bg-white px-6 py-8">
       {invoice.type === 'KACHI_MAAL' ? (
         <MaalBillBody invoice={invoice} prefs={p} title={title} />
       ) : null}

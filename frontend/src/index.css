@@ -2500,6 +2500,22 @@
 
 
 
+  .inv-sp-invoice-form .inv-field-row--3 {
+
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  }
+
+
+
+  @media (max-width: 639px) {
+    .inv-sp-invoice-form .inv-field-row--3 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+
+
   @media (min-width: 640px) {
     .inv-sp-invoice-form .inv-field-row--4,
     .inv-sp-invoice-form .inv-field-row--header {
@@ -2871,9 +2887,39 @@
 
     overflow: auto;
 
-    border: 1px solid var(--border);
+    border: none;
 
-    background: var(--surface-2);
+    border-top: 1px solid var(--border);
+
+    background: transparent;
+
+  }
+
+
+
+  .inv-preview-grid .inv-bill-party-name {
+
+    font-size: 0.9375rem;
+
+    font-weight: 700;
+
+    line-height: 1.25;
+
+    color: var(--text-primary);
+
+  }
+
+
+
+  .inv-preview-grid .inv-bill-product-name {
+
+    font-size: 0.75rem;
+
+    font-weight: 400;
+
+    line-height: 1.2;
+
+    color: var(--text-secondary);
 
   }
 
@@ -3286,6 +3332,207 @@
     color: var(--brand-gold);
     font-size: 0.45rem;
     line-height: 1;
+  }
+
+  /* ── Invoice bill print / preview (Sale, Purchase, Kachi Maal) ── */
+
+  .invoice-bill {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    line-height: 1.35;
+    color: #000;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  .invoice-bill__title {
+    margin: 1rem 0 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+  }
+
+  .invoice-bill__title--sp {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .invoice-bill__title-underline {
+    margin: 0.25rem auto 0;
+    height: 3px;
+    width: 10rem;
+    background: var(--fill-financial, #c08a2e);
+  }
+
+  .invoice-bill__meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.35rem 1rem;
+    margin-top: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #000;
+    font-size: 12px;
+  }
+
+  .invoice-bill__meta-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem 0.75rem;
+    margin-top: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #000;
+    font-size: 12px;
+  }
+
+  .invoice-bill__meta-label {
+    font-weight: 600;
+  }
+
+  .invoice-bill__party {
+    margin-top: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #000;
+    font-size: 12px;
+  }
+
+  .invoice-bill__party-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-top: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #000;
+    font-size: 12px;
+  }
+
+  .invoice-bill__party-label {
+    font-weight: 600;
+    color: var(--fill-primary, #1b4332);
+  }
+
+  .invoice-bill__party-name {
+    margin-top: 0.2rem;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .invoice-bill__product {
+    color: #444;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .invoice-bill__product-label {
+    font-weight: 600;
+    color: #666;
+  }
+
+  .invoice-bill__table {
+    width: 100%;
+    margin-top: 0.75rem;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .invoice-bill__table thead tr {
+    border-bottom: 1px solid #000;
+  }
+
+  .invoice-bill__table th {
+    padding: 0.35rem 0.25rem;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .invoice-bill__table th.invoice-bill__num {
+    text-align: right;
+  }
+
+  .invoice-bill__table td {
+    padding: 0.35rem 0.25rem;
+    vertical-align: top;
+  }
+
+  .invoice-bill__table tbody tr {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  }
+
+  .invoice-bill__table .invoice-bill__product-cell {
+    color: #444;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .invoice-bill__table .invoice-bill__num {
+    text-align: right;
+  }
+
+  .invoice-bill__totals {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .invoice-bill__totals-inner {
+    min-width: 17.5rem;
+    font-size: 12px;
+  }
+
+  .invoice-bill__totals-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+  }
+
+  .invoice-bill__totals-line--bold {
+    font-weight: 700;
+  }
+
+  .invoice-bill__net {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid #000;
+    font-weight: 700;
+  }
+
+  .invoice-bill__net-value {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .invoice-bill__from {
+    margin-top: 2rem;
+    font-size: 12px;
+  }
+
+  .invoice-bill__from-title {
+    font-weight: 600;
+  }
+
+  .invoice-bill__signature {
+    margin-top: 4rem;
+    display: flex;
+    justify-content: flex-end;
+    font-size: 12px;
+  }
+
+  .invoice-bill__signature-line {
+    width: 10rem;
+    margin-top: 0.25rem;
+    border-bottom: 1px solid #000;
   }
 
   /* ── Report letterhead + tables (shared across all reports) ── */
@@ -4367,6 +4614,11 @@
   .sale-purchase-report-print {
     box-shadow: none !important;
     border: none !important;
+  }
+
+  .invoice-bill {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

@@ -553,9 +553,9 @@ export function KachiMaalInvoicePage() {
                   <tbody>
                     {gridRows.map((row) => (
                       <tr key={row.clientId} className="border-b border-border/50">
-                        <td className="px-3 py-2">{row.partyName}</td>
+                        <td className="px-3 py-2 inv-bill-party-name">{row.partyName}</td>
                         <td className="px-3 py-2 tabular-nums">{row.bagCount}</td>
-                        <td className="px-3 py-2">{row.jins || '—'}</td>
+                        <td className="px-3 py-2 inv-bill-product-name">{row.jins || '—'}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.totalWeightKg)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.ratePerMaund)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
