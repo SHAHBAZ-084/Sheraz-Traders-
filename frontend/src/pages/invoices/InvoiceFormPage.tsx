@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { resolveMinimizedRestoreId } from '../../hooks/minimizedFormRestoreCache';
 import { INVOICE_TYPE_LABELS } from '../../config/navigation';
 import { PageShell, Panel, SecondaryButton } from '../../components/ui/PageShell';
 import { useOpenFormsStore } from '../../stores/openFormsStore';
@@ -16,6 +17,7 @@ const ROUTE_TO_TYPE: Record<string, string> = {
 export function InvoiceFormPage({ slug }: { slug: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const registerOpenForm = useOpenFormsStore((s) => s.registerOpenForm);
 
   useEffect(() => registerOpenForm(), [registerOpenForm]);
@@ -26,8 +28,8 @@ export function InvoiceFormPage({ slug }: { slug: string }) {
   // the form — by which point the draft has already been removed from the
   // store, so the fresh mount comes up empty. Freezing the id here keeps
   // the remount key stable for the lifetime of this page visit.
-  const [stableRestoreId] = useState(
-    () => (location.state as { minimizedFormId?: string } | null)?.minimizedFormId,
+  const [stableRestoreId] = useState(() =>
+    resolveMinimizedRestoreId(searchParams, location.state as { minimizedFormId?: string } | null),
   );
   const formKey = stableRestoreId ? `restore-${stableRestoreId}` : `${slug}-${location.key}`;
 

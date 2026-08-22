@@ -407,6 +407,24 @@
 
 
 
+  .minimized-tray-heading {
+
+    margin: 0 0 0.35rem;
+
+    font-size: 0.7rem;
+
+    font-weight: 600;
+
+    letter-spacing: 0.02em;
+
+    text-transform: uppercase;
+
+    color: var(--text-secondary);
+
+  }
+
+
+
   .minimized-tray-inner {
 
     display: flex;

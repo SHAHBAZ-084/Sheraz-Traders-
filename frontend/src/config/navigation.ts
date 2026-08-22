@@ -105,6 +105,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
       { kind: 'link', label: 'Stock Report', to: '/reports/stock' },
       { kind: 'link', label: 'Stock Value Report', to: '/reports/stock-value' },
       { kind: 'link', label: 'Stock Quantity Report', to: '/reports/stock-quantity' },
+      { kind: 'link', label: 'Sale Bill Summary', to: '/reports/sale-bill' },
     ],
   },
   {

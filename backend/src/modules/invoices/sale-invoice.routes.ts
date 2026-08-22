@@ -15,6 +15,8 @@ const createSchema = z.object({
   notes: z.string().optional(),
   storeId: z.number().int().positive(),
   customerAccountId: z.number().int().positive(),
+  receiptAmount: z.number().min(0).optional(),
+  receiptAccountId: z.number().int().positive().optional(),
   lines: z.array(lineSchema).min(1),
 });
 

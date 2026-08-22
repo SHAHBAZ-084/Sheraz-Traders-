@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { resolveMinimizedRestoreId } from '../../hooks/minimizedFormRestoreCache';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
 import { api, Account, AccountCategory, Voucher, VoucherAccount, VoucherUser } from '../../lib/api';
 import { LedgerVoucherDescription, voucherSideLabelClass } from '../../components/vouchers/LedgerVoucherDescription';
@@ -179,6 +180,7 @@ type QueuedVoucherItem = {
 
 export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const registerOpenForm = useOpenFormsStore((s) => s.registerOpenForm);
 
   useEffect(() => registerOpenForm(), [registerOpenForm]);
@@ -189,8 +191,8 @@ export function VoucherFormPage({ kind }: { kind: keyof typeof VOUCHER_TYPES }) 
   // reacted to that clear, React would remount VoucherFormContent after the
   // draft had already been discarded from the store, wiping the just
   // restored data.
-  const [stableRestoreId] = useState(
-    () => (location.state as { minimizedFormId?: string } | null)?.minimizedFormId,
+  const [stableRestoreId] = useState(() =>
+    resolveMinimizedRestoreId(searchParams, location.state as { minimizedFormId?: string } | null),
   );
   const formKey = stableRestoreId ? `restore-${stableRestoreId}` : `${kind}-${location.key}`;
   if (kind === 'journal') {

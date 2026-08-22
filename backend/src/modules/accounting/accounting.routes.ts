@@ -82,7 +82,6 @@ accountingRouter.post(
     const account = await accountingService.createAccount({
       ...req.body,
       createdById: req.session.userId!,
-      postImmediately: false,
     });
     res.status(201).json(account);
   }),

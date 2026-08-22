@@ -17,7 +17,7 @@ import { InvoiceBillPrintPage } from './pages/invoices/InvoiceBillPrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { PosHomePage } from './pages/PosHomePage';
-import { AccountReportsPage, AccountBalancePage, ProfitLossStatementPage, StockQuantityReportPage, StockReportPage, StockValueReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { AccountReportsPage, AccountBalancePage, ProfitLossStatementPage, SaleBillSummaryPage, StockQuantityReportPage, StockReportPage, StockValueReportPage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
 import { FinancialYearReportsHubPage, FinancialYearReportsPickerPage } from './pages/reports/FinancialYearReportsPage';
 import { SystemPreferencesPage } from './pages/system/SystemPreferencesPage';
 import { DatabaseMaintenancePage } from './pages/system/DatabaseMaintenancePage';
@@ -82,6 +82,7 @@ export default function App() {
                 <Route path="/reports/stock" element={<StockReportPage />} />
                 <Route path="/reports/stock-value" element={<StockValueReportPage />} />
                 <Route path="/reports/stock-quantity" element={<StockQuantityReportPage />} />
+                <Route path="/reports/sale-bill" element={<SaleBillSummaryPage />} />
 
                 <Route path="/system/database" element={<DatabaseMaintenancePage />} />
                 <Route path="/system/stores" element={<StoresPage />} />

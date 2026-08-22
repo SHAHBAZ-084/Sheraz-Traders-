@@ -31,6 +31,7 @@ import {
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
 import { urduLabelClassName } from '../../lib/urduScript';
+import { bankCashAccountOptions, bankCashCategoryOptions } from '../../lib/bankCashAccounts';
 
 import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
 
@@ -55,6 +56,9 @@ type SaleInvoiceDraft = {
   rate: string;
   partyCategoryId: string;
   customerAccountId: string;
+  receiptCategoryId: string;
+  receiptAccountId: string;
+  receiptAmount: string;
 };
 
 function todayInputValue() {
@@ -132,6 +136,9 @@ export function SaleInvoicePage() {
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
   const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [customerAccountId, setCustomerAccountId] = useState(() => restoredState?.customerAccountId ?? '');
+  const [receiptCategoryId, setReceiptCategoryId] = useState(() => restoredState?.receiptCategoryId ?? '');
+  const [receiptAccountId, setReceiptAccountId] = useState(() => restoredState?.receiptAccountId ?? '');
+  const [receiptAmount, setReceiptAmount] = useState(() => restoredState?.receiptAmount ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
@@ -149,6 +156,9 @@ export function SaleInvoicePage() {
       if (restoredState.rate) setRate(restoredState.rate);
       if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.customerAccountId) setCustomerAccountId(restoredState.customerAccountId);
+      if (restoredState.receiptCategoryId) setReceiptCategoryId(restoredState.receiptCategoryId);
+      if (restoredState.receiptAccountId) setReceiptAccountId(restoredState.receiptAccountId);
+      if (restoredState.receiptAmount) setReceiptAmount(restoredState.receiptAmount);
     }
   }, [restoredState]);
 
@@ -215,6 +225,16 @@ export function SaleInvoicePage() {
         setBillNo(inv.billNo ?? '');
         if (inv.storeId != null) setStoreId(String(inv.storeId));
         if (inv.debitAccountId != null) setCustomerAccountId(String(inv.debitAccountId));
+        const receiptAmt = (inv as { embeddedReceiptAmount?: number | null }).embeddedReceiptAmount;
+        const receiptAcct = (inv as { embeddedReceiptAccountId?: number | null }).embeddedReceiptAccountId;
+        if (receiptAmt != null && Number(receiptAmt) > 0) {
+          setReceiptAmount(String(receiptAmt));
+        }
+        if (receiptAcct != null) {
+          setReceiptAccountId(String(receiptAcct));
+          const acct = accounts.find((a) => a.id === receiptAcct);
+          if (acct) setReceiptCategoryId(String(acct.categoryId));
+        }
         setGridRows(
           (inv.items ?? []).map((item, index) => ({
             clientId: `pending-${item.id ?? index}`,
@@ -259,6 +279,11 @@ export function SaleInvoicePage() {
     () => partyAccountOptionsForCategory(accounts, partyCategoryId),
     [accounts, partyCategoryId],
   );
+  const receiptCategoryOptions = useMemo(() => bankCashCategoryOptions(categories), [categories]);
+  const receiptAccountOptions = useMemo(
+    () => bankCashAccountOptions(accounts, receiptCategoryId),
+    [accounts, receiptCategoryId],
+  );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
     [gridRows],
@@ -272,6 +297,26 @@ export function SaleInvoicePage() {
   function onPartyCategoryChange(value: string) {
     setPartyCategoryId(value);
     setCustomerAccountId('');
+  }
+
+  function onReceiptCategoryChange(value: string) {
+    setReceiptCategoryId(value);
+    setReceiptAccountId('');
+  }
+
+  function parseReceiptPayload() {
+    const amount = receiptAmount.trim() ? Number(receiptAmount) : 0;
+    if (amount <= 0) return {};
+    if (!receiptAccountId) {
+      throw new Error('Select a Bank/Cash account for the receipt amount');
+    }
+    if (amount > invoiceTotal + 0.01) {
+      throw new Error('Receipt amount cannot exceed invoice total');
+    }
+    return {
+      receiptAmount: amount,
+      receiptAccountId: Number(receiptAccountId),
+    };
   }
 
   async function addRow() {
@@ -350,12 +395,21 @@ export function SaleInvoicePage() {
     }
     setSaving(true);
     try {
+      let receiptPayload = {};
+      try {
+        receiptPayload = parseReceiptPayload();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Invalid receipt');
+        setSaving(false);
+        return;
+      }
       if (isEditingPending && pendingId != null) {
         await api.updatePendingInvoice(pendingId, {
           invoiceDate,
           billNo: billNo || undefined,
           storeId: Number(storeId),
           customerAccountId: Number(customerAccountId),
+          ...receiptPayload,
           lines: gridRows.map((row) => ({
             productId: row.productId,
             quantity: row.quantity,
@@ -370,6 +424,7 @@ export function SaleInvoicePage() {
         billNo: billNo || undefined,
         storeId: Number(storeId),
         customerAccountId: Number(customerAccountId),
+        ...receiptPayload,
         lines: gridRows.map((row) => ({
           productId: row.productId,
           quantity: row.quantity,
@@ -488,6 +543,34 @@ export function SaleInvoicePage() {
                 </InvoiceFieldRow>
               </InvoiceFormSection>
 
+              <InvoiceFormSection label="Receipt (optional)">
+                <InvoiceFieldRow cols={3}>
+                  <InvoiceField>
+                    <FieldLabel>Bank / Cash category</FieldLabel>
+                    <SearchSelect
+                      options={[{ value: '', label: 'None' }, ...receiptCategoryOptions]}
+                      value={receiptCategoryId}
+                      onChange={onReceiptCategoryChange}
+                      placeholder="None"
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Receipt account</FieldLabel>
+                    <SearchSelect
+                      options={receiptAccountOptions}
+                      value={receiptAccountId}
+                      onChange={setReceiptAccountId}
+                      placeholder={receiptCategoryId ? 'Select account' : 'Select category first'}
+                      disabled={!receiptCategoryId}
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Received amount</FieldLabel>
+                    <DecimalInput value={receiptAmount} onChange={setReceiptAmount} />
+                  </InvoiceField>
+                </InvoiceFieldRow>
+              </InvoiceFormSection>
+
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
                 {addingRow ? 'Checking stock…' : salePurchaseInvoiceLabel('addToGrid')}
               </InvoiceAddRowAction>
@@ -525,6 +608,9 @@ export function SaleInvoicePage() {
                             rate,
                             partyCategoryId,
                             customerAccountId,
+                            receiptCategoryId,
+                            receiptAccountId,
+                            receiptAmount,
                           },
                           predictedRef || 'Sale Invoice',
                         )

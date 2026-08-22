@@ -4,7 +4,7 @@ import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { PageShell, Panel, PrimaryButton } from '../../components/ui/PageShell';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
-import { formatDate, formatLedgerAmount } from '../../lib/format';
+import { formatDate, formatLedgerAmount, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass } from '../../lib/format';
 
 type PendingKind = 'voucher' | 'invoice' | 'account' | 'product' | 'account_adjustment' | 'stock_adjustment';
 
@@ -26,6 +26,8 @@ function editPathForPending(item: PendingItem): string | null {
   if (item.kind === 'voucher') {
     if (item.type === 'PAYMENT') return `/vouchers/payment?${q}`;
     if (item.type === 'RECEIPT') return `/vouchers/receipt?${q}`;
+    if (item.type === 'SALE_RECEIPT') return `/vouchers/receipt?${q}`;
+    if (item.type === 'PURCHASE_PAYMENT') return `/vouchers/payment?${q}`;
     if (item.type === 'JOURNAL') return `/vouchers/journal?${q}`;
     return null;
   }
@@ -175,13 +177,17 @@ export function PendingApprovalsPage() {
                   return (
                     <tr key={`${item.kind}-${item.id}`} className="border-b border-border">
                       <td className="py-2 pr-3 capitalize">{item.kind}</td>
-                      <td className="py-2 pr-3">{item.type ? String(item.type).replaceAll('_', ' ') : '—'}</td>
+                      <td className="py-2 pr-3">{item.type ? formatVoucherTypeLabel(item.type) : '—'}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{item.reference ?? '—'}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {item.date ? formatDate(item.date) : '—'}
                       </td>
-                      <td className="py-2 pr-3 font-medium text-textPrimary">{item.debitAccountName ?? '—'}</td>
-                      <td className="py-2 pr-3 font-medium text-textPrimary">{item.creditAccountName ?? '—'}</td>
+                      <td className={`py-2 pr-3 font-medium ${item.debitAccountName ? ledgerDebitAmountClass(true) : 'text-textPrimary'}`}>
+                        {item.debitAccountName ?? '—'}
+                      </td>
+                      <td className={`py-2 pr-3 font-medium ${item.creditAccountName ? ledgerCreditAmountClass(true) : 'text-textPrimary'}`}>
+                        {item.creditAccountName ?? '—'}
+                      </td>
                       <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
                         {formatLedgerAmount(item.amount)}

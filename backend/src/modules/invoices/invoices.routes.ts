@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { InvoiceType } from '@prisma/client';
+import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { asyncHandler, param } from '../../utils/helpers';
 import { parsePagination } from '../../utils/pagination';
@@ -7,6 +8,7 @@ import * as invoicesService from './invoices.service';
 import { registerKachiMaalRoutes } from './kachi-maal.routes';
 import { registerPurchaseInvoiceRoutes } from './purchase-invoice.routes';
 import { registerSaleInvoiceRoutes } from './sale-invoice.routes';
+import { getSaleBillSummary } from './sale-bill-report.service';
 
 export const invoicesRouter = Router();
 invoicesRouter.use(requireAuth);
@@ -14,6 +16,21 @@ invoicesRouter.use(requireAuth);
 registerKachiMaalRoutes(invoicesRouter);
 registerSaleInvoiceRoutes(invoicesRouter);
 registerPurchaseInvoiceRoutes(invoicesRouter);
+
+const saleBillQuerySchema = z.object({
+  fromDate: z.string().min(1),
+  toDate: z.string().min(1),
+  partyAccountId: z.coerce.number().int().positive().optional(),
+  financialYearId: z.coerce.number().int().positive().optional(),
+});
+
+invoicesRouter.get(
+  '/reports/sale-bill',
+  asyncHandler(async (req, res) => {
+    const parsed = saleBillQuerySchema.parse(req.query);
+    res.json(await getSaleBillSummary(parsed));
+  }),
+);
 
 invoicesRouter.get(
   '/by-reference',

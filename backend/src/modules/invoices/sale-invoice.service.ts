@@ -22,6 +22,11 @@ import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
+import {
+  createEmbeddedSaleReceiptInTx,
+  parseEmbeddedReceiptInput,
+  type EmbeddedReceiptInput,
+} from './invoice-embedded-voucher';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
   computeSaleInvoiceTotals,
@@ -46,6 +51,8 @@ export type CreateSaleInvoiceInput = {
   customerAccountId: number;
   createdById: number;
   lines: SaleInvoiceLineInput[];
+  receiptAmount?: number;
+  receiptAccountId?: number;
 };
 
 type ResolvedSaleLine = {
@@ -185,6 +192,7 @@ async function postSaleInvoiceAccounting(
     createdById: number;
   },
   resolvedLines: ResolvedSaleLine[],
+  embeddedReceipt: EmbeddedReceiptInput | null,
 ) {
   const { legs, productDescription } = await buildSaleInvoiceLegs(
     tx,
@@ -217,6 +225,17 @@ async function postSaleInvoiceAccounting(
       quantity: line.quantity,
     })),
   });
+
+  if (embeddedReceipt) {
+    await createEmbeddedSaleReceiptInTx(tx, {
+      invoiceId: invoice.id,
+      customerAccountId: invoice.debitAccountId,
+      receipt: embeddedReceipt,
+      invoiceDate: invoice.invoiceDate,
+      invoiceReference: invoice.reference,
+      createdById: invoice.createdById,
+    });
+  }
 }
 
 export async function createSaleInvoice(
@@ -263,6 +282,12 @@ export async function createSaleInvoice(
 
     await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
+    const embeddedReceipt = parseEmbeddedReceiptInput(
+      data.receiptAmount,
+      data.receiptAccountId,
+      totals.invoiceTotal,
+    );
+
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
 
     const invoice = await tx.invoice.create({
@@ -277,6 +302,8 @@ export async function createSaleInvoice(
         debitAccountId: data.customerAccountId,
         total: totals.invoiceTotal,
         financialYearId,
+        embeddedReceiptAmount: embeddedReceipt?.amount ?? null,
+        embeddedReceiptAccountId: embeddedReceipt?.accountId ?? null,
         createdById: data.createdById,
         items: {
           create: resolvedLines.map((line) => ({
@@ -305,6 +332,7 @@ export async function createSaleInvoice(
           createdById: data.createdById,
         },
         resolvedLines,
+        embeddedReceipt,
       );
     }
 
@@ -364,6 +392,11 @@ export async function approveSaleInvoice(invoiceId: number) {
         createdById: invoice.createdById,
       },
       resolvedLines,
+      parseEmbeddedReceiptInput(
+        invoice.embeddedReceiptAmount != null ? Number(invoice.embeddedReceiptAmount) : undefined,
+        invoice.embeddedReceiptAccountId ?? undefined,
+        Number(invoice.total),
+      ),
     );
 
     return tx.invoice.update({
@@ -435,6 +468,12 @@ export async function updatePendingSaleInvoice(
 
     await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
+    const embeddedReceipt = parseEmbeddedReceiptInput(
+      data.receiptAmount,
+      data.receiptAccountId,
+      totals.invoiceTotal,
+    );
+
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 
     return tx.invoice.update({
@@ -447,6 +486,8 @@ export async function updatePendingSaleInvoice(
         debitAccountId: data.customerAccountId,
         total: totals.invoiceTotal,
         financialYearId,
+        embeddedReceiptAmount: embeddedReceipt?.amount ?? null,
+        embeddedReceiptAccountId: embeddedReceipt?.accountId ?? null,
         status: InvoiceStatus.PENDING_APPROVAL,
         items: {
           create: resolvedLines.map((line) => ({

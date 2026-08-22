@@ -14,6 +14,8 @@ enum VoucherType {
   KACHI
   SALE_INVOICE
   PURCHASE_INVOICE
+  SALE_RECEIPT
+  PURCHASE_PAYMENT
 }
 
 enum VoucherStatus {
@@ -166,6 +168,8 @@ model Account {
   kachiMaalDebitInvoices   Invoice[]         @relation("KachiMaalDebitAccount")
   jamaNaamEntries        JamaNaamEntry[]
   pendingAdjustments     PendingAdjustment[]
+  invoicesWithEmbeddedReceipt Invoice[] @relation("InvoiceEmbeddedReceiptAccount")
+  invoicesWithEmbeddedPayment Invoice[] @relation("InvoiceEmbeddedPaymentAccount")
 
   @@index([categoryId])
   @@index([isActive, categoryId])
@@ -366,11 +370,19 @@ model Invoice {
   toStoreId              Int?
   legacyInventoryPosting Boolean       @default(false)
   financialYearId Int?
+  /** Optional receipt recorded at sale invoice save — voucher created when invoice posts. */
+  embeddedReceiptAmount    Decimal?
+  embeddedReceiptAccountId Int?
+  /** Optional payment recorded at purchase invoice save — voucher created when invoice posts. */
+  embeddedPaymentAmount    Decimal?
+  embeddedPaymentAccountId Int?
   createdById     Int
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  embeddedReceiptAccount Account? @relation("InvoiceEmbeddedReceiptAccount", fields: [embeddedReceiptAccountId], references: [id], onDelete: SetNull)
+  embeddedPaymentAccount Account? @relation("InvoiceEmbeddedPaymentAccount", fields: [embeddedPaymentAccountId], references: [id], onDelete: SetNull)
   supplier      Supplier?     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   debitAccount  Account?      @relation("KachiMaalDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
   product       Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)

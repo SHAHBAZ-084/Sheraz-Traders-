@@ -1,7 +1,8 @@
-import { InvoiceStatus, InvoiceType, RecordStatus, VoucherStatus } from '@prisma/client';
+import { InvoiceStatus, InvoiceType, RecordStatus, VoucherStatus, VoucherType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../utils/helpers';
 import {
+  assertVoucherAccountRulesForUpdate,
   assertVoucherDateInActiveFinancialYear,
   approveAccount,
   approveAccountAdjustment,
@@ -223,9 +224,28 @@ export async function approvePendingVoucher(voucherId: number, approvedById: num
 export async function rejectPendingVoucher(voucherId: number) {
   const voucher = await prisma.voucher.findFirst({
     where: { id: voucherId, status: VoucherStatus.PENDING_APPROVAL },
+    include: { invoiceLink: true },
   });
   if (!voucher) throw new AppError(404, 'Pending voucher not found');
-  await prisma.voucher.delete({ where: { id: voucherId } });
+
+  await prisma.$transaction(async (tx) => {
+    if (voucher.invoiceLink) {
+      await tx.invoiceVoucher.delete({ where: { id: voucher.invoiceLink.id } });
+      if (voucher.type === VoucherType.SALE_RECEIPT) {
+        await tx.invoice.update({
+          where: { id: voucher.invoiceLink.invoiceId },
+          data: { embeddedReceiptAmount: null, embeddedReceiptAccountId: null },
+        });
+      } else if (voucher.type === VoucherType.PURCHASE_PAYMENT) {
+        await tx.invoice.update({
+          where: { id: voucher.invoiceLink.invoiceId },
+          data: { embeddedPaymentAmount: null, embeddedPaymentAccountId: null },
+        });
+      }
+    }
+    await tx.voucher.delete({ where: { id: voucherId } });
+  });
+
   return { ok: true, id: voucherId };
 }
 
@@ -353,11 +373,22 @@ export async function updatePendingVoucher(
 
   const debit = await prisma.account.findFirst({
     where: { id: data.debitAccountId, isActive: true },
+    include: { category: true },
   });
   const credit = await prisma.account.findFirst({
     where: { id: data.creditAccountId, isActive: true },
+    include: { category: true },
   });
   if (!debit || !credit) throw new AppError(400, 'Invalid debit or credit account');
+
+  if (
+    existing.type === VoucherType.RECEIPT
+    || existing.type === VoucherType.SALE_RECEIPT
+    || existing.type === VoucherType.PAYMENT
+    || existing.type === VoucherType.PURCHASE_PAYMENT
+  ) {
+    assertVoucherAccountRulesForUpdate(existing.type, debit, credit);
+  }
 
   let voucherDate: Date;
   try {
@@ -370,7 +401,7 @@ export async function updatePendingVoucher(
     assertVoucherDateInActiveFinancialYear(tx, voucherDate),
   );
 
-  return prisma.voucher.update({
+  const updated = await prisma.voucher.update({
     where: { id: voucherId },
     data: {
       date: voucherDate,
@@ -387,6 +418,29 @@ export async function updatePendingVoucher(
       creditAccount: { select: { id: true, name: true, code: true, categoryId: true } },
     },
   });
+
+  const invoiceLink = await prisma.invoiceVoucher.findFirst({ where: { voucherId } });
+  if (invoiceLink) {
+    if (existing.type === VoucherType.SALE_RECEIPT) {
+      await prisma.invoice.update({
+        where: { id: invoiceLink.invoiceId },
+        data: {
+          embeddedReceiptAmount: data.amount,
+          embeddedReceiptAccountId: data.debitAccountId,
+        },
+      });
+    } else if (existing.type === VoucherType.PURCHASE_PAYMENT) {
+      await prisma.invoice.update({
+        where: { id: invoiceLink.invoiceId },
+        data: {
+          embeddedPaymentAmount: data.amount,
+          embeddedPaymentAccountId: data.creditAccountId,
+        },
+      });
+    }
+  }
+
+  return updated;
 }
 
 export async function getPendingInvoice(invoiceId: number, editor: PendingEditor) {
@@ -418,6 +472,8 @@ export async function updatePendingInvoice(
         notes: body.notes as string | undefined,
         storeId: Number(body.storeId),
         customerAccountId: Number(body.customerAccountId),
+        receiptAmount: body.receiptAmount != null ? Number(body.receiptAmount) : undefined,
+        receiptAccountId: body.receiptAccountId != null ? Number(body.receiptAccountId) : undefined,
         lines: body.lines as Array<{ productId: number; quantity: number; rate: number }>,
       });
     case InvoiceType.PURCHASE_INVOICE:
@@ -427,6 +483,8 @@ export async function updatePendingInvoice(
         notes: body.notes as string | undefined,
         storeId: Number(body.storeId),
         supplierAccountId: Number(body.supplierAccountId),
+        paymentAmount: body.paymentAmount != null ? Number(body.paymentAmount) : undefined,
+        paymentAccountId: body.paymentAccountId != null ? Number(body.paymentAccountId) : undefined,
         lines: body.lines as Array<{
           productId: number;
           quantity: number;

@@ -23,6 +23,7 @@ export function MinimizedFormsTray() {
 
   return (
     <div className="minimized-tray" role="status" aria-label="Minimized forms">
+      <p className="minimized-tray-heading">Minimized drafts — click to restore</p>
       <div className="minimized-tray-inner">
         {forms.map((form) => (
           <div key={form.id} className={`minimized-tray-chip ${kindAccent(form.kind)}`.trim()}>
@@ -31,9 +32,8 @@ export function MinimizedFormsTray() {
               className="minimized-tray-chip-main"
               title={`Restore ${form.label}`}
               onClick={() => {
-                navigate(MINIMIZED_FORM_ROUTES[form.kind], {
-                  state: { minimizedFormId: form.id },
-                });
+                const base = MINIMIZED_FORM_ROUTES[form.kind];
+                navigate(`${base}?minimizedFormId=${encodeURIComponent(form.id)}`);
               }}
             >
               <Minimize2 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />

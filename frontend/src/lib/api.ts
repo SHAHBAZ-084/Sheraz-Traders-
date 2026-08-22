@@ -200,6 +200,34 @@ export type InvoiceDetail = Invoice & {
   createdBy?: VoucherUser | null;
 };
 
+export type SaleBillLineItem = {
+  productName: string;
+  price: number;
+  amount: number;
+};
+
+export type SaleBillInvoiceGroup = {
+  invoiceId: number;
+  invoiceReference: string;
+  invoiceDate: string;
+  partyName: string;
+  partyAccountId: number;
+  lines: SaleBillLineItem[];
+  receivedAmount: number;
+  receivedAccountLabel: string | null;
+  receivedPending: boolean;
+  netTotal: number;
+};
+
+export type SaleBillReportResult = {
+  fromDate: string;
+  toDate: string;
+  grandTotal: number;
+  receivedTotal: number;
+  remainingTotal: number;
+  invoices: SaleBillInvoiceGroup[];
+};
+
 export type VoucherAccount = { id: number; name: string; code: string };
 export type VoucherUser = { id: number; displayName: string; username: string };
 
@@ -690,6 +718,8 @@ export const api = {
     customerAccountId: number;
     billNo?: string;
     notes?: string;
+    receiptAmount?: number;
+    receiptAccountId?: number;
     lines: Array<{ productId: number; quantity: number; rate: number }>;
   }) {
     return request<InvoiceDetail>('/api/invoices/sale-invoice', { method: 'POST', body: JSON.stringify(data) });
@@ -705,12 +735,28 @@ export const api = {
     supplierAccountId: number;
     billNo?: string;
     notes?: string;
+    paymentAmount?: number;
+    paymentAccountId?: number;
     lines: Array<{ productId: number; quantity: number; rate: number; mazduriAmount?: number }>;
   }) {
     return request<InvoiceDetail>('/api/invoices/purchase-invoice', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  getSaleBillReport(params: {
+    fromDate: string;
+    toDate: string;
+    partyAccountId?: number;
+    financialYearId?: number;
+  }) {
+    const query = new URLSearchParams();
+    query.set('fromDate', params.fromDate);
+    query.set('toDate', params.toDate);
+    if (params.partyAccountId != null) query.set('partyAccountId', String(params.partyAccountId));
+    if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    return request<SaleBillReportResult>(`/api/invoices/reports/sale-bill?${query}`);
   },
 
 

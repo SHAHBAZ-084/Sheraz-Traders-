@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  peekMinimizedRestorePayload,
+  resolveMinimizedRestoreId,
+  stashMinimizedRestorePayload,
+} from './minimizedFormRestoreCache';
 import {
   type MinimizedFormKind,
   useMinimizedFormsStore,
@@ -10,34 +15,51 @@ export type RestoreLocationState = {
 };
 
 /**
- * Restore minimized draft on mount (via location.state) and expose minimize().
+ * Restore minimized draft on mount (via ?minimizedFormId= or location.state) and expose minimize().
  * Removes the tray entry when restored. Session-memory only.
  */
 export function useMinimizableForm<T>(kind: MinimizedFormKind) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const minimizeIntoStore = useMinimizedFormsStore((s) => s.minimize);
-  const getById = useMinimizedFormsStore((s) => s.getById);
-  const discard = useMinimizedFormsStore((s) => s.discard);
+  const claim = useMinimizedFormsStore((s) => s.claim);
 
-  const restoreId = (location.state as RestoreLocationState | null)?.minimizedFormId;
+  const [stableRestoreId] = useState(() =>
+    resolveMinimizedRestoreId(searchParams, location.state as RestoreLocationState | null),
+  );
 
-  const [restoredState, setRestoredState] = useState<T | null>(() => {
-    if (!restoreId) return null;
-    const entry = getById(restoreId);
+  const [restoredState] = useState<T | null>(() => {
+    if (!stableRestoreId) return null;
+
+    const cached = peekMinimizedRestorePayload<T>(stableRestoreId);
+    if (cached != null) return cached;
+
+    const entry = claim(stableRestoreId);
     if (!entry || entry.kind !== kind) return null;
+
+    stashMinimizedRestorePayload(stableRestoreId, entry.formState);
     return entry.formState as T;
   });
 
   useEffect(() => {
-    if (!restoreId) return;
-    const entry = getById(restoreId);
-    if (entry && entry.kind === kind) {
-      setRestoredState(entry.formState as T);
-      discard(restoreId);
+    if (!stableRestoreId) return;
+
+    const params = new URLSearchParams(searchParams);
+    if (params.has('minimizedFormId')) {
+      params.delete('minimizedFormId');
+      const qs = params.toString();
+      navigate(
+        { pathname: location.pathname, search: qs ? `?${qs}` : '' },
+        { replace: true, state: {} },
+      );
+      return;
     }
-    navigate(location.pathname, { replace: true, state: {} });
-  }, [location.pathname, restoreId, navigate, getById, discard, kind]);
+
+    if ((location.state as RestoreLocationState | null)?.minimizedFormId) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [stableRestoreId, location.pathname, location.state, navigate, searchParams]);
 
   const minimize = useCallback(
     (formState: T, label: string) => {

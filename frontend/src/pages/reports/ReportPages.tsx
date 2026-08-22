@@ -14,6 +14,7 @@ import { ReportTable } from '../../components/reports/ReportTable';
 import { useFinancialYear, useReportFinancialYearId } from '../../contexts/FinancialYearContext';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
 import { VoucherDetailCard } from '../vouchers/VoucherPages';
+import { partyAccountOptionsForCategory, partyCategorySelectOptions } from '../../lib/partyAccounts';
 
 export type HistoricalReportScope = {
   financialYearId: number;
@@ -1994,6 +1995,278 @@ export function StockQuantityReportPage() {
           </div>
         ) : null}
       </Panel>
+      <PageCloseBar />
+    </PageShell>
+  );
+}
+
+function formatSaleBillReceivedSummary(group: {
+  receivedAmount: number;
+  receivedAccountLabel: string | null;
+  receivedPending: boolean;
+  netTotal: number;
+}) {
+  const receivedLabel =
+    group.receivedAmount > 0
+      ? formatLedgerAmount(group.receivedAmount)
+      : group.receivedPending
+        ? 'Pending approval'
+        : '0';
+  const accountPart =
+    group.receivedAccountLabel && (group.receivedAmount > 0 || group.receivedPending)
+      ? ` (${group.receivedAccountLabel})`
+      : group.receivedAmount <= 0 && !group.receivedPending
+        ? ' (none)'
+        : '';
+  return `Received: ${receivedLabel}${accountPart} · Net Total: ${formatLedgerAmount(group.netTotal)}`;
+}
+
+function buildSaleBillExportRows(report: Awaited<ReturnType<typeof api.getSaleBillReport>>) {
+  const rows: (string | number)[][] = [];
+  for (const inv of report.invoices) {
+    rows.push([`${inv.partyName} — ${inv.invoiceReference}`, '', '']);
+    for (const line of inv.lines) {
+      rows.push([line.productName, formatLedgerAmount(line.price), formatLedgerAmount(line.amount)]);
+    }
+    rows.push([formatSaleBillReceivedSummary(inv), '', '']);
+    rows.push(['', '', '']);
+  }
+  return rows;
+}
+
+export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOptions = {}) {
+  const financialYearId = useReportFinancialYearId(historicalScope);
+  const [fromDate, setFromDate] = useState(todayInputValue);
+  const [toDate, setToDate] = useState(todayInputValue);
+  const [partyCategoryId, setPartyCategoryId] = useState('');
+  const [partyAccountId, setPartyAccountId] = useState('');
+  const [categories, setCategories] = useState<AccountCategory[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.getSaleBillReport>> | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const letterheadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    Promise.all([api.listCategories(), api.listAccounts({ lite: true })])
+      .then(([cats, accts]) => {
+        setCategories(cats);
+        setAccounts(accts);
+      })
+      .catch(() => {
+        setCategories([]);
+        setAccounts([]);
+      });
+  }, []);
+
+  const partyCategoryOptions = useMemo(
+    () => [{ value: '', label: 'All parties' }, ...partyCategorySelectOptions(categories)],
+    [categories],
+  );
+  const partyOptions = useMemo(() => {
+    if (!partyCategoryId) return [{ value: '', label: 'All parties' }];
+    return [{ value: '', label: 'All parties' }, ...partyAccountOptionsForCategory(accounts, partyCategoryId)];
+  }, [accounts, partyCategoryId]);
+
+  async function loadReport() {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api.getSaleBillReport({
+        fromDate,
+        toDate,
+        ...(partyAccountId ? { partyAccountId: Number(partyAccountId) } : {}),
+        ...(financialYearId != null ? { financialYearId } : {}),
+      });
+      setReport(result);
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load report');
+      setReport(null);
+      setLoaded(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportReport(format: 'pdf' | 'excel') {
+    if (!report) return;
+    const headers = ['Product', 'Price', 'Amount'];
+    const rows = buildSaleBillExportRows(report);
+    const footerRows = [
+      ['Grand Total', '', formatLedgerAmount(report.grandTotal)],
+      ['Received Total', '', formatLedgerAmount(report.receivedTotal)],
+      ['Remaining Total', '', formatLedgerAmount(report.remainingTotal)],
+    ];
+    const base = `sale-bill-${fromDate}-to-${toDate}`;
+    if (format === 'excel') {
+      downloadExcel(`${base}.xlsx`, 'Sale Bill', headers, [...rows, ...footerRows]);
+    } else {
+      void downloadPdf(`${base}.pdf`, 'Sale Bill Summary', headers, rows, {
+        letterheadElement: letterheadRef.current,
+        subtitle: periodRangeLabel(fromDate, toDate, 'All dates'),
+        footerRows,
+      });
+    }
+  }
+
+  const subtitle = historicalScope?.financialYearLabel
+    ? `${historicalScope.financialYearLabel} · ${periodRangeLabel(fromDate, toDate, 'All dates')}`
+    : periodRangeLabel(fromDate, toDate, 'All dates');
+
+  const panel = (
+    <ReportPanel embedded={embedded} title="Sale Bill Summary">
+      <div className={reportFilterClass(embedded, 'ledger')}>
+        <div>
+          <FieldLabel>From Date</FieldLabel>
+          <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel>To Date</FieldLabel>
+          <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <div>
+          <FieldLabel>Party category</FieldLabel>
+          <SearchSelect
+            options={partyCategoryOptions}
+            value={partyCategoryId}
+            onChange={(value) => {
+              setPartyCategoryId(value);
+              setPartyAccountId('');
+            }}
+            placeholder="All parties"
+          />
+        </div>
+        <div>
+          <FieldLabel>Party</FieldLabel>
+          <SearchSelect
+            options={partyOptions}
+            value={partyAccountId}
+            onChange={setPartyAccountId}
+            placeholder="All parties"
+            disabled={!partyCategoryId}
+          />
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <PrimaryButton type="button" onClick={() => void loadReport()} disabled={loading}>
+            {loading ? 'Loading…' : 'View'}
+          </PrimaryButton>
+          {loaded && report ? (
+            <>
+              <SecondaryButton type="button" onClick={() => exportReport('excel')}>
+                Excel
+              </SecondaryButton>
+              <SecondaryButton type="button" onClick={() => exportReport('pdf')}>
+                PDF
+              </SecondaryButton>
+              <FinancialButton type="button" onClick={() => printPage()}>
+                Print
+              </FinancialButton>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? <p className="mb-3 text-sm text-danger print:hidden">{error}</p> : null}
+
+      <div ref={letterheadRef} className={embedded ? 'fy-report-body' : undefined}>
+        <ReportLetterhead title="Sale Bill Summary" subtitle={subtitle} />
+
+        {!loaded ? (
+          <p className={reportEmptyClass(embedded)}>Set filters and click View</p>
+        ) : !report || report.invoices.length === 0 ? (
+          <p className={reportEmptyClass(embedded)}>No sale invoices in this period</p>
+        ) : (
+          <div className="space-y-6">
+            {report.invoices.map((inv) => (
+              <section key={inv.invoiceId} className="sale-bill-invoice-group">
+                <h3 className="mb-2 text-sm font-semibold text-textPrimary">
+                  {inv.partyName} — {inv.invoiceReference}
+                  {inv.invoiceDate ? (
+                    <span className="ml-2 font-normal text-textSecondary">({formatDate(inv.invoiceDate)})</span>
+                  ) : null}
+                </h3>
+                <ReportTable>
+                  <thead>
+                    <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className={`px-3 py-2 text-right ${REPORT_AMOUNT_COL}`}>Price</th>
+                      <th className={`px-3 py-2 text-right ${REPORT_AMOUNT_COL}`}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inv.lines.map((line, index) => (
+                      <tr key={`${inv.invoiceId}-${index}`} className="report-table-row border-b border-border/40">
+                        <td className="px-3 py-2">{line.productName}</td>
+                        <td className={`px-3 py-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                          {formatLedgerAmount(line.price)}
+                        </td>
+                        <td className={`px-3 py-2 text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                          {formatLedgerAmount(line.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="report-table-row--total border-t border-border">
+                      <td colSpan={3} className="px-3 py-2 text-sm font-medium">
+                        <span className={inv.receivedAmount > 0 ? ledgerCreditAmountClass(true) : ''}>
+                          Received:{' '}
+                          {inv.receivedAmount > 0
+                            ? formatLedgerAmount(inv.receivedAmount)
+                            : inv.receivedPending
+                              ? 'Pending approval'
+                              : '0'}
+                          {inv.receivedAccountLabel && (inv.receivedAmount > 0 || inv.receivedPending)
+                            ? ` (${inv.receivedAccountLabel})`
+                            : !inv.receivedAmount && !inv.receivedPending
+                              ? ' (none)'
+                              : ''}
+                        </span>
+                        <span className="mx-2 text-textMuted">·</span>
+                        <span>Net Total: {formatLedgerAmount(inv.netTotal)}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </ReportTable>
+              </section>
+            ))}
+
+            <ReportTable>
+              <tbody>
+                <tr className="report-table-row--total border-t-2 border-border">
+                  <td className="px-3 py-2 font-semibold">Grand Total</td>
+                  <td className={`px-3 py-2 text-right font-semibold tabular-nums ${REPORT_AMOUNT_CELL}`} colSpan={2}>
+                    {formatLedgerAmount(report.grandTotal)}
+                  </td>
+                </tr>
+                <tr className="report-table-row--total">
+                  <td className={`px-3 py-2 font-semibold ${ledgerCreditAmountClass(true)}`}>Received Total</td>
+                  <td
+                    className={`px-3 py-2 text-right font-semibold tabular-nums ${REPORT_AMOUNT_CELL} ${ledgerCreditAmountClass(true)}`}
+                    colSpan={2}
+                  >
+                    {formatLedgerAmount(report.receivedTotal)}
+                  </td>
+                </tr>
+                <tr className="report-table-row--total">
+                  <td className="px-3 py-2 font-semibold">Remaining Total</td>
+                  <td className={`px-3 py-2 text-right font-semibold tabular-nums ${REPORT_AMOUNT_CELL}`} colSpan={2}>
+                    {formatLedgerAmount(report.remainingTotal)}
+                  </td>
+                </tr>
+              </tbody>
+            </ReportTable>
+          </div>
+        )}
+      </div>
+    </ReportPanel>
+  );
+
+  if (embedded) return panel;
+
+  return (
+    <PageShell title="Sale Bill Summary">
+      {panel}
       <PageCloseBar />
     </PageShell>
   );

@@ -1,16 +1,32 @@
 import {
   forwardRef,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type InputHTMLAttributes,
+  type Ref,
 } from 'react';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { displayDateToIso, isoToDisplayDate, parseDateValue } from '../../lib/format';
+import {
+  caretIndexForMaskedDate,
+  resolveDateInputChange,
+} from './dateInputLogic';
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (!ref) continue;
+      if (typeof ref === 'function') ref(node);
+      else ref.current = node;
+    }
+  };
+}
 
 function clampIso(iso: string, min?: string | number, max?: string | number): string {
   if (!iso) return iso;
@@ -19,13 +35,6 @@ function clampIso(iso: string, min?: string | number, max?: string | number): st
   if (minS && iso < minS) return minS;
   if (maxS && iso > maxS) return maxS;
   return iso;
-}
-
-function maskDisplayDate(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 function toIso(date: Date): string {
@@ -63,6 +72,9 @@ function isDisabled(iso: string, min?: string | number, max?: string | number): 
 
 /**
  * DD/MM/YYYY field plus a minimal calendar. Value sent to the app stays YYYY-MM-DD.
+ *
+ * Caret is restored in useLayoutEffect (before paint / before the next keystroke), never via
+ * requestAnimationFrame — which raced against fast typing and scrambled digits.
  */
 export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function DateInput(props, ref) {
@@ -85,6 +97,9 @@ export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
     const [text, setText] = useState(() => isoToDisplayDate(iso));
     const [open, setOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    /** Digit count before caret; applied after React commits the masked value. */
+    const pendingCaretDigitRef = useRef<number | null>(null);
     const selected = iso ? parseDateValue(iso) : new Date();
     const [viewYear, setViewYear] = useState(selected.getFullYear());
     const [viewMonth, setViewMonth] = useState(selected.getMonth());
@@ -92,6 +107,15 @@ export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
     useEffect(() => {
       setText(isoToDisplayDate(iso));
     }, [iso]);
+
+    useLayoutEffect(() => {
+      const el = inputRef.current;
+      const digitCount = pendingCaretDigitRef.current;
+      if (!el || digitCount == null) return;
+      const caret = caretIndexForMaskedDate(text, digitCount);
+      el.setSelectionRange(caret, caret);
+      pendingCaretDigitRef.current = null;
+    }, [text]);
 
     useEffect(() => {
       if (!open) return;
@@ -162,7 +186,7 @@ export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
       <div className="app-date-input" ref={rootRef} data-date-input-root>
         <input
           {...rest}
-          ref={ref}
+          ref={mergeRefs(ref, inputRef)}
           id={id}
           name={name}
           type="text"
@@ -177,9 +201,14 @@ export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
           tabIndex={tabIndex}
           maxLength={10}
           onChange={(e) => {
-            const next = maskDisplayDate(e.target.value);
-            setText(next);
-            const parsed = displayDateToIso(next);
+            const input = e.currentTarget;
+            const { masked, caretDigitCount } = resolveDateInputChange(
+              e.target.value,
+              input.selectionStart,
+            );
+            pendingCaretDigitRef.current = caretDigitCount;
+            setText(masked);
+            const parsed = displayDateToIso(masked);
             if (parsed) emit(clampIso(parsed, min, max));
             else if (parsed === '') emit('');
           }}

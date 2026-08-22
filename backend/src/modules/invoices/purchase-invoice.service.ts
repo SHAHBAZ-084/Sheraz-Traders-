@@ -22,6 +22,11 @@ import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
 import { getCurrentStockBalance, postPurchaseInvoiceStockIn } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
+import {
+  createEmbeddedPurchasePaymentInTx,
+  parseEmbeddedPaymentInput,
+  type EmbeddedPaymentInput,
+} from './invoice-embedded-voucher';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
   computePurchaseInvoiceTotals,
@@ -44,6 +49,8 @@ export type CreatePurchaseInvoiceInput = {
   supplierAccountId: number;
   createdById: number;
   lines: PurchaseInvoiceLineInput[];
+  paymentAmount?: number;
+  paymentAccountId?: number;
 };
 
 type ResolvedPurchaseLine = {
@@ -131,6 +138,7 @@ async function postPurchaseInvoiceAccounting(
     createdById: number;
   },
   resolvedLines: ResolvedPurchaseLine[],
+  embeddedPayment: EmbeddedPaymentInput | null,
 ) {
   // WAC update happens inside the same transaction as:
   // 1) purchase voucher ledger posting, and
@@ -228,6 +236,17 @@ async function postPurchaseInvoiceAccounting(
       data: { averageCost: avgCost },
     });
   }
+
+  if (embeddedPayment) {
+    await createEmbeddedPurchasePaymentInTx(tx, {
+      invoiceId: invoice.id,
+      supplierAccountId: invoice.debitAccountId,
+      payment: embeddedPayment,
+      invoiceDate: invoice.invoiceDate,
+      invoiceReference: invoice.reference,
+      createdById: invoice.createdById,
+    });
+  }
 }
 
 export async function createPurchaseInvoice(
@@ -285,6 +304,12 @@ export async function createPurchaseInvoice(
         : null,
     );
 
+    const embeddedPayment = parseEmbeddedPaymentInput(
+      data.paymentAmount,
+      data.paymentAccountId,
+      totals.invoiceTotal,
+    );
+
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.PURCHASE_INVOICE, financialYearId);
 
     const invoice = await tx.invoice.create({
@@ -299,6 +324,8 @@ export async function createPurchaseInvoice(
         debitAccountId: data.supplierAccountId,
         total: totals.invoiceTotal,
         financialYearId,
+        embeddedPaymentAmount: embeddedPayment?.amount ?? null,
+        embeddedPaymentAccountId: embeddedPayment?.accountId ?? null,
         createdById: data.createdById,
         items: {
           create: resolvedLines.map((line) => ({
@@ -327,6 +354,7 @@ export async function createPurchaseInvoice(
           createdById: data.createdById,
         },
         resolvedLines,
+        embeddedPayment,
       );
     }
 
@@ -389,6 +417,11 @@ export async function approvePurchaseInvoice(invoiceId: number) {
         createdById: invoice.createdById,
       },
       resolvedLines,
+      parseEmbeddedPaymentInput(
+        invoice.embeddedPaymentAmount != null ? Number(invoice.embeddedPaymentAmount) : undefined,
+        invoice.embeddedPaymentAccountId ?? undefined,
+        Number(invoice.total),
+      ),
     );
 
     return tx.invoice.update({
@@ -471,6 +504,12 @@ export async function updatePendingPurchaseInvoice(
         : null,
     );
 
+    const embeddedPayment = parseEmbeddedPaymentInput(
+      data.paymentAmount,
+      data.paymentAccountId,
+      totals.invoiceTotal,
+    );
+
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 
     return tx.invoice.update({
@@ -483,6 +522,8 @@ export async function updatePendingPurchaseInvoice(
         debitAccountId: data.supplierAccountId,
         total: totals.invoiceTotal,
         financialYearId,
+        embeddedPaymentAmount: embeddedPayment?.amount ?? null,
+        embeddedPaymentAccountId: embeddedPayment?.accountId ?? null,
         status: InvoiceStatus.PENDING_APPROVAL,
         items: {
           create: resolvedLines.map((line) => ({

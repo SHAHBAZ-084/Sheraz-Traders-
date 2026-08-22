@@ -117,6 +117,8 @@ const VOUCHER_TYPE_LABELS: Record<string, string> = {
   KACHI: 'Kachi',
   SALE_INVOICE: 'Sale Invoice',
   PURCHASE_INVOICE: 'Purchase Invoice',
+  SALE_RECEIPT: 'Receipt (Sale)',
+  PURCHASE_PAYMENT: 'Payment (Purchase)',
 };
 
 export function formatVoucherTypeLabel(type: string) {
@@ -149,6 +151,8 @@ export function voucherTypeColorClass(type: string) {
   const key = type.toUpperCase().replace(/\s+/g, '_');
   if (key === 'PAYMENT') return 'text-voucherPayment';
   if (key === 'RECEIPT') return 'text-voucherReceipt';
+  if (key === 'SALE_RECEIPT') return 'text-voucherReceipt';
+  if (key === 'PURCHASE_PAYMENT') return 'text-voucherPayment';
   if (key === 'KACHI') return 'text-voucherKachi';
   if (key === 'SALE_INVOICE') return 'text-cardSalePaunchAccent';
   if (key === 'PURCHASE_INVOICE') return 'text-cardPurchaseMaalAccent';

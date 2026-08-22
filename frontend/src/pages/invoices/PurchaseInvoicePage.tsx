@@ -31,6 +31,7 @@ import {
 import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
 import { urduLabelClassName } from '../../lib/urduScript';
+import { bankCashAccountOptions, bankCashCategoryOptions } from '../../lib/bankCashAccounts';
 
 type GridRow = {
   clientId: string;
@@ -59,6 +60,9 @@ type PurchaseInvoiceDraft = {
   mazduriAmount: string;
   partyCategoryId: string;
   supplierAccountId: string;
+  paymentCategoryId: string;
+  paymentAccountId: string;
+  paymentAmount: string;
 };
 
 function todayInputValue() {
@@ -149,6 +153,9 @@ export function PurchaseInvoicePage() {
   const [mazduriAmount, setMazduriAmount] = useState(() => restoredState?.mazduriAmount ?? '');
   const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [supplierAccountId, setSupplierAccountId] = useState(() => restoredState?.supplierAccountId ?? '');
+  const [paymentCategoryId, setPaymentCategoryId] = useState(() => restoredState?.paymentCategoryId ?? '');
+  const [paymentAccountId, setPaymentAccountId] = useState(() => restoredState?.paymentAccountId ?? '');
+  const [paymentAmount, setPaymentAmount] = useState(() => restoredState?.paymentAmount ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -167,6 +174,9 @@ export function PurchaseInvoicePage() {
       if (restoredState.mazduriAmount !== undefined) setMazduriAmount(restoredState.mazduriAmount);
       if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.supplierAccountId) setSupplierAccountId(restoredState.supplierAccountId);
+      if (restoredState.paymentCategoryId) setPaymentCategoryId(restoredState.paymentCategoryId);
+      if (restoredState.paymentAccountId) setPaymentAccountId(restoredState.paymentAccountId);
+      if (restoredState.paymentAmount) setPaymentAmount(restoredState.paymentAmount);
     }
   }, [restoredState]);
 
@@ -233,6 +243,16 @@ export function PurchaseInvoicePage() {
         setBillNo(inv.billNo ?? '');
         if (inv.storeId != null) setStoreId(String(inv.storeId));
         if (inv.debitAccountId != null) setSupplierAccountId(String(inv.debitAccountId));
+        const paymentAmt = (inv as { embeddedPaymentAmount?: number | null }).embeddedPaymentAmount;
+        const paymentAcct = (inv as { embeddedPaymentAccountId?: number | null }).embeddedPaymentAccountId;
+        if (paymentAmt != null && Number(paymentAmt) > 0) {
+          setPaymentAmount(String(paymentAmt));
+        }
+        if (paymentAcct != null) {
+          setPaymentAccountId(String(paymentAcct));
+          const acct = accounts.find((a) => a.id === paymentAcct);
+          if (acct) setPaymentCategoryId(String(acct.categoryId));
+        }
         setGridRows(
           (inv.items ?? []).map((item, index) => {
             const quantity = Number(item.quantity);
@@ -285,6 +305,11 @@ export function PurchaseInvoicePage() {
     () => partyAccountOptionsForCategory(accounts, partyCategoryId),
     [accounts, partyCategoryId],
   );
+  const paymentCategoryOptions = useMemo(() => bankCashCategoryOptions(categories), [categories]);
+  const paymentAccountOptions = useMemo(
+    () => bankCashAccountOptions(accounts, paymentCategoryId),
+    [accounts, paymentCategoryId],
+  );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
     [gridRows],
@@ -298,6 +323,26 @@ export function PurchaseInvoicePage() {
   function onPartyCategoryChange(value: string) {
     setPartyCategoryId(value);
     setSupplierAccountId('');
+  }
+
+  function onPaymentCategoryChange(value: string) {
+    setPaymentCategoryId(value);
+    setPaymentAccountId('');
+  }
+
+  function parsePaymentPayload() {
+    const amount = paymentAmount.trim() ? Number(paymentAmount) : 0;
+    if (amount <= 0) return {};
+    if (!paymentAccountId) {
+      throw new Error('Select a Bank/Cash account for the payment amount');
+    }
+    if (amount > invoiceTotal + 0.01) {
+      throw new Error('Payment amount cannot exceed invoice total');
+    }
+    return {
+      paymentAmount: amount,
+      paymentAccountId: Number(paymentAccountId),
+    };
   }
 
   function addRow() {
@@ -360,6 +405,14 @@ export function PurchaseInvoicePage() {
     }
     setSaving(true);
     try {
+      let paymentPayload = {};
+      try {
+        paymentPayload = parsePaymentPayload();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Invalid payment');
+        setSaving(false);
+        return;
+      }
       const lines = gridRows.map((row) => ({
         productId: row.productId,
         quantity: row.quantity,
@@ -372,6 +425,7 @@ export function PurchaseInvoicePage() {
           billNo: billNo || undefined,
           storeId: Number(storeId),
           supplierAccountId: Number(supplierAccountId),
+          ...paymentPayload,
           lines,
         });
         navigate('/system/approvals');
@@ -382,6 +436,7 @@ export function PurchaseInvoicePage() {
         billNo: billNo || undefined,
         storeId: Number(storeId),
         supplierAccountId: Number(supplierAccountId),
+        ...paymentPayload,
         lines,
       });
       if (printAfterSave && invoice.reference) {
@@ -512,6 +567,34 @@ export function PurchaseInvoicePage() {
                 </InvoiceFieldRow>
               </InvoiceFormSection>
 
+              <InvoiceFormSection label="Payment (optional)">
+                <InvoiceFieldRow cols={3}>
+                  <InvoiceField>
+                    <FieldLabel>Bank / Cash category</FieldLabel>
+                    <SearchSelect
+                      options={[{ value: '', label: 'None' }, ...paymentCategoryOptions]}
+                      value={paymentCategoryId}
+                      onChange={onPaymentCategoryChange}
+                      placeholder="None"
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Payment account</FieldLabel>
+                    <SearchSelect
+                      options={paymentAccountOptions}
+                      value={paymentAccountId}
+                      onChange={setPaymentAccountId}
+                      placeholder={paymentCategoryId ? 'Select account' : 'Select category first'}
+                      disabled={!paymentCategoryId}
+                    />
+                  </InvoiceField>
+                  <InvoiceField>
+                    <FieldLabel>Paid amount</FieldLabel>
+                    <DecimalInput value={paymentAmount} onChange={setPaymentAmount} />
+                  </InvoiceField>
+                </InvoiceFieldRow>
+              </InvoiceFormSection>
+
               <InvoiceAddRowAction onClick={addRow}>{salePurchaseInvoiceLabel('addToGrid')}</InvoiceAddRowAction>
 
               <InvoiceFormSection label={salePurchaseInvoiceLabel('previewGrid')}>
@@ -549,6 +632,9 @@ export function PurchaseInvoicePage() {
                             mazduriAmount,
                             partyCategoryId,
                             supplierAccountId,
+                            paymentCategoryId,
+                            paymentAccountId,
+                            paymentAmount,
                           },
                           predictedRef || 'Purchase Invoice',
                         )

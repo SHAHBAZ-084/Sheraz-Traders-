@@ -1,7 +1,7 @@
 import { AccountType, FinancialYearStatus, LedgerEntryType, Prisma, RecordStatus, VoucherStatus, VoucherType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateNextAccountCode, isAccountCodeConflict } from '../../lib/account-code';
-import { SELECTABLE_ACCOUNT } from '../../lib/record-status';
+import { SELECTABLE_ACCOUNT, SELECTABLE_PRODUCT } from '../../lib/record-status';
 import { logger } from '../../lib/logger';
 import { AppError } from '../../utils/helpers';
 import { DEFAULT_PAGE_SIZE, PaginatedResult, SELECTOR_MAX_PAGE_SIZE } from '../../utils/pagination';
@@ -347,12 +347,21 @@ function assertVoucherAccountRules(
   debitAccount: { category: { name: string } },
   creditAccount: { category: { name: string } },
 ) {
-  if (type === 'RECEIPT' && !isBankOrCashCategory(debitAccount.category.name)) {
+  if ((type === 'RECEIPT' || type === 'SALE_RECEIPT') && !isBankOrCashCategory(debitAccount.category.name)) {
     throw new AppError(400, 'Receipt must debit a Bank or Cash account (To side)');
   }
-  if (type === 'PAYMENT' && !isBankOrCashCategory(creditAccount.category.name)) {
+  if ((type === 'PAYMENT' || type === 'PURCHASE_PAYMENT') && !isBankOrCashCategory(creditAccount.category.name)) {
     throw new AppError(400, 'Payment must credit a Bank or Cash account (From side)');
   }
+}
+
+/** Exported for pending voucher edits — preserves embedded voucher type rules. */
+export function assertVoucherAccountRulesForUpdate(
+  type: VoucherType,
+  debitAccount: { category: { name: string } },
+  creditAccount: { category: { name: string } },
+) {
+  assertVoucherAccountRules(type, debitAccount, creditAccount);
 }
 
 type VoucherCreateInput = {
@@ -1408,10 +1417,12 @@ function voucherTypeLabel(
   const base =
     type === 'PAYMENT' ? 'Payment'
       : type === 'RECEIPT' ? 'Receipt'
-        : type === 'KACHI' ? 'Kachi'
-          : type === 'SALE_INVOICE' ? 'Sale Invoice'
-            : type === 'PURCHASE_INVOICE' ? 'Purchase Invoice'
-              : 'Journal';
+        : type === 'SALE_RECEIPT' ? 'Receipt (Sale)'
+          : type === 'PURCHASE_PAYMENT' ? 'Payment (Purchase)'
+            : type === 'KACHI' ? 'Kachi'
+              : type === 'SALE_INVOICE' ? 'Sale Invoice'
+                : type === 'PURCHASE_INVOICE' ? 'Purchase Invoice'
+                  : 'Journal';
   return isReversal ? `${base} (Reversal)` : base;
 }
 
@@ -3766,10 +3777,32 @@ export async function softDeleteAccount(id: number) {
   if (isInventoryAccountName(account.name)) {
     throw new AppError(400, 'The Inventory account cannot be deleted');
   }
-  await assertNotMaalKhataLinkedAccount(id);
 
   return prisma.$transaction(async (tx) => {
-    await assertAccountHardDeletableInTx(tx, account);
+    const freshAccount = await tx.account.findFirst({
+      where: { id, isActive: true },
+      include: { ledger: true },
+    });
+    if (!freshAccount) throw new AppError(404, 'Account not found');
+
+    await assertAccountHardDeletableInTx(tx, freshAccount);
+
+    if (freshAccount.ledger) {
+      await reverseOpeningBalanceOnlyLedgerInTx(tx, freshAccount);
+      const ledgerAfter = await tx.ledger.findUnique({ where: { id: freshAccount.ledger.id } });
+      const balanceAfter = Number(ledgerAfter?.balance ?? 0);
+      if (Math.abs(balanceAfter) >= 0.005) {
+        throw new AppError(500, 'Failed to zero account balance before deletion');
+      }
+    }
+
+    const linkedProduct = await tx.product.findFirst({
+      where: { accountId: id, ...SELECTABLE_PRODUCT },
+      select: { id: true },
+    });
+    if (linkedProduct) {
+      await tx.product.delete({ where: { id: linkedProduct.id } });
+    }
 
     const obe = await tx.account.findFirst({
       where: { isActive: true, name: { equals: OPENING_BALANCE_EQUITY_ACCOUNT_NAME } },
@@ -3779,7 +3812,7 @@ export async function softDeleteAccount(id: number) {
       const offsetEntries = await tx.ledgerEntry.findMany({
         where: {
           ledgerId: obe.ledger.id,
-          notes: { contains: `offset for ${account.name}` },
+          notes: { contains: `offset for ${freshAccount.name}` },
         },
         select: { id: true },
       });
@@ -3800,16 +3833,60 @@ export async function softDeleteAccount(id: number) {
   }, WRITE_TRANSACTION_OPTIONS);
 }
 
-const ACCOUNT_DELETE_NON_ZERO_MSG =
-  'This account has a non-zero balance and cannot be deleted. Reverse the opening balance or clear all transactions first.';
-
 const ACCOUNT_DELETE_HISTORY_MSG =
   'This account has transaction history with other accounts and cannot be deleted. You can still rename it via Edit.';
+
+async function reverseOpeningBalanceOnlyLedgerInTx(
+  tx: Prisma.TransactionClient,
+  account: { id: number; name: string; ledger: { id: number; balance: unknown } },
+) {
+  const balance = Number(account.ledger.balance);
+  if (Math.abs(balance) < 0.005) return;
+
+  const side: 'DR' | 'CR' = balance > 0 ? 'CR' : 'DR';
+  await postOpeningBalanceInTx(tx, {
+    ledgerId: account.ledger.id,
+    accountName: account.name,
+    amount: Math.abs(balance),
+    side,
+    notes: 'Auto-reversal before account deletion',
+    entryDate: new Date(),
+    isOpeningBalance: false,
+  });
+}
 
 async function assertAccountHardDeletableInTx(
   tx: Prisma.TransactionClient,
   account: { id: number; name: string; ledger: { id: number; balance: unknown } | null },
 ) {
+  const linkedProduct = await tx.product.findFirst({
+    where: { accountId: account.id, ...SELECTABLE_PRODUCT },
+    select: { id: true },
+  });
+  if (linkedProduct) {
+    const [invoiceItemRefs, invoiceRefs, jamaRefs, kachiLineRefs, pendingAdjRefs] = await Promise.all([
+      tx.invoiceItem.count({ where: { productId: linkedProduct.id } }),
+      tx.invoice.count({ where: { productId: linkedProduct.id } }),
+      tx.jamaNaamEntry.count({ where: { productId: linkedProduct.id } }),
+      tx.kachiMaalLine.count({ where: { partyAccountId: account.id } }),
+      tx.pendingAdjustment.count({ where: { productId: linkedProduct.id } }),
+    ]);
+    if (
+      invoiceItemRefs > 0 ||
+      invoiceRefs > 0 ||
+      jamaRefs > 0 ||
+      kachiLineRefs > 0 ||
+      pendingAdjRefs > 0
+    ) {
+      throw new AppError(
+        400,
+        `This ledger belongs to a product with transaction history and cannot be deleted`,
+      );
+    }
+  } else {
+    await assertNotMaalKhataLinkedAccount(account.id);
+  }
+
   const [voucherRefs, jamaRefs, kachiLineRefs, kachiInvoiceRefs, pendingAdjRefs] = await Promise.all([
     tx.voucher.count({
       where: {
@@ -3835,15 +3912,8 @@ async function assertAccountHardDeletableInTx(
 
   if (entries.length === 0) return;
 
-  const balance = Number(account.ledger.balance);
-  if (Math.abs(balance) >= 0.005) {
-    throw new AppError(400, ACCOUNT_DELETE_NON_ZERO_MSG);
-  }
-
-  const hasNonOpeningActivity = entries.some(
-    (entry) => entry.voucherId != null || !entry.isOpeningBalance,
-  );
-  if (hasNonOpeningActivity) {
+  const hasRealLedgerActivity = entries.some((entry) => entry.voucherId != null);
+  if (hasRealLedgerActivity) {
     throw new AppError(400, ACCOUNT_DELETE_HISTORY_MSG);
   }
 }
