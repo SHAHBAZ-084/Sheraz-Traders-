@@ -13,7 +13,14 @@ type InsightState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; averageRate: number | null; storeStock: number; storeName: string };
+  | {
+      status: 'ready';
+      averageRate: number | null;
+      storeStock: number;
+      storeName: string;
+      hasCostBasis: boolean;
+      costStatusMessage: string | null;
+    };
 
 /**
  * Small ⓘ info icon + popover for Sale Invoice product lookup.
@@ -49,6 +56,8 @@ export function ProductInsightPopover({ productId, storeId }: Props) {
         averageRate: insight.averageRate,
         storeStock: insight.storeStock,
         storeName: insight.storeName,
+        hasCostBasis: insight.hasCostBasis,
+        costStatusMessage: insight.costStatusMessage,
       });
     } catch {
       if (gen !== fetchGenRef.current) return;
@@ -160,13 +169,18 @@ export function ProductInsightPopover({ productId, storeId }: Props) {
                 <span className="font-semibold tabular-nums">{formatAmount(state.storeStock)}</span>
               </p>
               <p>
-                <span className="text-textSecondary">Average price: </span>
+                <span className="text-textSecondary">Average cost: </span>
                 {state.averageRate == null ? (
-                  <span className="text-textMuted">—</span>
+                  <span className="font-medium text-danger">No cost basis yet</span>
                 ) : (
                   <span className="font-semibold tabular-nums">Rs {formatAmount(state.averageRate)}</span>
                 )}
               </p>
+              {state.costStatusMessage ? (
+                <p className={`leading-snug ${state.hasCostBasis ? 'text-textMuted' : 'text-danger'}`}>
+                  {state.costStatusMessage}
+                </p>
+              ) : null}
             </div>
           )}
 

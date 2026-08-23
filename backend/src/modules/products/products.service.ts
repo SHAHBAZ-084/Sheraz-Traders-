@@ -221,6 +221,7 @@ async function addStandardStockToProductInTx(
     date?: Date;
     financialYearId?: number;
     productName?: string;
+    description?: string;
   },
 ) {
   const quantity = Number(data.quantity);
@@ -280,7 +281,9 @@ async function addStandardStockToProductInTx(
   }
 
   const entryDate = data.date ?? new Date();
-  const notes = `Stock Adjustment — ${data.productName ?? data.accountName} (${quantity})`;
+  const notes =
+    data.description?.trim() ||
+    `Stock Adjustment — ${data.productName ?? data.accountName} (${quantity})`;
   await postStockAdjustmentStandardIn(tx, {
     productId: data.productId,
     storeId: data.storeId,
@@ -317,6 +320,7 @@ async function addKachiStockToProductInTx(
     date?: Date;
     financialYearId?: number;
     productName?: string;
+    description?: string;
   },
 ) {
   const computed = computeKachiOpeningStockValue({
@@ -387,7 +391,8 @@ async function addKachiStockToProductInTx(
   }
 
   const entryDate = data.date ?? new Date();
-  const notes = `Stock Adjustment — ${data.productName ?? data.accountName}`;
+  const notes =
+    data.description?.trim() || `Stock Adjustment — ${data.productName ?? data.accountName}`;
   await postStockAdjustmentKachiIn(tx, {
     productId: data.productId,
     storeId: data.storeId,
@@ -418,6 +423,7 @@ export async function createStockAdjustment(data: {
   quantity?: number;
   rate?: number;
   kachiOpening?: KachiOpeningStockInput;
+  description?: string;
   createdById?: number;
   postImmediately?: boolean;
 }) {
@@ -507,6 +513,7 @@ export async function createStockAdjustment(data: {
           quantity,
           rate,
           kachiOpening: kachiOpening ? (kachiOpening as Prisma.InputJsonValue) : undefined,
+          description: data.description?.trim() || undefined,
         },
       });
       const balance = await getCurrentStockBalance(product.id, data.storeId, tx);
@@ -531,6 +538,7 @@ export async function createStockAdjustment(data: {
         date: adjustmentDate,
         financialYearId,
         productName: product.name,
+        description: data.description,
       });
     } else if (quantity != null && rate != null) {
       await addStandardStockToProductInTx(tx, {
@@ -544,6 +552,7 @@ export async function createStockAdjustment(data: {
         date: adjustmentDate,
         financialYearId,
         productName: product.name,
+        description: data.description,
       });
     }
 
@@ -606,6 +615,7 @@ export async function approveStockAdjustment(id: number, _approvedById: number) 
         date: pending.adjustmentDate,
         financialYearId,
         productName: product.name,
+        description: pending.description ?? undefined,
       });
     } else {
       const quantity = Number(pending.quantity ?? 0);
@@ -621,6 +631,7 @@ export async function approveStockAdjustment(id: number, _approvedById: number) 
         date: pending.adjustmentDate,
         financialYearId,
         productName: product.name,
+        description: pending.description ?? undefined,
       });
     }
 
@@ -1139,21 +1150,27 @@ export type ProductInsight = {
   averageRate: number | null;
   storeStock: number;
   storeName: string;
+  /** True when Product.averageCost is unset and no purchase-based average exists. */
+  hasCostBasis: boolean;
+  /** Pending stock adjustment id that could supply a provisional cost, if any. */
+  pendingStockAdjustmentId: number | null;
+  costStatusMessage: string | null;
 };
 
 /**
  * Read-only lookup for the "Add existing product" info popover on Sale/Purchase Invoice.
- * - averageRate: weighted average purchase rate (sum(qty*rate) / sum(qty)) across all
- *   POSTED Purchase Invoice line items for this product — null if there is no purchase
- *   history, never 0 (0 would misleadingly imply a known zero rate).
- * - storeStock: the product's StockRemainder.remainderKg for the given store — 0 if no
- *   remainder row exists yet, since genuinely-zero stock is a valid, common state.
+ * Prefers Product.averageCost (WAC from opening stock / purchases / approved stock adjustments),
+ * then falls back to purchase-invoice weighted average.
  */
 export async function getProductInsight(productId: number, storeId: number): Promise<ProductInsight> {
   const store = await prisma.store.findUnique({ where: { id: storeId } });
   if (!store) throw new AppError(404, 'Store not found');
 
-  const [purchaseItems, storeStock] = await Promise.all([
+  const [product, purchaseItems, storeStock, pendingAdj] = await Promise.all([
+    prisma.product.findFirst({
+      where: { id: productId, ...SELECTABLE_PRODUCT },
+      select: { averageCost: true, name: true },
+    }),
     prisma.invoiceItem.findMany({
       where: {
         productId,
@@ -1162,18 +1179,45 @@ export async function getProductInsight(productId: number, storeId: number): Pro
       select: { quantity: true, unitPrice: true },
     }),
     getCurrentStockBalance(productId, storeId),
+    prisma.pendingAdjustment.findFirst({
+      where: {
+        kind: 'STOCK',
+        status: RecordStatus.PENDING_APPROVAL,
+        productId,
+      },
+      orderBy: { id: 'desc' },
+      select: { id: true, rate: true },
+    }),
   ]);
+  if (!product) throw new AppError(404, 'Product not found');
 
   const totalQty = purchaseItems.reduce((sum, item) => sum + Number(item.quantity), 0);
   const totalValue = purchaseItems.reduce(
     (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
     0,
   );
-  const averageRate = totalQty > 0 ? totalValue / totalQty : null;
+  const purchaseAverage = totalQty > 0 ? totalValue / totalQty : null;
+  const averageRate =
+    product.averageCost != null ? Number(product.averageCost) : purchaseAverage;
+  const hasCostBasis = averageRate != null;
+  const pendingStockAdjustmentId = pendingAdj?.id ?? null;
+
+  let costStatusMessage: string | null = null;
+  if (!hasCostBasis && pendingStockAdjustmentId != null) {
+    costStatusMessage = `No cost basis yet — approve Stock Adjustment #${pendingStockAdjustmentId} in Pending Approvals (or a sale can use its rate provisionally).`;
+  } else if (!hasCostBasis) {
+    costStatusMessage =
+      'No cost basis yet — approve a Stock Adjustment or Purchase Invoice for this product (or set Opening Stock).';
+  } else if (pendingStockAdjustmentId != null) {
+    costStatusMessage = `Pending Stock Adjustment #${pendingStockAdjustmentId} is not yet reflected in stock/cost until approved.`;
+  }
 
   return {
     averageRate,
     storeStock,
     storeName: store.name,
+    hasCostBasis,
+    pendingStockAdjustmentId,
+    costStatusMessage,
   };
 }

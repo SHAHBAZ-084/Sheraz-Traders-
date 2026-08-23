@@ -1053,17 +1053,23 @@ function userLabel(user?: VoucherUser | null) {
   return user.displayName || user.username;
 }
 
+function dateToInputValue(date: string | Date) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function VoucherDetailCard({
   voucher,
   onCancel,
-  onUpdateAmount,
+  onUpdatePosted,
   cancelling,
   updating,
   readOnly = false,
 }: {
   voucher: Voucher;
   onCancel: () => void;
-  onUpdateAmount: (amount: number) => void | Promise<void>;
+  onUpdatePosted: (updates: { amount?: number; date?: string }) => void | Promise<void>;
   cancelling: boolean;
   updating: boolean;
   readOnly?: boolean;
@@ -1073,13 +1079,15 @@ export function VoucherDetailCard({
   const isCancelled = voucher.status === 'CANCELLED';
   const isKachi = voucher.type === 'KACHI';
   const isMultiLeg = isKachi;
-  const [editingAmount, setEditingAmount] = useState(false);
+  const [editingFields, setEditingFields] = useState(false);
   const [amountDraft, setAmountDraft] = useState(String(voucher.amount ?? ''));
+  const [dateDraft, setDateDraft] = useState(dateToInputValue(voucher.date));
 
   useEffect(() => {
-    setEditingAmount(false);
+    setEditingFields(false);
     setAmountDraft(String(voucher.amount ?? ''));
-  }, [voucher.id, voucher.amount]);
+    setDateDraft(dateToInputValue(voucher.date));
+  }, [voucher.id, voucher.amount, voucher.date]);
 
   const rows = isMultiLeg
     ? []
@@ -1113,12 +1121,14 @@ export function VoucherDetailCard({
     if (canceller) auditParts.push(`Cancelled by ${canceller} on ${formatDate(voucher.deletedAt)}`);
   }
 
-  async function submitAmount(e: FormEvent) {
+  async function submitPostedUpdate(e: FormEvent) {
     e.preventDefault();
     const amount = parseFloat(amountDraft);
     if (!Number.isFinite(amount) || amount <= 0) return;
-    await onUpdateAmount(amount);
-    setEditingAmount(false);
+    const updates: { amount?: number; date?: string } = { amount };
+    if (dateDraft.trim()) updates.date = dateDraft.trim();
+    await onUpdatePosted(updates);
+    setEditingFields(false);
   }
 
   return (
@@ -1144,11 +1154,11 @@ export function VoucherDetailCard({
         </div>
         {!isCancelled && isAdmin && !readOnly ? (
           <div className="flex gap-2">
-            {!isMultiLeg && !editingAmount && (
-              <SecondaryButton onClick={() => setEditingAmount(true)}>Update Amount</SecondaryButton>
+            {!isMultiLeg && !editingFields && (
+              <SecondaryButton onClick={() => setEditingFields(true)}>Update</SecondaryButton>
             )}
             <DangerButton
-              disabled={cancelling || editingAmount}
+              disabled={cancelling || editingFields}
               onClick={onCancel}
             >
               {cancelling ? 'Deleting…' : 'Delete'}
@@ -1210,13 +1220,25 @@ export function VoucherDetailCard({
         ) : null}
         <div className="grid grid-cols-[120px_1fr] gap-4 py-3">
           <dt className="text-sm text-textSecondary">Date</dt>
-          <dd className="text-sm text-textPrimary">{formatDate(voucher.date)}</dd>
+          <dd className="text-sm text-textPrimary">
+            {editingFields ? (
+              <TextInput
+                type="date"
+                value={dateDraft}
+                onChange={(e) => setDateDraft(e.target.value)}
+                className="max-w-[180px]"
+                required
+              />
+            ) : (
+              formatDate(voucher.date)
+            )}
+          </dd>
         </div>
         <div className="grid grid-cols-[120px_1fr] gap-4 py-3">
           <dt className="text-sm text-textSecondary">{isMultiLeg ? 'Grand total' : 'Amount'}</dt>
           <dd className="text-sm font-semibold text-textPrimary">
-            {!isMultiLeg && editingAmount ? (
-              <form onSubmit={submitAmount} className="flex flex-wrap items-center gap-2">
+            {!isMultiLeg && editingFields ? (
+              <form onSubmit={submitPostedUpdate} className="flex flex-wrap items-center gap-2">
                 <AmountInput
                   required
                   value={amountDraft}
@@ -1229,8 +1251,9 @@ export function VoucherDetailCard({
                 <SecondaryButton
                   type="button"
                   onClick={() => {
-                    setEditingAmount(false);
+                    setEditingFields(false);
                     setAmountDraft(String(voucher.amount ?? ''));
+                    setDateDraft(dateToInputValue(voucher.date));
                   }}
                 >
                   Discard
@@ -1321,11 +1344,11 @@ export function VoucherListPage() {
     }
   }
 
-  async function handleUpdateAmount(amount: number) {
+  async function handleUpdatePosted(updates: { amount?: number; date?: string }) {
     if (!result || result === 'notfound') return;
     setUpdating(true);
     try {
-      const updated = await api.updateVoucherAmount(result.id, amount);
+      const updated = await api.updateVoucher(result.id, updates);
       setResult(updated);
       loadVouchers();
     } catch (err) {
@@ -1385,7 +1408,7 @@ export function VoucherListPage() {
         <VoucherDetailCard
           voucher={voucher}
           onCancel={handleCancel}
-          onUpdateAmount={handleUpdateAmount}
+          onUpdatePosted={handleUpdatePosted}
           cancelling={cancelling}
           updating={updating}
         />

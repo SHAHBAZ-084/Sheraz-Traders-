@@ -2,8 +2,59 @@ import { describe, expect, it } from 'vitest';
 import { AppError } from '../../utils/helpers';
 import {
   parseEmbeddedPaymentInput,
+  parseEmbeddedPaymentLinesInput,
   parseEmbeddedReceiptInput,
+  parseEmbeddedReceiptLinesInput,
 } from './invoice-embedded-voucher';
+
+describe('parseEmbeddedReceiptLinesInput', () => {
+  it('returns empty array when no lines are provided', () => {
+    expect(parseEmbeddedReceiptLinesInput({}, 50_000)).toEqual([]);
+  });
+
+  it('accepts a single line via receipts array', () => {
+    expect(parseEmbeddedReceiptLinesInput({ receipts: [{ amount: 20_000, accountId: 3 }] }, 50_000)).toEqual([
+      { amount: 20_000, accountId: 3 },
+    ]);
+  });
+
+  it('accepts multiple receipt lines when sum is within invoice total', () => {
+    expect(
+      parseEmbeddedReceiptLinesInput(
+        {
+          receipts: [
+            { amount: 20_000, accountId: 3 },
+            { amount: 25_000, accountId: 4 },
+          ],
+        },
+        50_000,
+      ),
+    ).toEqual([
+      { amount: 20_000, accountId: 3 },
+      { amount: 25_000, accountId: 4 },
+    ]);
+  });
+
+  it('throws when total receipt amount exceeds invoice total', () => {
+    expect(() =>
+      parseEmbeddedReceiptLinesInput(
+        {
+          receipts: [
+            { amount: 30_000, accountId: 3 },
+            { amount: 25_000, accountId: 4 },
+          ],
+        },
+        50_000,
+      ),
+    ).toThrow(/Total receipt amount cannot exceed invoice total/);
+  });
+
+  it('still supports legacy single-line scalar fields', () => {
+    expect(parseEmbeddedReceiptLinesInput({ receiptAmount: 20_000, receiptAccountId: 3 }, 50_000)).toEqual([
+      { amount: 20_000, accountId: 3 },
+    ]);
+  });
+});
 
 describe('parseEmbeddedReceiptInput', () => {
   it('returns null when amount and account are omitted', () => {
@@ -30,6 +81,39 @@ describe('parseEmbeddedReceiptInput', () => {
   it('accepts partial and full payment amounts', () => {
     expect(parseEmbeddedReceiptInput(20_000, 3, 50_000)).toEqual({ amount: 20_000, accountId: 3 });
     expect(parseEmbeddedReceiptInput(50_000, 3, 50_000)).toEqual({ amount: 50_000, accountId: 3 });
+  });
+});
+
+describe('parseEmbeddedPaymentLinesInput', () => {
+  it('accepts multiple payment lines when sum is within invoice total', () => {
+    expect(
+      parseEmbeddedPaymentLinesInput(
+        {
+          payments: [
+            { amount: 10_000, accountId: 2 },
+            { amount: 15_000, accountId: 3 },
+          ],
+        },
+        50_000,
+      ),
+    ).toEqual([
+      { amount: 10_000, accountId: 2 },
+      { amount: 15_000, accountId: 3 },
+    ]);
+  });
+
+  it('throws when total payment amount exceeds invoice total', () => {
+    expect(() =>
+      parseEmbeddedPaymentLinesInput(
+        {
+          payments: [
+            { amount: 30_000, accountId: 2 },
+            { amount: 25_000, accountId: 3 },
+          ],
+        },
+        50_000,
+      ),
+    ).toThrow(/Total payment amount cannot exceed invoice total/);
   });
 });
 

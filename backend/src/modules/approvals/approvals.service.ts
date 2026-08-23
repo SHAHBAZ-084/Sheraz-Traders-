@@ -30,6 +30,11 @@ import {
   rejectProduct,
   rejectStockAdjustment,
 } from '../products/products.service';
+import {
+  recomputeEmbeddedPaymentScalarsInTx,
+  recomputeEmbeddedReceiptScalarsInTx,
+} from '../invoices/invoice-embedded-voucher';
+import { buildPendingInvoiceApprovalDescription } from '../invoices/invoice-voucher-descriptions';
 import { assertCanEditPendingInvoice, assertCanEditPendingVoucher, type PendingEditor } from './pending-edit-auth';
 
 export type PendingApprovalKind =
@@ -43,6 +48,7 @@ export type PendingApprovalKind =
 export type PendingApprovalItem = {
   kind: PendingApprovalKind;
   id: number;
+  number: number;
   type: string;
   reference: string | null;
   date: string | null;
@@ -52,6 +58,14 @@ export type PendingApprovalItem = {
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
 };
+
+function displayNumberFromReference(reference: string | null | undefined, fallbackId: number) {
+  if (reference) {
+    const match = reference.match(/(\d+)\s*$/);
+    if (match) return parseInt(match[1], 10);
+  }
+  return fallbackId;
+}
 
 function mapCreatedBy(user: { id: number; displayName: string | null; username: string } | null) {
   if (!user) return null;
@@ -80,6 +94,23 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         debitAccount: { select: { name: true, code: true } },
         customer: { select: { name: true } },
         supplier: { select: { name: true } },
+        items: {
+          orderBy: { id: 'asc' },
+          include: { product: { select: { name: true } } },
+        },
+        kachiMaalLines: { orderBy: { sortOrder: 'asc' } },
+        embeddedReceiptAccount: { include: { category: { select: { name: true } } } },
+        embeddedPaymentAccount: { include: { category: { select: { name: true } } } },
+        vouchers: {
+          include: {
+            voucher: {
+              include: {
+                debitAccount: { include: { category: { select: { name: true } } } },
+                creditAccount: { include: { category: { select: { name: true } } } },
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -115,6 +146,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
     ...vouchers.map((v) => ({
       kind: 'voucher' as const,
       id: v.id,
+      number: v.number,
       type: v.type,
       reference: v.reference,
       date: v.date?.toISOString() ?? null,
@@ -127,13 +159,14 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
     ...invoices.map((inv) => ({
       kind: 'invoice' as const,
       id: inv.id,
+      number: displayNumberFromReference(inv.reference, inv.id),
       type: inv.type,
       reference: inv.reference,
       date: inv.invoiceDate?.toISOString() ?? null,
       debitAccountName: inv.debitAccount ? inv.debitAccount.name : inv.customer ? inv.customer.name : null,
       creditAccountName: inv.supplier ? inv.supplier.name : null,
       amount: Number(inv.total),
-      description: inv.notes ?? inv.billNo,
+      description: buildPendingInvoiceApprovalDescription(inv),
       createdBy: mapCreatedBy(inv.createdBy),
     })),
     ...accounts.map((account) => {
@@ -142,6 +175,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       return {
         kind: 'account' as const,
         id: account.id,
+        number: account.id,
         type: 'ACCOUNT',
         reference: account.code,
         date: account.createdAt.toISOString(),
@@ -168,6 +202,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       return {
         kind: 'product' as const,
         id: product.id,
+        number: product.id,
         type: product.kind,
         reference: product.code,
         date: product.createdAt.toISOString(),
@@ -184,6 +219,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         return {
           kind: 'account_adjustment' as const,
           id: row.id,
+          number: row.id,
           type: 'ACCOUNT_ADJUSTMENT',
           reference: row.account ? `${row.account.name} (${row.account.code})` : null,
           date: row.adjustmentDate.toISOString(),
@@ -199,6 +235,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       return {
         kind: 'stock_adjustment' as const,
         id: row.id,
+        number: row.id,
         type: 'STOCK_ADJUSTMENT',
         reference: row.product ? `${row.product.code} — ${row.product.name}` : null,
         date: row.adjustmentDate.toISOString(),
@@ -232,15 +269,9 @@ export async function rejectPendingVoucher(voucherId: number) {
     if (voucher.invoiceLink) {
       await tx.invoiceVoucher.delete({ where: { id: voucher.invoiceLink.id } });
       if (voucher.type === VoucherType.SALE_RECEIPT) {
-        await tx.invoice.update({
-          where: { id: voucher.invoiceLink.invoiceId },
-          data: { embeddedReceiptAmount: null, embeddedReceiptAccountId: null },
-        });
+        await recomputeEmbeddedReceiptScalarsInTx(tx, voucher.invoiceLink.invoiceId);
       } else if (voucher.type === VoucherType.PURCHASE_PAYMENT) {
-        await tx.invoice.update({
-          where: { id: voucher.invoiceLink.invoiceId },
-          data: { embeddedPaymentAmount: null, embeddedPaymentAccountId: null },
-        });
+        await recomputeEmbeddedPaymentScalarsInTx(tx, voucher.invoiceLink.invoiceId);
       }
     }
     await tx.voucher.delete({ where: { id: voucherId } });
@@ -421,23 +452,13 @@ export async function updatePendingVoucher(
 
   const invoiceLink = await prisma.invoiceVoucher.findFirst({ where: { voucherId } });
   if (invoiceLink) {
-    if (existing.type === VoucherType.SALE_RECEIPT) {
-      await prisma.invoice.update({
-        where: { id: invoiceLink.invoiceId },
-        data: {
-          embeddedReceiptAmount: data.amount,
-          embeddedReceiptAccountId: data.debitAccountId,
-        },
-      });
-    } else if (existing.type === VoucherType.PURCHASE_PAYMENT) {
-      await prisma.invoice.update({
-        where: { id: invoiceLink.invoiceId },
-        data: {
-          embeddedPaymentAmount: data.amount,
-          embeddedPaymentAccountId: data.creditAccountId,
-        },
-      });
-    }
+    await prisma.$transaction(async (tx) => {
+      if (existing.type === VoucherType.SALE_RECEIPT) {
+        await recomputeEmbeddedReceiptScalarsInTx(tx, invoiceLink.invoiceId);
+      } else if (existing.type === VoucherType.PURCHASE_PAYMENT) {
+        await recomputeEmbeddedPaymentScalarsInTx(tx, invoiceLink.invoiceId);
+      }
+    });
   }
 
   return updated;
@@ -472,6 +493,9 @@ export async function updatePendingInvoice(
         notes: body.notes as string | undefined,
         storeId: Number(body.storeId),
         customerAccountId: Number(body.customerAccountId),
+        receipts: Array.isArray(body.receipts)
+          ? (body.receipts as Array<{ amount: number; accountId: number }>)
+          : undefined,
         receiptAmount: body.receiptAmount != null ? Number(body.receiptAmount) : undefined,
         receiptAccountId: body.receiptAccountId != null ? Number(body.receiptAccountId) : undefined,
         lines: body.lines as Array<{ productId: number; quantity: number; rate: number }>,
@@ -483,6 +507,9 @@ export async function updatePendingInvoice(
         notes: body.notes as string | undefined,
         storeId: Number(body.storeId),
         supplierAccountId: Number(body.supplierAccountId),
+        payments: Array.isArray(body.payments)
+          ? (body.payments as Array<{ amount: number; accountId: number }>)
+          : undefined,
         paymentAmount: body.paymentAmount != null ? Number(body.paymentAmount) : undefined,
         paymentAccountId: body.paymentAccountId != null ? Number(body.paymentAccountId) : undefined,
         lines: body.lines as Array<{

@@ -1,6 +1,8 @@
+import { InvoiceType, VoucherStatus, VoucherType } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import {
   blendedLegDescription,
+  buildPendingInvoiceApprovalDescription,
   formatInvoiceProductLinesDescription,
   invoiceVoucherHeaderSuffix,
   rowLegDescription,
@@ -67,5 +69,52 @@ describe('invoice-voucher-descriptions', () => {
         { productName: 'Dap', quantity: 6, rate: 12500 },
       ]),
     ).toBe('Urea 5@4550+Dap 6@12500');
+  });
+
+  it('builds pending approval description from product lines, notes, and receipts', () => {
+    expect(
+      buildPendingInvoiceApprovalDescription({
+        type: InvoiceType.SALE_INVOICE,
+        notes: 'Urgent delivery',
+        items: [
+          {
+            label: 'Urea',
+            quantity: 5,
+            unitPrice: 4550,
+            product: { name: 'Urea' },
+          },
+          {
+            label: 'Dap',
+            quantity: 6,
+            unitPrice: 12500,
+            product: { name: 'Dap' },
+          },
+        ],
+        vouchers: [
+          {
+            voucher: {
+              type: VoucherType.SALE_RECEIPT,
+              status: VoucherStatus.PENDING_APPROVAL,
+              amount: 20000,
+              debitAccount: { name: 'Cash in Hand', category: { name: 'Cash' } },
+            },
+          },
+        ],
+      }),
+    ).toBe(
+      'Urea 5@4550+Dap 6@12500 — Urgent delivery — Received 20000 (Cash — Cash in Hand)',
+    );
+  });
+
+  it('builds pending kachi maal description from blended lines', () => {
+    const description = buildPendingInvoiceApprovalDescription({
+      type: InvoiceType.KACHI_MAAL,
+      jins: 'Cotton',
+      tafseel: 'Grade A',
+      kachiMaalLines: [{ totalWeightKg: 420, ratePerMaund: 4000, jins: 'Cotton' }],
+    });
+    expect(description).toContain('Cotton');
+    expect(description).toContain('@ Rs');
+    expect(description).toContain('Tafseel: Grade A');
   });
 });

@@ -511,6 +511,7 @@ model PendingAdjustment {
   storeId        Int?
   quantity       Decimal?
   rate           Decimal?
+  description    String?
   kachiOpening   Json?
 
   createdBy User     @relation(fields: [createdById], references: [id])

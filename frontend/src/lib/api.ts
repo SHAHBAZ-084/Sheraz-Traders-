@@ -198,6 +198,10 @@ export type InvoiceDetail = Invoice & {
   kachiMaalLines?: KachiMaalLineDetail[];
   vouchers?: { voucher: Voucher }[];
   createdBy?: VoucherUser | null;
+  embeddedReceiptAmount?: number | string | null;
+  embeddedPaymentAmount?: number | string | null;
+  embeddedReceiptAccount?: (VoucherAccount & { category?: { name: string } | null }) | null;
+  embeddedPaymentAccount?: (VoucherAccount & { category?: { name: string } | null }) | null;
 };
 
 export type SaleBillLineItem = {
@@ -228,7 +232,12 @@ export type SaleBillReportResult = {
   invoices: SaleBillInvoiceGroup[];
 };
 
-export type VoucherAccount = { id: number; name: string; code: string };
+export type VoucherAccount = {
+  id: number;
+  name: string;
+  code: string;
+  category?: { id?: number; name: string } | null;
+};
 export type VoucherUser = { id: number; displayName: string; username: string };
 
 export type VoucherLedgerEntry = {
@@ -506,7 +515,14 @@ export const api = {
     return request<{ ok: boolean }>(`/api/products/${id}`, { method: 'DELETE' });
   },
   getProductInsight(productId: number, storeId: number) {
-    return request<{ averageRate: number | null; storeStock: number; storeName: string }>(
+    return request<{
+      averageRate: number | null;
+      storeStock: number;
+      storeName: string;
+      hasCostBasis: boolean;
+      pendingStockAdjustmentId: number | null;
+      costStatusMessage: string | null;
+    }>(
       `/api/products/${productId}/insight?storeId=${storeId}`,
     );
   },
@@ -583,6 +599,7 @@ export const api = {
     storeId: number;
     quantity?: number;
     rate?: number;
+    description?: string;
     kachiOpening?: {
       bagMode: 'BORI' | 'THELA';
       bagCount: number;
@@ -718,6 +735,7 @@ export const api = {
     customerAccountId: number;
     billNo?: string;
     notes?: string;
+    receipts?: Array<{ amount: number; accountId: number }>;
     receiptAmount?: number;
     receiptAccountId?: number;
     lines: Array<{ productId: number; quantity: number; rate: number }>;
@@ -735,6 +753,7 @@ export const api = {
     supplierAccountId: number;
     billNo?: string;
     notes?: string;
+    payments?: Array<{ amount: number; accountId: number }>;
     paymentAmount?: number;
     paymentAccountId?: number;
     lines: Array<{ productId: number; quantity: number; rate: number; mazduriAmount?: number }>;
@@ -872,6 +891,12 @@ export const api = {
       body: JSON.stringify({ vouchers }),
     });
   },
+  updateVoucher(voucherId: number, data: { amount?: number; date?: string }) {
+    return request<Voucher>(`/api/accounting/vouchers/${voucherId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
   updateVoucherAmount(voucherId: number, amount: number) {
     return request<Voucher>(`/api/accounting/vouchers/${voucherId}`, {
       method: 'PATCH',
@@ -919,6 +944,7 @@ export const api = {
     accountId: number;
     amount: number;
     side: 'DR' | 'CR';
+    description?: string;
   }) {
     return request<{
       accountId: number;
@@ -930,6 +956,118 @@ export const api = {
       '/api/accounting/account-adjustment',
       { method: 'POST', body: JSON.stringify(data) },
     );
+  },
+  searchAccountAdjustments(query: string) {
+    return request<{
+      items: Array<{
+        id: number;
+        accountId: number;
+        accountName: string;
+        adjustmentDate: string;
+        description: string;
+        amount: number;
+        side: 'DR' | 'CR';
+      }>;
+    }>(`/api/accounting/account-adjustments/search?q=${encodeURIComponent(query)}`);
+  },
+  updateAccountAdjustment(
+    entryId: number,
+    data: { adjustmentDate?: string; description?: string },
+  ) {
+    return request<{
+      id: number;
+      accountId: number;
+      accountName: string;
+      adjustmentDate: string;
+      description: string;
+      amount: number;
+      side: 'DR' | 'CR';
+    }>(`/api/accounting/account-adjustments/${entryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  searchStockAdjustments(query: string) {
+    return request<{
+      items: Array<{
+        id: number;
+        productId: number;
+        productName: string;
+        storeId: number | null;
+        storeName: string | null;
+        adjustmentDate: string;
+        description: string;
+        quantity: number;
+      }>;
+    }>(`/api/stock/adjustments/search?q=${encodeURIComponent(query)}`);
+  },
+  updateStockAdjustment(
+    movementId: number,
+    data: { adjustmentDate?: string; description?: string },
+  ) {
+    return request<{
+      id: number;
+      productId: number;
+      productName: string;
+      storeId: number | null;
+      adjustmentDate: string;
+      description: string;
+    }>(`/api/stock/adjustments/${movementId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  searchAccountOpeningBalances(query: string) {
+    return request<{
+      items: Array<{
+        id: number;
+        accountId: number;
+        accountName: string;
+        openingDate: string;
+        amount: number;
+        side: 'DR' | 'CR';
+      }>;
+    }>(`/api/accounting/opening-balances/search?q=${encodeURIComponent(query)}`);
+  },
+  updateAccountOpeningBalanceDate(entryId: number, data: { adjustmentDate: string }) {
+    return request<{
+      id: number;
+      accountId: number;
+      accountName: string;
+      openingDate: string;
+      amount: number;
+      side: 'DR' | 'CR';
+      warning?: string;
+    }>(`/api/accounting/opening-balances/${entryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  searchProductOpeningStock(query: string) {
+    return request<{
+      items: Array<{
+        id: number;
+        productId: number;
+        productName: string;
+        storeId: number | null;
+        storeName: string | null;
+        openingDate: string;
+        quantity: number;
+      }>;
+    }>(`/api/stock/opening-stock/search?q=${encodeURIComponent(query)}`);
+  },
+  updateProductOpeningStockDate(movementId: number, data: { adjustmentDate: string }) {
+    return request<{
+      id: number;
+      productId: number;
+      productName: string;
+      storeId: number | null;
+      openingDate: string;
+      warning?: string;
+    }>(`/api/stock/opening-stock/${movementId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   },
   updateAccount(id: number, data: { name?: string; code?: string; isActive?: boolean }) {
     return request<Account>(`/api/accounting/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) });

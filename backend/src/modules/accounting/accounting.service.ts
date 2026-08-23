@@ -565,7 +565,7 @@ async function applyPostedLedgerEntriesInTx(
 }
 
 /** Live ledger balance spans all financial years; never scope to active FY only. */
-async function recomputeFullLedgerBalanceInTx(
+export async function recomputeFullLedgerBalanceInTx(
   tx: Prisma.TransactionClient,
   ledgerId: number,
 ): Promise<number> {
@@ -740,9 +740,17 @@ async function resolveAccountType(
 
 export const OPENING_BALANCE_EQUITY_ACCOUNT_NAME = 'Opening Balance Equity';
 
+export const ACCOUNT_ADJUSTMENT_DEFAULT_NOTES = 'Account Adjustment';
+
 export const SALES_REVENUE_ACCOUNT_NAME = 'Sales Revenue';
 
-async function findOrCreateOpeningBalanceEquityAccount(
+const NON_EDITABLE_VOUCHER_TYPES: VoucherType[] = [
+  VoucherType.KACHI,
+  VoucherType.SALE_INVOICE,
+  VoucherType.PURCHASE_INVOICE,
+];
+
+export async function findOrCreateOpeningBalanceEquityAccount(
   tx: Prisma.TransactionClient,
   ) {
   const existing = await tx.account.findFirst({
@@ -968,11 +976,54 @@ export async function postStockAdjustmentBalanceInTx(
   await applyPostedLedgerEntriesInTx(tx, equityLedger.id, data.financialYearId, [equityEntry.id]);
 }
 
-function parseAdjustmentDate(value: string): Date {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) throw new AppError(400, 'Invalid adjustment date');
+export function parseAdjustmentDate(value: string): Date {
+  const d = parseVoucherDateInput(value);
   d.setHours(12, 0, 0, 0);
   return d;
+}
+
+export function accountAdjustmentOffsetNotes(description: string, accountName: string) {
+  return `${description} — offset for ${accountName}`;
+}
+
+export function isAccountAdjustmentOffsetNotes(notes: string | null | undefined) {
+  return notes != null && notes.includes(' — offset for ');
+}
+
+export async function recomputeLedgersAfterEntryDateChangeInTx(
+  tx: Prisma.TransactionClient,
+  ledgerIds: number[],
+  financialYearIds: Array<number | null | undefined>,
+) {
+  const fySet = new Set<number>();
+  for (const fy of financialYearIds) {
+    if (fy != null) fySet.add(fy);
+  }
+  for (const ledgerId of ledgerIds) {
+    for (const fyId of fySet) {
+      await recomputeLedgerRunningBalancesInTx(tx, ledgerId, fyId);
+    }
+  }
+}
+
+async function assertPostedVoucherEditableInTx(
+  tx: Prisma.TransactionClient,
+  voucher: {
+    status: VoucherStatus;
+    type: VoucherType;
+    financialYearId: number | null;
+  },
+) {
+  if (voucher.status === VoucherStatus.CANCELLED) {
+    throw new AppError(400, 'Cannot update a cancelled voucher');
+  }
+  if (voucher.status === VoucherStatus.PENDING_APPROVAL) {
+    throw new AppError(400, 'Cannot update a pending voucher');
+  }
+  if (NON_EDITABLE_VOUCHER_TYPES.includes(voucher.type)) {
+    throw new AppError(400, 'Invoice vouchers cannot be edited');
+  }
+  await assertActiveFinancialYear(tx, voucher.financialYearId);
 }
 
 export async function createAccountAdjustment(data: {
@@ -980,6 +1031,7 @@ export async function createAccountAdjustment(data: {
   accountId: number;
   amount: number;
   side: 'DR' | 'CR';
+  description?: string;
   createdById?: number;
   postImmediately?: boolean;
 }) {
@@ -1002,6 +1054,9 @@ export async function createAccountAdjustment(data: {
   }
 
   const postImmediately = data.postImmediately !== false;
+  const adjustmentNotes =
+    data.description?.trim() || ACCOUNT_ADJUSTMENT_DEFAULT_NOTES;
+
   if (!postImmediately) {
     if (data.createdById == null) throw new AppError(400, 'createdById is required for pending adjustments');
     await prisma.$transaction(async (tx) => {
@@ -1016,6 +1071,7 @@ export async function createAccountAdjustment(data: {
         accountId: account.id,
         amount,
         side: data.side,
+        description: adjustmentNotes,
       },
     });
     return {
@@ -1035,7 +1091,7 @@ export async function createAccountAdjustment(data: {
       accountName: account.name,
       amount,
       side: data.side,
-      notes: 'Account Adjustment',
+      notes: adjustmentNotes,
       entryDate: adjustmentDate,
       isOpeningBalance: false,
     });
@@ -1064,13 +1120,14 @@ export async function approveAccountAdjustment(id: number, _approvedById: number
 
     const amount = Math.abs(Number(pending.amount ?? 0));
     const side = pending.side === 'CR' ? 'CR' : 'DR';
+    const adjustmentNotes = pending.description?.trim() || ACCOUNT_ADJUSTMENT_DEFAULT_NOTES;
     await assertVoucherDateInActiveFinancialYear(tx, pending.adjustmentDate, 'Invoice');
     await postOpeningBalanceInTx(tx, {
       ledgerId: pending.account.ledger.id,
       accountName: pending.account.name,
       amount,
       side,
-      notes: 'Account Adjustment',
+      notes: adjustmentNotes,
       entryDate: pending.adjustmentDate,
       isOpeningBalance: false,
     });
@@ -2864,12 +2921,15 @@ function fetchVoucherListPage(
   });
 }
 
-export async function updateVoucherAmount(
+export async function updatePostedVoucher(
   voucherId: number,
-  newAmount: number,
   userId: number,
+  updates: { amount?: number; date?: string },
 ) {
-  if (newAmount <= 0) {
+  if (updates.amount == null && updates.date == null) {
+    throw new AppError(400, 'Provide amount and/or date to update');
+  }
+  if (updates.amount != null && updates.amount <= 0) {
     throw new AppError(400, 'Amount must be greater than zero');
   }
 
@@ -2878,22 +2938,7 @@ export async function updateVoucherAmount(
       where: { id: voucherId },
     });
     if (!voucher) throw new AppError(404, 'Voucher not found');
-    if (voucher.status === VoucherStatus.CANCELLED) {
-      throw new AppError(400, 'Cannot update amount on a cancelled voucher');
-    }
-    if (voucher.status === VoucherStatus.PENDING_APPROVAL) {
-      throw new AppError(400, 'Cannot update amount on a pending voucher');
-    }
-    if (voucher.type === 'KACHI' || voucher.type === 'SALE_INVOICE' || voucher.type === 'PURCHASE_INVOICE') {
-      throw new AppError(400, 'Invoice voucher amounts cannot be edited');
-    }
-    await assertActiveFinancialYear(tx, voucher.financialYearId);
-
-    const oldAmount = Number(voucher.amount);
-    const delta = newAmount - oldAmount;
-    if (Math.abs(delta) < 0.005) {
-      return tx.voucher.findUniqueOrThrow({ where: { id: voucher.id }, include: voucherInclude });
-    }
+    await assertPostedVoucherEditableInTx(tx, voucher);
 
     const entries = await tx.ledgerEntry.findMany({
       where: { voucherId: voucher.id, isReversal: false },
@@ -2901,35 +2946,79 @@ export async function updateVoucherAmount(
     });
 
     if (entries.length !== 2) {
-      throw new AppError(400, 'Voucher ledger entries are invalid for amount update');
+      throw new AppError(400, 'Voucher ledger entries are invalid for update');
     }
 
     const debitEntry = entries.find((e) => e.type === LedgerEntryType.DEBIT);
     const creditEntry = entries.find((e) => e.type === LedgerEntryType.CREDIT);
     if (!debitEntry || !creditEntry) {
-      throw new AppError(400, 'Voucher ledger entries are invalid for amount update');
+      throw new AppError(400, 'Voucher ledger entries are invalid for update');
     }
 
-    await tx.ledgerEntry.update({
-      where: { id: debitEntry.id },
-      data: { amount: newAmount },
-    });
-    await tx.ledgerEntry.update({
-      where: { id: creditEntry.id },
-      data: { amount: newAmount },
-    });
+    const voucherUpdate: Prisma.VoucherUpdateInput = {
+      modifiedBy: { connect: { id: userId } },
+    };
+    const ledgerIds = [debitEntry.ledgerId, creditEntry.ledgerId];
+    const fyIdsForRecompute: Array<number | null> = [voucher.financialYearId];
 
-    await recomputeLedgerRunningBalancesInTx(tx, debitEntry.ledgerId, voucher.financialYearId!);
-    await recomputeLedgerRunningBalancesInTx(tx, creditEntry.ledgerId, voucher.financialYearId!);
+    if (updates.amount != null) {
+      const oldAmount = Number(voucher.amount);
+      const newAmount = updates.amount;
+      const delta = newAmount - oldAmount;
+      if (Math.abs(delta) >= 0.005) {
+        await tx.ledgerEntry.update({
+          where: { id: debitEntry.id },
+          data: { amount: newAmount },
+        });
+        await tx.ledgerEntry.update({
+          where: { id: creditEntry.id },
+          data: { amount: newAmount },
+        });
+        voucherUpdate.amount = newAmount;
+      }
+    }
 
-    await assertTrialBalanceInDev(tx);
+    if (updates.date != null) {
+      const newDate = parseVoucherDateInput(updates.date);
+      const newFyId = await assertVoucherDateInActiveFinancialYear(tx, newDate);
+      voucherUpdate.date = newDate;
+      voucherUpdate.financialYear = { connect: { id: newFyId } };
+      fyIdsForRecompute.push(newFyId);
 
-    return tx.voucher.update({
+      for (const entry of entries) {
+        await tx.ledgerEntry.update({
+          where: { id: entry.id },
+          data: { date: newDate, financialYearId: newFyId },
+        });
+      }
+    }
+
+    const updated = await tx.voucher.update({
       where: { id: voucher.id },
-      data: { amount: newAmount, modifiedById: userId },
+      data: voucherUpdate,
       include: voucherInclude,
     });
+
+    if (updates.amount != null && Math.abs(Number(updated.amount) - Number(voucher.amount)) >= 0.005) {
+      await recomputeLedgerRunningBalancesInTx(tx, debitEntry.ledgerId, voucher.financialYearId!);
+      await recomputeLedgerRunningBalancesInTx(tx, creditEntry.ledgerId, voucher.financialYearId!);
+    }
+    if (updates.date != null) {
+      await recomputeLedgersAfterEntryDateChangeInTx(tx, ledgerIds, fyIdsForRecompute);
+    }
+
+    await assertTrialBalanceInDev(tx);
+    return updated;
   }, WRITE_TRANSACTION_OPTIONS);
+}
+
+/** @deprecated Use updatePostedVoucher */
+export async function updateVoucherAmount(
+  voucherId: number,
+  newAmount: number,
+  userId: number,
+) {
+  return updatePostedVoucher(voucherId, userId, { amount: newAmount });
 }
 
 export async function cancelVoucher(voucherId: number, userId: number) {
@@ -3916,4 +4005,644 @@ async function assertAccountHardDeletableInTx(
   if (hasRealLedgerActivity) {
     throw new AppError(400, ACCOUNT_DELETE_HISTORY_MSG);
   }
+}
+
+export async function findAccountAdjustmentOffsetEntry(
+  tx: Prisma.TransactionClient,
+  mainEntry: {
+    id: number;
+    amount: Prisma.Decimal | number;
+    date: Date;
+    notes: string | null;
+  },
+  accountName: string,
+) {
+  const equity = await findOrCreateOpeningBalanceEquityAccount(tx);
+  const suffix = ` — offset for ${accountName}`;
+  const candidates = await tx.ledgerEntry.findMany({
+    where: {
+      id: { not: mainEntry.id },
+      ledgerId: equity.ledger!.id,
+      amount: mainEntry.amount,
+      date: mainEntry.date,
+      isReversal: false,
+      isOpeningBalance: false,
+      voucherId: null,
+      notes: { endsWith: suffix },
+    },
+    orderBy: { id: 'asc' },
+    take: 5,
+  });
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 1 && mainEntry.notes) {
+    const expected = accountAdjustmentOffsetNotes(mainEntry.notes, accountName);
+    const exact = candidates.find((c) => c.notes === expected);
+    if (exact) return exact;
+  }
+  return candidates[0] ?? null;
+}
+
+export async function searchAccountAdjustments(query: string, limit = 20) {
+  const q = query.trim();
+  if (!q) return [];
+
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(q) ? parseAdjustmentDate(q) : null;
+
+  const entries = await prisma.ledgerEntry.findMany({
+    where: {
+      voucherId: null,
+      isOpeningBalance: false,
+      isReversal: false,
+      notes: { not: { contains: ' — offset for ' } },
+      ledger: {
+        account: {
+          isActive: true,
+          name: { not: OPENING_BALANCE_EQUITY_ACCOUNT_NAME },
+          category: { name: { not: 'Products' } },
+        },
+      },
+      ...(dateMatch
+        ? {
+            date: {
+              gte: startOfDay(dateMatch),
+              lte: endOfDay(dateMatch),
+            },
+          }
+        : {
+            OR: [
+              { notes: { contains: q } },
+              { ledger: { account: { name: { contains: q } } } },
+            ],
+          }),
+    },
+    include: { ledger: { include: { account: true } } },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: Math.min(limit, 50),
+  });
+
+  return entries.map((entry) => ({
+    id: entry.id,
+    accountId: entry.ledger.account.id,
+    accountName: entry.ledger.account.name,
+    adjustmentDate: entry.date,
+    description: entry.notes ?? ACCOUNT_ADJUSTMENT_DEFAULT_NOTES,
+    amount: Number(entry.amount),
+    side: entry.type === LedgerEntryType.DEBIT ? ('DR' as const) : ('CR' as const),
+  }));
+}
+
+export async function updateAccountAdjustment(
+  entryId: number,
+  updates: { adjustmentDate?: string; description?: string },
+) {
+  return prisma.$transaction(async (tx) => {
+    const mainEntry = await tx.ledgerEntry.findFirst({
+      where: {
+        id: entryId,
+        voucherId: null,
+        isOpeningBalance: false,
+        isReversal: false,
+      },
+      include: {
+        ledger: { include: { account: { include: { category: true } } } },
+      },
+    });
+    if (!mainEntry) throw new AppError(404, 'Account adjustment not found');
+    if (isAccountAdjustmentOffsetNotes(mainEntry.notes)) {
+      throw new AppError(400, 'Invalid account adjustment entry');
+    }
+    if (isMaalKhataCategoryName(mainEntry.ledger.account.category?.name ?? '')) {
+      throw new AppError(400, 'Product accounts must be adjusted using Stock Adjustment');
+    }
+
+    const account = mainEntry.ledger.account;
+    const offset = await findAccountAdjustmentOffsetEntry(tx, mainEntry, account.name);
+    if (!offset) throw new AppError(400, 'Account adjustment offset entry not found');
+
+    await assertActiveFinancialYear(tx, mainEntry.financialYearId);
+
+    const oldFyId = mainEntry.financialYearId;
+    let newDate = mainEntry.date;
+    let newFyId = oldFyId;
+
+    if (updates.adjustmentDate != null) {
+      newDate = parseAdjustmentDate(updates.adjustmentDate);
+      newFyId = await assertVoucherDateInActiveFinancialYear(tx, newDate, 'Invoice');
+    }
+
+    const description =
+      updates.description != null
+        ? updates.description.trim() || ACCOUNT_ADJUSTMENT_DEFAULT_NOTES
+        : mainEntry.notes ?? ACCOUNT_ADJUSTMENT_DEFAULT_NOTES;
+
+    const mainData: Prisma.LedgerEntryUpdateInput = {};
+    const offsetData: Prisma.LedgerEntryUpdateInput = {};
+
+    if (updates.adjustmentDate != null) {
+      mainData.date = newDate;
+      mainData.financialYearId = newFyId;
+      offsetData.date = newDate;
+      offsetData.financialYearId = newFyId;
+    }
+    if (updates.description != null) {
+      mainData.notes = description;
+      offsetData.notes = accountAdjustmentOffsetNotes(description, account.name);
+    }
+
+    if (Object.keys(mainData).length > 0) {
+      await tx.ledgerEntry.update({ where: { id: mainEntry.id }, data: mainData });
+      await tx.ledgerEntry.update({ where: { id: offset.id }, data: offsetData });
+    }
+
+    if (updates.adjustmentDate != null) {
+      await recomputeLedgersAfterEntryDateChangeInTx(
+        tx,
+        [mainEntry.ledgerId, offset.ledgerId],
+        [oldFyId, newFyId],
+      );
+    }
+
+    await assertTrialBalanceInDev(tx);
+
+    return {
+      id: entryId,
+      accountId: account.id,
+      accountName: account.name,
+      adjustmentDate: newDate,
+      description,
+      amount: Number(mainEntry.amount),
+      side: mainEntry.type === LedgerEntryType.DEBIT ? ('DR' as const) : ('CR' as const),
+    };
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+export const STOCK_ADJUSTMENT_REFERENCE = 'Stock Adjustment';
+
+export async function searchStockAdjustments(query: string, limit = 20) {
+  const q = query.trim();
+  if (!q) return [];
+
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(q) ? parseAdjustmentDate(q) : null;
+
+  const movements = await prisma.stockMovement.findMany({
+    where: {
+      invoiceReference: STOCK_ADJUSTMENT_REFERENCE,
+      isOpeningStock: false,
+      ...(dateMatch
+        ? {
+            date: {
+              gte: startOfDay(dateMatch),
+              lte: endOfDay(dateMatch),
+            },
+          }
+        : {
+            OR: [
+              { description: { contains: q } },
+              { product: { name: { contains: q } } },
+            ],
+          }),
+    },
+    include: { product: true, store: true },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: Math.min(limit, 50),
+  });
+
+  return movements.map((m) => ({
+    id: m.id,
+    productId: m.productId,
+    productName: m.product.name,
+    storeId: m.storeId,
+    storeName: m.store?.name ?? null,
+    adjustmentDate: m.date,
+    description: m.description ?? `Stock Adjustment — ${m.product.name}`,
+    quantity:
+      m.product.kind === 'KACHI' && m.weightKg != null ? Number(m.weightKg) : Number(m.bags),
+  }));
+}
+
+async function findStockAdjustmentLedgerPair(
+  tx: Prisma.TransactionClient,
+  movement: {
+    id: number;
+    productId: number;
+    date: Date;
+    description: string | null;
+  },
+  productAccountId: number,
+  accountName: string,
+) {
+  const productEntry = await tx.ledgerEntry.findFirst({
+    where: {
+      ledger: { accountId: productAccountId },
+      date: movement.date,
+      isOpeningBalance: false,
+      isReversal: false,
+      voucherId: null,
+      ...(movement.description ? { notes: movement.description } : { notes: { contains: 'Stock Adjustment' } }),
+    },
+    orderBy: { id: 'desc' },
+  });
+  if (!productEntry) return null;
+
+  const equity = await findOrCreateOpeningBalanceEquityAccount(tx);
+  const offset = await tx.ledgerEntry.findFirst({
+    where: {
+      ledgerId: equity.ledger!.id,
+      amount: productEntry.amount,
+      date: movement.date,
+      isReversal: false,
+      isOpeningBalance: false,
+      voucherId: null,
+      OR: [
+        { notes: `Stock Adjustment — offset for ${accountName}` },
+        { notes: accountAdjustmentOffsetNotes(productEntry.notes ?? 'Stock Adjustment', accountName) },
+        { notes: { endsWith: ` — offset for ${accountName}` } },
+      ],
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  return { productEntry, offsetEntry: offset };
+}
+
+export async function updateStockAdjustment(
+  movementId: number,
+  updates: { adjustmentDate?: string; description?: string },
+) {
+  return prisma.$transaction(async (tx) => {
+    const movement = await tx.stockMovement.findFirst({
+      where: {
+        id: movementId,
+        invoiceReference: STOCK_ADJUSTMENT_REFERENCE,
+        isOpeningStock: false,
+      },
+      include: { product: { include: { account: true } } },
+    });
+    if (!movement) throw new AppError(404, 'Stock adjustment not found');
+    if (!movement.product.account) throw new AppError(400, 'Product account not found');
+
+    const pair = await findStockAdjustmentLedgerPair(
+      tx,
+      movement,
+      movement.product.accountId,
+      movement.product.account.name,
+    );
+
+    const oldFyId = pair?.productEntry.financialYearId ?? null;
+    if (pair?.productEntry) {
+      await assertActiveFinancialYear(tx, oldFyId);
+    }
+
+    let newDate = movement.date;
+    let newFyId = oldFyId;
+
+    if (updates.adjustmentDate != null) {
+      newDate = parseAdjustmentDate(updates.adjustmentDate);
+      newFyId = await assertVoucherDateInActiveFinancialYear(tx, newDate, 'Invoice');
+    }
+
+    const description =
+      updates.description != null
+        ? updates.description.trim() || `Stock Adjustment — ${movement.product.name}`
+        : movement.description ?? `Stock Adjustment — ${movement.product.name}`;
+
+    const movementData: Prisma.StockMovementUpdateInput = {};
+    if (updates.adjustmentDate != null) movementData.date = newDate;
+    if (updates.description != null) movementData.description = description;
+
+    if (Object.keys(movementData).length > 0) {
+      await tx.stockMovement.update({ where: { id: movement.id }, data: movementData });
+    }
+
+    if (pair?.productEntry) {
+      const mainData: Prisma.LedgerEntryUpdateInput = {};
+      const offsetData: Prisma.LedgerEntryUpdateInput = {};
+      if (updates.adjustmentDate != null) {
+        mainData.date = newDate;
+        mainData.financialYearId = newFyId;
+        offsetData.date = newDate;
+        offsetData.financialYearId = newFyId;
+      }
+      if (updates.description != null) {
+        mainData.notes = description;
+        if (pair.offsetEntry) {
+          offsetData.notes = accountAdjustmentOffsetNotes(description, movement.product.account.name);
+        }
+      }
+      await tx.ledgerEntry.update({ where: { id: pair.productEntry.id }, data: mainData });
+      if (pair.offsetEntry && Object.keys(offsetData).length > 0) {
+        await tx.ledgerEntry.update({ where: { id: pair.offsetEntry.id }, data: offsetData });
+      }
+      if (updates.adjustmentDate != null) {
+        const ledgerIds = [pair.productEntry.ledgerId];
+        if (pair.offsetEntry) ledgerIds.push(pair.offsetEntry.ledgerId);
+        await recomputeLedgersAfterEntryDateChangeInTx(tx, ledgerIds, [oldFyId, newFyId]);
+      }
+    }
+
+    return {
+      id: movement.id,
+      productId: movement.productId,
+      productName: movement.product.name,
+      storeId: movement.storeId,
+      adjustmentDate: newDate,
+      description,
+    };
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+const OPENING_STOCK_REFERENCE = 'Opening Stock';
+
+async function findOpeningBalanceOffsetEntry(
+  tx: Prisma.TransactionClient,
+  mainEntry: {
+    id: number;
+    amount: Prisma.Decimal | number;
+    date: Date;
+    notes: string | null;
+  },
+  accountName: string,
+) {
+  const equity = await findOrCreateOpeningBalanceEquityAccount(tx);
+  const suffix = ` — offset for ${accountName}`;
+  const candidates = await tx.ledgerEntry.findMany({
+    where: {
+      id: { not: mainEntry.id },
+      ledgerId: equity.ledger!.id,
+      amount: mainEntry.amount,
+      date: {
+        gte: startOfDay(mainEntry.date),
+        lte: endOfDay(mainEntry.date),
+      },
+      isReversal: false,
+      isOpeningBalance: true,
+      voucherId: null,
+      notes: { endsWith: suffix },
+    },
+    orderBy: { id: 'asc' },
+    take: 5,
+  });
+  if (candidates.length === 1) return candidates[0];
+  const expected = `Opening Balance${suffix}`;
+  return candidates.find((c) => c.notes === expected) ?? candidates[0] ?? null;
+}
+
+async function recomputeLedgersFullyAfterDateChangeInTx(
+  tx: Prisma.TransactionClient,
+  ledgerIds: number[],
+  financialYearIds: Array<number | null | undefined>,
+) {
+  // recomputeLedgerRunningBalancesInTx updates FY entry.balance snapshots, then recomputeFullLedgerBalanceInTx.
+  await recomputeLedgersAfterEntryDateChangeInTx(tx, ledgerIds, financialYearIds);
+}
+
+function buildDateOrderWarning(entityLabel: string, earliestExisting: Date, newDate: Date) {
+  if (startOfDay(newDate) <= startOfDay(earliestExisting)) return undefined;
+  return `${entityLabel} opening date is after other existing transactions (${earliestExisting.toISOString().slice(0, 10)}). Balances are recalculated, but review the timeline for accuracy.`;
+}
+
+export async function searchAccountOpeningBalances(query: string, limit = 20) {
+  const q = query.trim();
+  if (!q) return [];
+
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(q) ? parseAdjustmentDate(q) : null;
+
+  const entries = await prisma.ledgerEntry.findMany({
+    where: {
+      isOpeningBalance: true,
+      isReversal: false,
+      voucherId: null,
+      ledger: {
+        account: {
+          isActive: true,
+          name: { not: OPENING_BALANCE_EQUITY_ACCOUNT_NAME },
+          category: { name: { not: 'Products' } },
+        },
+      },
+      ...(dateMatch
+        ? {
+            date: {
+              gte: startOfDay(dateMatch),
+              lte: endOfDay(dateMatch),
+            },
+          }
+        : {
+            OR: [{ ledger: { account: { name: { contains: q } } } }],
+          }),
+    },
+    include: { ledger: { include: { account: true } } },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: Math.min(limit, 50),
+  });
+
+  return entries.map((entry) => ({
+    id: entry.id,
+    accountId: entry.ledger.account.id,
+    accountName: entry.ledger.account.name,
+    openingDate: entry.date,
+    amount: Number(entry.amount),
+    side: entry.type === LedgerEntryType.DEBIT ? ('DR' as const) : ('CR' as const),
+  }));
+}
+
+export async function updateAccountOpeningBalanceDate(entryId: number, adjustmentDate: string) {
+  return prisma.$transaction(async (tx) => {
+    const mainEntry = await tx.ledgerEntry.findFirst({
+      where: {
+        id: entryId,
+        isOpeningBalance: true,
+        isReversal: false,
+        voucherId: null,
+      },
+      include: {
+        ledger: { include: { account: { include: { category: true } } } },
+      },
+    });
+    if (!mainEntry) throw new AppError(404, 'Account opening balance not found');
+    if (mainEntry.ledger.account.name === OPENING_BALANCE_EQUITY_ACCOUNT_NAME) {
+      throw new AppError(400, 'Invalid opening balance entry');
+    }
+    if (isMaalKhataCategoryName(mainEntry.ledger.account.category?.name ?? '')) {
+      throw new AppError(400, 'Use opening stock correction for product accounts');
+    }
+
+    const account = mainEntry.ledger.account;
+    const offset = await findOpeningBalanceOffsetEntry(tx, mainEntry, account.name);
+    if (!offset) throw new AppError(400, 'Opening balance offset entry not found');
+
+    await assertActiveFinancialYear(tx, mainEntry.financialYearId);
+
+    const newDate = parseAdjustmentDate(adjustmentDate);
+    const newFyId = await assertVoucherDateInActiveFinancialYear(tx, newDate, 'Invoice');
+    const oldFyId = mainEntry.financialYearId;
+
+    const earliestOther = await tx.ledgerEntry.findFirst({
+      where: {
+        ledgerId: mainEntry.ledgerId,
+        id: { not: mainEntry.id },
+        isOpeningBalance: false,
+        isReversal: false,
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+
+    const entryData = { date: newDate, financialYearId: newFyId };
+    await tx.ledgerEntry.update({ where: { id: mainEntry.id }, data: entryData });
+    await tx.ledgerEntry.update({ where: { id: offset.id }, data: entryData });
+
+    await recomputeLedgersFullyAfterDateChangeInTx(
+      tx,
+      [mainEntry.ledgerId, offset.ledgerId],
+      [oldFyId, newFyId],
+    );
+
+    await assertTrialBalanceInDev(tx);
+
+    const warning =
+      earliestOther != null
+        ? buildDateOrderWarning(account.name, earliestOther.date, newDate)
+        : undefined;
+
+    return {
+      id: entryId,
+      accountId: account.id,
+      accountName: account.name,
+      openingDate: newDate,
+      amount: Number(mainEntry.amount),
+      side: mainEntry.type === LedgerEntryType.DEBIT ? ('DR' as const) : ('CR' as const),
+      warning,
+    };
+  }, WRITE_TRANSACTION_OPTIONS);
+}
+
+export async function searchProductOpeningStock(query: string, limit = 20) {
+  const q = query.trim();
+  if (!q) return [];
+
+  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(q) ? parseAdjustmentDate(q) : null;
+
+  const movements = await prisma.stockMovement.findMany({
+    where: {
+      isOpeningStock: true,
+      invoiceReference: OPENING_STOCK_REFERENCE,
+      ...(dateMatch
+        ? {
+            date: {
+              gte: startOfDay(dateMatch),
+              lte: endOfDay(dateMatch),
+            },
+          }
+        : {
+            OR: [{ product: { name: { contains: q } } }],
+          }),
+    },
+    include: { product: true, store: true },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: Math.min(limit, 50),
+  });
+
+  return movements.map((m) => ({
+    id: m.id,
+    productId: m.productId,
+    productName: m.product.name,
+    storeId: m.storeId,
+    storeName: m.store?.name ?? null,
+    openingDate: m.date,
+    quantity:
+      m.product.kind === 'KACHI' && m.weightKg != null ? Number(m.weightKg) : Number(m.bags),
+  }));
+}
+
+async function findProductOpeningStockLedgerPair(
+  tx: Prisma.TransactionClient,
+  movement: { date: Date; productId: number },
+  productAccountId: number,
+  accountName: string,
+) {
+  const productEntry = await tx.ledgerEntry.findFirst({
+    where: {
+      ledger: { accountId: productAccountId },
+      date: movement.date,
+      isOpeningBalance: true,
+      isReversal: false,
+      voucherId: null,
+      notes: { in: ['Opening Stock', 'Opening Balance'] },
+    },
+    orderBy: { id: 'asc' },
+  });
+  if (!productEntry) return null;
+
+  const offset = await findOpeningBalanceOffsetEntry(tx, productEntry, accountName);
+  return { productEntry, offsetEntry: offset };
+}
+
+export async function updateProductOpeningStockDate(movementId: number, adjustmentDate: string) {
+  return prisma.$transaction(async (tx) => {
+    const movement = await tx.stockMovement.findFirst({
+      where: {
+        id: movementId,
+        isOpeningStock: true,
+        invoiceReference: OPENING_STOCK_REFERENCE,
+      },
+      include: { product: { include: { account: true } } },
+    });
+    if (!movement) throw new AppError(404, 'Product opening stock not found');
+    if (!movement.product.account) throw new AppError(400, 'Product account not found');
+
+    const pair = await findProductOpeningStockLedgerPair(
+      tx,
+      movement,
+      movement.product.accountId,
+      movement.product.account.name,
+    );
+
+    const oldFyId = pair?.productEntry.financialYearId ?? null;
+    if (pair?.productEntry) {
+      await assertActiveFinancialYear(tx, oldFyId);
+    }
+
+    const newDate = parseAdjustmentDate(adjustmentDate);
+    const newFyId = await assertVoucherDateInActiveFinancialYear(tx, newDate, 'Invoice');
+
+    const earliestOther = await tx.stockMovement.findFirst({
+      where: {
+        productId: movement.productId,
+        storeId: movement.storeId,
+        id: { not: movement.id },
+        isOpeningStock: false,
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+
+    await tx.stockMovement.update({
+      where: { id: movement.id },
+      data: { date: newDate },
+    });
+
+    if (pair?.productEntry) {
+      const entryData = { date: newDate, financialYearId: newFyId };
+      await tx.ledgerEntry.update({ where: { id: pair.productEntry.id }, data: entryData });
+      if (pair.offsetEntry) {
+        await tx.ledgerEntry.update({ where: { id: pair.offsetEntry.id }, data: entryData });
+      }
+      const ledgerIds = [pair.productEntry.ledgerId];
+      if (pair.offsetEntry) ledgerIds.push(pair.offsetEntry.ledgerId);
+      await recomputeLedgersFullyAfterDateChangeInTx(tx, ledgerIds, [oldFyId, newFyId]);
+      await assertTrialBalanceInDev(tx);
+    }
+
+    const warning =
+      earliestOther != null
+        ? buildDateOrderWarning(movement.product.name, earliestOther.date, newDate)
+        : undefined;
+
+    return {
+      id: movement.id,
+      productId: movement.productId,
+      productName: movement.product.name,
+      storeId: movement.storeId,
+      openingDate: newDate,
+      warning,
+    };
+  }, WRITE_TRANSACTION_OPTIONS);
 }

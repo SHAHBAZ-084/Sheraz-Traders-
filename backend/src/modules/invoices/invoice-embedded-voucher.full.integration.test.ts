@@ -67,6 +67,14 @@ async function embeddedVoucherForInvoice(invoiceId: number, type: VoucherType) {
   });
 }
 
+async function embeddedVouchersForInvoice(invoiceId: number, type: VoucherType) {
+  return prisma.voucher.findMany({
+    where: { type, invoiceLink: { invoiceId } },
+    include: { debitAccount: true, creditAccount: true },
+    orderBy: { id: 'asc' },
+  });
+}
+
 async function saleInvoiceVoucher(invoiceId: number) {
   return prisma.voucher.findFirst({
     where: { type: VoucherType.SALE_INVOICE, invoiceLink: { invoiceId } },
@@ -207,6 +215,41 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
       const cashAfter = await ledgerBalance(cashAccountId);
       expect(partyAfter - partyBefore).toBe(30_000);
       expect(cashAfter - cashBefore).toBe(20_000);
+    });
+
+    it('multiple receipt lines create separate pending SALE_RECEIPT vouchers', async () => {
+      const invoice = await createSaleInvoice(
+        {
+          invoiceDate,
+          storeId,
+          customerAccountId: salePartyAId,
+          createdById: userId,
+          receipts: [
+            { amount: 20_000, accountId: cashAccountId },
+            { amount: 25_000, accountId: bankAccountId },
+          ],
+          lines: [{ productId, quantity: 10, rate: 5000 }],
+        },
+        { postImmediately: true },
+      );
+
+      const embedded = await embeddedVouchersForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
+      expect(embedded).toHaveLength(2);
+      expect(embedded.every((v) => v.status === VoucherStatus.PENDING_APPROVAL)).toBe(true);
+      expect(Number(embedded[0].amount)).toBe(20_000);
+      expect(Number(embedded[1].amount)).toBe(25_000);
+      expect(embedded[0].debitAccountId).toBe(cashAccountId);
+      expect(embedded[1].debitAccountId).toBe(bankAccountId);
+      expect(embedded[0].description).toContain(`#${invoice.reference}`);
+      expect(embedded[1].description).toContain(`#${invoice.reference}`);
+      expect(embedded[0].number).not.toBe(embedded[1].number);
+
+      await approvePendingVoucher(embedded[0].id, userId);
+      const afterFirst = await embeddedVouchersForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
+      expect(afterFirst.find((v) => v.id === embedded[0].id)!.status).toBe(VoucherStatus.ACTIVE);
+      expect(afterFirst.find((v) => v.id === embedded[1].id)!.status).toBe(
+        VoucherStatus.PENDING_APPROVAL,
+      );
     });
 
     it('no payment creates no embedded voucher', async () => {

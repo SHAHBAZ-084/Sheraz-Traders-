@@ -67,8 +67,8 @@ const invoiceDetailInclude = {
     include: {
       voucher: {
         include: {
-          debitAccount: true,
-          creditAccount: true,
+          debitAccount: { include: { category: true } },
+          creditAccount: { include: { category: true } },
           ledgerEntries: {
             where: { isReversal: false },
             orderBy: { id: 'asc' as const },
@@ -84,6 +84,8 @@ const invoiceDetailInclude = {
       },
     },
   },
+  embeddedReceiptAccount: { include: { category: true } },
+  embeddedPaymentAccount: { include: { category: true } },
   debitAccount: true,
   product: { include: { account: true } },
   createdBy: { select: { id: true, displayName: true, username: true } },

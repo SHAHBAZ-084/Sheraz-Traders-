@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { FieldLabel, PageShell, Panel, PrimaryButton, TextInput } from '../../components/ui/PageShell';
+import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { AmountInput } from '../../components/ui/AmountInput';
 import { PageCloseBar } from '../../components/ui/PageCloseBar';
@@ -19,7 +19,7 @@ import {
   parseNum,
   type KachiBagMode,
 } from '../../lib/kachiMaalCalculations';
-import { formatLedgerAmount, formatLedgerBalance, sanitizeAmountInput } from '../../lib/format';
+import { formatDate, formatLedgerAmount, formatLedgerBalance, sanitizeAmountInput } from '../../lib/format';
 import { kachiUrduLabel } from '../../lib/kachiUrduLabels';
 
 type ProductKindFilter = 'OTHER' | 'KACHI';
@@ -31,6 +31,52 @@ function todayInputValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+function dateToInputValue(date: string | Date) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return todayInputValue();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+type StockAdjustmentSearchRow = {
+  id: number;
+  productId: number;
+  productName: string;
+  storeId: number | null;
+  storeName: string | null;
+  adjustmentDate: string;
+  description: string;
+  quantity: number;
+};
+
+type AccountAdjustmentSearchRow = {
+  id: number;
+  accountId: number;
+  accountName: string;
+  adjustmentDate: string;
+  description: string;
+  amount: number;
+  side: 'DR' | 'CR';
+};
+
+type AccountOpeningBalanceSearchRow = {
+  id: number;
+  accountId: number;
+  accountName: string;
+  openingDate: string;
+  amount: number;
+  side: 'DR' | 'CR';
+};
+
+type ProductOpeningStockSearchRow = {
+  id: number;
+  productId: number;
+  productName: string;
+  storeId: number | null;
+  storeName: string | null;
+  openingDate: string;
+  quantity: number;
+};
 
 export function StockAdjustmentPage() {
   const [tab, setTab] = useState<AdjustmentTab>('stock');
@@ -48,6 +94,7 @@ export function StockAdjustmentPage() {
   const [kachiLooseKg, setKachiLooseKg] = useState('');
   const [kachiBhartii, setKachiBhartii] = useState('');
   const [kachiRatePerMaund, setKachiRatePerMaund] = useState('');
+  const [stockDescription, setStockDescription] = useState('');
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
@@ -55,8 +102,18 @@ export function StockAdjustmentPage() {
   const [stockError, setStockError] = useState('');
   const [stockMessage, setStockMessage] = useState('');
   const [stockSaving, setStockSaving] = useState(false);
+  const [stockSearchQuery, setStockSearchQuery] = useState('');
+  const [stockSearchResults, setStockSearchResults] = useState<StockAdjustmentSearchRow[]>([]);
+  const [stockSearchLoading, setStockSearchLoading] = useState(false);
+  const [stockSearchError, setStockSearchError] = useState('');
+  const [selectedStockAdjustment, setSelectedStockAdjustment] = useState<StockAdjustmentSearchRow | null>(null);
+  const [stockEditDate, setStockEditDate] = useState(todayInputValue);
+  const [stockEditDescription, setStockEditDescription] = useState('');
+  const [stockEditSaving, setStockEditSaving] = useState(false);
+  const [stockEditMessage, setStockEditMessage] = useState('');
 
   const [accountAdjustmentDate, setAccountAdjustmentDate] = useState(todayInputValue);
+  const [accountDescription, setAccountDescription] = useState('');
   const [accountCategoryId, setAccountCategoryId] = useState('');
   const [accountId, setAccountId] = useState('');
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
@@ -66,6 +123,35 @@ export function StockAdjustmentPage() {
   const [accountError, setAccountError] = useState('');
   const [accountMessage, setAccountMessage] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
+  const [accountSearchQuery, setAccountSearchQuery] = useState('');
+  const [accountSearchResults, setAccountSearchResults] = useState<AccountAdjustmentSearchRow[]>([]);
+  const [accountSearchLoading, setAccountSearchLoading] = useState(false);
+  const [accountSearchError, setAccountSearchError] = useState('');
+  const [selectedAccountAdjustment, setSelectedAccountAdjustment] = useState<AccountAdjustmentSearchRow | null>(null);
+  const [accountEditDate, setAccountEditDate] = useState(todayInputValue);
+  const [accountEditDescription, setAccountEditDescription] = useState('');
+  const [accountEditSaving, setAccountEditSaving] = useState(false);
+  const [accountEditMessage, setAccountEditMessage] = useState('');
+
+  const [obSearchQuery, setObSearchQuery] = useState('');
+  const [obSearchResults, setObSearchResults] = useState<AccountOpeningBalanceSearchRow[]>([]);
+  const [obSearchLoading, setObSearchLoading] = useState(false);
+  const [obSearchError, setObSearchError] = useState('');
+  const [selectedOpeningBalance, setSelectedOpeningBalance] = useState<AccountOpeningBalanceSearchRow | null>(null);
+  const [obEditDate, setObEditDate] = useState(todayInputValue);
+  const [obEditSaving, setObEditSaving] = useState(false);
+  const [obEditMessage, setObEditMessage] = useState('');
+  const [obEditWarning, setObEditWarning] = useState('');
+
+  const [osSearchQuery, setOsSearchQuery] = useState('');
+  const [osSearchResults, setOsSearchResults] = useState<ProductOpeningStockSearchRow[]>([]);
+  const [osSearchLoading, setOsSearchLoading] = useState(false);
+  const [osSearchError, setOsSearchError] = useState('');
+  const [selectedOpeningStock, setSelectedOpeningStock] = useState<ProductOpeningStockSearchRow | null>(null);
+  const [osEditDate, setOsEditDate] = useState(todayInputValue);
+  const [osEditSaving, setOsEditSaving] = useState(false);
+  const [osEditMessage, setOsEditMessage] = useState('');
+  const [osEditWarning, setOsEditWarning] = useState('');
 
   useEffect(() => {
     Promise.all([api.listProducts(), api.listProductCategories(), api.listActiveStores()])
@@ -240,6 +326,7 @@ export function StockAdjustmentPage() {
           adjustmentDate,
           productId: Number(productId),
           storeId: Number(storeId),
+          description: stockDescription.trim() || undefined,
           kachiOpening: {
             bagMode: kachiBagMode,
             bagCount,
@@ -250,7 +337,9 @@ export function StockAdjustmentPage() {
           },
         });
         setStockMessage(
-          `Stock adjustment posted for ${result.productName}. New balance at store: ${result.balance}.`,
+          result.pendingApproval
+            ? `Stock adjustment #${result.id} submitted for ${result.productName}. Stock and cost are NOT updated until an Admin approves it in Pending Approvals.`
+            : `Stock adjustment posted for ${result.productName}. New balance at store: ${result.balance}.`,
         );
       } else {
         const qty = parseNum(quantity);
@@ -273,13 +362,17 @@ export function StockAdjustmentPage() {
           storeId: Number(storeId),
           quantity: qty,
           rate: unitRate,
+          description: stockDescription.trim() || undefined,
         });
         setStockMessage(
-          `Stock adjustment posted for ${result.productName}. New balance at store: ${result.balance}.`,
+          result.pendingApproval
+            ? `Stock adjustment #${result.id} submitted for ${result.productName}. Stock and cost are NOT updated until an Admin approves it in Pending Approvals.`
+            : `Stock adjustment posted for ${result.productName}. New balance at store: ${result.balance}.`,
         );
       }
 
       resetStockFields();
+      setStockDescription('');
       if (productId && typeof storeId === 'number') {
         const balance = await api.getStockBalance({
           productId: Number(productId),
@@ -321,11 +414,13 @@ export function StockAdjustmentPage() {
         accountId: Number(accountId),
         amount,
         side: adjustmentSide,
+        description: accountDescription.trim() || undefined,
       });
       setAccountMessage(
         `Account adjustment posted for ${result.accountName}. New balance: ${formatLedgerBalance(result.balance)}.`,
       );
       setAdjustmentAmount('');
+      setAccountDescription('');
 
       const refreshed = await api.listAccounts();
       setAccounts(Array.isArray(refreshed) ? refreshed : []);
@@ -336,13 +431,212 @@ export function StockAdjustmentPage() {
     }
   }
 
+  async function runStockSearch(e?: FormEvent) {
+    e?.preventDefault();
+    setStockSearchError('');
+    setStockSearchLoading(true);
+    setSelectedStockAdjustment(null);
+    try {
+      const { items } = await api.searchStockAdjustments(stockSearchQuery.trim());
+      setStockSearchResults(items);
+      if (items.length === 0) setStockSearchError('No matching stock adjustments found.');
+    } catch (err) {
+      setStockSearchError(err instanceof Error ? err.message : 'Search failed');
+      setStockSearchResults([]);
+    } finally {
+      setStockSearchLoading(false);
+    }
+  }
+
+  function selectStockAdjustment(row: StockAdjustmentSearchRow) {
+    setSelectedStockAdjustment(row);
+    setStockEditDate(dateToInputValue(row.adjustmentDate));
+    setStockEditDescription(row.description);
+    setStockEditMessage('');
+  }
+
+  async function saveStockAdjustmentEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedStockAdjustment) return;
+    setStockEditSaving(true);
+    setStockEditMessage('');
+    try {
+      const updated = await api.updateStockAdjustment(selectedStockAdjustment.id, {
+        adjustmentDate: stockEditDate,
+        description: stockEditDescription,
+      });
+      setStockEditMessage(`Updated adjustment for ${updated.productName}.`);
+      setSelectedStockAdjustment({
+        ...selectedStockAdjustment,
+        adjustmentDate: updated.adjustmentDate,
+        description: updated.description,
+      });
+      void runStockSearch();
+    } catch (err) {
+      setStockEditMessage(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setStockEditSaving(false);
+    }
+  }
+
+  async function runAccountSearch(e?: FormEvent) {
+    e?.preventDefault();
+    setAccountSearchError('');
+    setAccountSearchLoading(true);
+    setSelectedAccountAdjustment(null);
+    try {
+      const { items } = await api.searchAccountAdjustments(accountSearchQuery.trim());
+      setAccountSearchResults(items);
+      if (items.length === 0) setAccountSearchError('No matching account adjustments found.');
+    } catch (err) {
+      setAccountSearchError(err instanceof Error ? err.message : 'Search failed');
+      setAccountSearchResults([]);
+    } finally {
+      setAccountSearchLoading(false);
+    }
+  }
+
+  function selectAccountAdjustment(row: AccountAdjustmentSearchRow) {
+    setSelectedAccountAdjustment(row);
+    setAccountEditDate(dateToInputValue(row.adjustmentDate));
+    setAccountEditDescription(row.description);
+    setAccountEditMessage('');
+  }
+
+  async function saveAccountAdjustmentEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedAccountAdjustment) return;
+    setAccountEditSaving(true);
+    setAccountEditMessage('');
+    try {
+      const updated = await api.updateAccountAdjustment(selectedAccountAdjustment.id, {
+        adjustmentDate: accountEditDate,
+        description: accountEditDescription,
+      });
+      setAccountEditMessage(`Updated adjustment for ${updated.accountName}.`);
+      setSelectedAccountAdjustment({
+        ...selectedAccountAdjustment,
+        adjustmentDate: updated.adjustmentDate,
+        description: updated.description,
+      });
+      void runAccountSearch();
+    } catch (err) {
+      setAccountEditMessage(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setAccountEditSaving(false);
+    }
+  }
+
+  async function runObSearch(e?: FormEvent) {
+    e?.preventDefault();
+    setObSearchError('');
+    setObSearchLoading(true);
+    setSelectedOpeningBalance(null);
+    setObEditWarning('');
+    try {
+      const { items } = await api.searchAccountOpeningBalances(obSearchQuery.trim());
+      setObSearchResults(items);
+      if (items.length === 0) setObSearchError('No matching opening balances found.');
+    } catch (err) {
+      setObSearchError(err instanceof Error ? err.message : 'Search failed');
+      setObSearchResults([]);
+    } finally {
+      setObSearchLoading(false);
+    }
+  }
+
+  function selectOpeningBalance(row: AccountOpeningBalanceSearchRow) {
+    setSelectedOpeningBalance(row);
+    setObEditDate(dateToInputValue(row.openingDate));
+    setObEditMessage('');
+    setObEditWarning('');
+  }
+
+  async function saveOpeningBalanceEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedOpeningBalance) return;
+    setObEditSaving(true);
+    setObEditMessage('');
+    setObEditWarning('');
+    try {
+      const updated = await api.updateAccountOpeningBalanceDate(selectedOpeningBalance.id, {
+        adjustmentDate: obEditDate,
+      });
+      setObEditMessage(`Updated opening balance date for ${updated.accountName}.`);
+      if (updated.warning) setObEditWarning(updated.warning);
+      setSelectedOpeningBalance({
+        ...selectedOpeningBalance,
+        openingDate: updated.openingDate,
+      });
+      void runObSearch();
+    } catch (err) {
+      setObEditMessage(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setObEditSaving(false);
+    }
+  }
+
+  async function runOsSearch(e?: FormEvent) {
+    e?.preventDefault();
+    setOsSearchError('');
+    setOsSearchLoading(true);
+    setSelectedOpeningStock(null);
+    setOsEditWarning('');
+    try {
+      const { items } = await api.searchProductOpeningStock(osSearchQuery.trim());
+      setOsSearchResults(items);
+      if (items.length === 0) setOsSearchError('No matching opening stock entries found.');
+    } catch (err) {
+      setOsSearchError(err instanceof Error ? err.message : 'Search failed');
+      setOsSearchResults([]);
+    } finally {
+      setOsSearchLoading(false);
+    }
+  }
+
+  function selectOpeningStock(row: ProductOpeningStockSearchRow) {
+    setSelectedOpeningStock(row);
+    setOsEditDate(dateToInputValue(row.openingDate));
+    setOsEditMessage('');
+    setOsEditWarning('');
+  }
+
+  async function saveOpeningStockEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedOpeningStock) return;
+    setOsEditSaving(true);
+    setOsEditMessage('');
+    setOsEditWarning('');
+    try {
+      const updated = await api.updateProductOpeningStockDate(selectedOpeningStock.id, {
+        adjustmentDate: osEditDate,
+      });
+      setOsEditMessage(`Updated opening stock date for ${updated.productName}.`);
+      if (updated.warning) setOsEditWarning(updated.warning);
+      setSelectedOpeningStock({
+        ...selectedOpeningStock,
+        openingDate: updated.openingDate,
+      });
+      void runOsSearch();
+    } catch (err) {
+      setOsEditMessage(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setOsEditSaving(false);
+    }
+  }
+
   const unitHint = selectedProduct?.unit?.trim() || 'unit';
 
   return (
-    <PageShell
+      <PageShell
       title="Stock Adjustment"
       subtitle="Post stock or account adjustments against Opening Balance Equity"
     >
+      <p className="mb-4 max-w-2xl rounded border border-amber-600/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        Stock adjustments require Admin approval. Until approved in Pending Approvals, they do not
+        change store stock or the product&apos;s average cost — so sales of adjustment-only products
+        stay blocked until approval (or use a provisional pending rate).
+      </p>
       <div className="mb-4 max-w-lg print:hidden">
         <SegmentedControl
           ariaLabel="Adjustment type"
@@ -520,6 +814,15 @@ export function StockAdjustmentPage() {
               </div>
             )}
 
+            <div>
+              <FieldLabel>Description (optional)</FieldLabel>
+              <TextInput
+                value={stockDescription}
+                onChange={(e) => setStockDescription(e.target.value)}
+                placeholder="Defaults to Stock Adjustment — product name"
+              />
+            </div>
+
             {stockError ? <p className="text-sm text-danger">{stockError}</p> : null}
             {stockMessage ? <p className="text-sm text-accent">{stockMessage}</p> : null}
 
@@ -527,6 +830,130 @@ export function StockAdjustmentPage() {
               {stockSaving ? 'Posting…' : 'Post Stock Adjustment'}
             </PrimaryButton>
           </form>
+
+          <div className="mt-8 border-t border-border pt-6">
+            <h3 className="text-sm font-semibold text-textPrimary">Find previous stock adjustment</h3>
+            <p className="mt-1 text-xs text-textMuted">
+              Search by product name, description text, or date (YYYY-MM-DD).
+            </p>
+            <form className="mt-3 flex flex-wrap gap-2" onSubmit={runStockSearch}>
+              <TextInput
+                value={stockSearchQuery}
+                onChange={(e) => setStockSearchQuery(e.target.value)}
+                placeholder="Product name, description, or date…"
+                className="min-w-[220px] flex-1"
+              />
+              <SecondaryButton type="submit" disabled={stockSearchLoading || !stockSearchQuery.trim()}>
+                {stockSearchLoading ? 'Searching…' : 'Search'}
+              </SecondaryButton>
+            </form>
+            {stockSearchError ? <p className="mt-2 text-sm text-danger">{stockSearchError}</p> : null}
+            {stockSearchResults.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {stockSearchResults.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className={`w-full rounded-sm border px-3 py-2 text-left text-sm ${
+                        selectedStockAdjustment?.id === row.id
+                          ? 'border-accent bg-bgAccent'
+                          : 'border-border bg-surface1 hover:bg-surface2'
+                      }`}
+                      onClick={() => selectStockAdjustment(row)}
+                    >
+                      <span className="font-medium">{row.productName}</span>
+                      <span className="text-textMuted"> · {formatDate(row.adjustmentDate)}</span>
+                      <span className="block text-xs text-textSecondary">{row.description}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selectedStockAdjustment ? (
+              <form className="mt-4 space-y-3 rounded-sm border border-border bg-surface2 p-3" onSubmit={saveStockAdjustmentEdit}>
+                <p className="text-sm font-medium text-textPrimary">
+                  Update: {selectedStockAdjustment.productName}
+                </p>
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput type="date" value={stockEditDate} onChange={(e) => setStockEditDate(e.target.value)} required />
+                </div>
+                <div>
+                  <FieldLabel>Description</FieldLabel>
+                  <TextInput value={stockEditDescription} onChange={(e) => setStockEditDescription(e.target.value)} />
+                </div>
+                {stockEditMessage ? (
+                  <p className={`text-sm ${stockEditMessage.startsWith('Updated') ? 'text-accent' : 'text-danger'}`}>
+                    {stockEditMessage}
+                  </p>
+                ) : null}
+                <PrimaryButton type="submit" disabled={stockEditSaving}>
+                  {stockEditSaving ? 'Saving…' : 'Save changes'}
+                </PrimaryButton>
+              </form>
+            ) : null}
+          </div>
+
+          <div className="mt-8 border-t border-border pt-6">
+            <h3 className="text-sm font-semibold text-textPrimary">Correct opening stock date</h3>
+            <p className="mt-1 text-xs text-textMuted">
+              Search by product name or date (YYYY-MM-DD), then set the date recorded for original opening stock.
+            </p>
+            <form className="mt-3 flex flex-wrap gap-2" onSubmit={runOsSearch}>
+              <TextInput
+                value={osSearchQuery}
+                onChange={(e) => setOsSearchQuery(e.target.value)}
+                placeholder="Product name or date…"
+                className="min-w-[220px] flex-1"
+              />
+              <SecondaryButton type="submit" disabled={osSearchLoading || !osSearchQuery.trim()}>
+                {osSearchLoading ? 'Searching…' : 'Search'}
+              </SecondaryButton>
+            </form>
+            {osSearchError ? <p className="mt-2 text-sm text-danger">{osSearchError}</p> : null}
+            {osSearchResults.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {osSearchResults.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className={`w-full rounded-sm border px-3 py-2 text-left text-sm ${
+                        selectedOpeningStock?.id === row.id
+                          ? 'border-accent bg-bgAccent'
+                          : 'border-border bg-surface1 hover:bg-surface2'
+                      }`}
+                      onClick={() => selectOpeningStock(row)}
+                    >
+                      <span className="font-medium">{row.productName}</span>
+                      {row.storeName ? <span className="text-textMuted"> · {row.storeName}</span> : null}
+                      <span className="text-textMuted"> · {formatDate(row.openingDate)}</span>
+                      <span className="text-textMuted"> · qty {row.quantity}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selectedOpeningStock ? (
+              <form className="mt-4 space-y-3 rounded-sm border border-border bg-surface2 p-3" onSubmit={saveOpeningStockEdit}>
+                <p className="text-sm font-medium text-textPrimary">
+                  Opening stock: {selectedOpeningStock.productName}
+                </p>
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput type="date" value={osEditDate} onChange={(e) => setOsEditDate(e.target.value)} required />
+                </div>
+                {osEditWarning ? <p className="text-sm text-amber-700">{osEditWarning}</p> : null}
+                {osEditMessage ? (
+                  <p className={`text-sm ${osEditMessage.startsWith('Updated') ? 'text-accent' : 'text-danger'}`}>
+                    {osEditMessage}
+                  </p>
+                ) : null}
+                <PrimaryButton type="submit" disabled={osEditSaving}>
+                  {osEditSaving ? 'Saving…' : 'Save date'}
+                </PrimaryButton>
+              </form>
+            ) : null}
+          </div>
         </Panel>
       ) : (
         <Panel className="max-w-lg">
@@ -588,6 +1015,15 @@ export function StockAdjustmentPage() {
               </p>
             </div>
 
+            <div>
+              <FieldLabel>Description (optional)</FieldLabel>
+              <TextInput
+                value={accountDescription}
+                onChange={(e) => setAccountDescription(e.target.value)}
+                placeholder="Defaults to Account Adjustment"
+              />
+            </div>
+
             {accountError ? <p className="text-sm text-danger">{accountError}</p> : null}
             {accountMessage ? <p className="text-sm text-accent">{accountMessage}</p> : null}
 
@@ -595,6 +1031,130 @@ export function StockAdjustmentPage() {
               {accountSaving ? 'Posting…' : 'Post Account Adjustment'}
             </PrimaryButton>
           </form>
+
+          <div className="mt-8 border-t border-border pt-6">
+            <h3 className="text-sm font-semibold text-textPrimary">Find previous account adjustment</h3>
+            <p className="mt-1 text-xs text-textMuted">
+              Search by account name, description text, or date (YYYY-MM-DD).
+            </p>
+            <form className="mt-3 flex flex-wrap gap-2" onSubmit={runAccountSearch}>
+              <TextInput
+                value={accountSearchQuery}
+                onChange={(e) => setAccountSearchQuery(e.target.value)}
+                placeholder="Account name, description, or date…"
+                className="min-w-[220px] flex-1"
+              />
+              <SecondaryButton type="submit" disabled={accountSearchLoading || !accountSearchQuery.trim()}>
+                {accountSearchLoading ? 'Searching…' : 'Search'}
+              </SecondaryButton>
+            </form>
+            {accountSearchError ? <p className="mt-2 text-sm text-danger">{accountSearchError}</p> : null}
+            {accountSearchResults.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {accountSearchResults.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className={`w-full rounded-sm border px-3 py-2 text-left text-sm ${
+                        selectedAccountAdjustment?.id === row.id
+                          ? 'border-accent bg-bgAccent'
+                          : 'border-border bg-surface1 hover:bg-surface2'
+                      }`}
+                      onClick={() => selectAccountAdjustment(row)}
+                    >
+                      <span className="font-medium">{row.accountName}</span>
+                      <span className="text-textMuted"> · {formatDate(row.adjustmentDate)}</span>
+                      <span className="text-textMuted"> · {row.side} {formatLedgerAmount(row.amount)}</span>
+                      <span className="block text-xs text-textSecondary">{row.description}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selectedAccountAdjustment ? (
+              <form className="mt-4 space-y-3 rounded-sm border border-border bg-surface2 p-3" onSubmit={saveAccountAdjustmentEdit}>
+                <p className="text-sm font-medium text-textPrimary">
+                  Update: {selectedAccountAdjustment.accountName}
+                </p>
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput type="date" value={accountEditDate} onChange={(e) => setAccountEditDate(e.target.value)} required />
+                </div>
+                <div>
+                  <FieldLabel>Description</FieldLabel>
+                  <TextInput value={accountEditDescription} onChange={(e) => setAccountEditDescription(e.target.value)} />
+                </div>
+                {accountEditMessage ? (
+                  <p className={`text-sm ${accountEditMessage.startsWith('Updated') ? 'text-accent' : 'text-danger'}`}>
+                    {accountEditMessage}
+                  </p>
+                ) : null}
+                <PrimaryButton type="submit" disabled={accountEditSaving}>
+                  {accountEditSaving ? 'Saving…' : 'Save changes'}
+                </PrimaryButton>
+              </form>
+            ) : null}
+          </div>
+
+          <div className="mt-8 border-t border-border pt-6">
+            <h3 className="text-sm font-semibold text-textPrimary">Correct opening balance date</h3>
+            <p className="mt-1 text-xs text-textMuted">
+              Search by account name or date (YYYY-MM-DD), then set the date recorded for the original opening balance.
+            </p>
+            <form className="mt-3 flex flex-wrap gap-2" onSubmit={runObSearch}>
+              <TextInput
+                value={obSearchQuery}
+                onChange={(e) => setObSearchQuery(e.target.value)}
+                placeholder="Account name or date…"
+                className="min-w-[220px] flex-1"
+              />
+              <SecondaryButton type="submit" disabled={obSearchLoading || !obSearchQuery.trim()}>
+                {obSearchLoading ? 'Searching…' : 'Search'}
+              </SecondaryButton>
+            </form>
+            {obSearchError ? <p className="mt-2 text-sm text-danger">{obSearchError}</p> : null}
+            {obSearchResults.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {obSearchResults.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className={`w-full rounded-sm border px-3 py-2 text-left text-sm ${
+                        selectedOpeningBalance?.id === row.id
+                          ? 'border-accent bg-bgAccent'
+                          : 'border-border bg-surface1 hover:bg-surface2'
+                      }`}
+                      onClick={() => selectOpeningBalance(row)}
+                    >
+                      <span className="font-medium">{row.accountName}</span>
+                      <span className="text-textMuted"> · {formatDate(row.openingDate)}</span>
+                      <span className="text-textMuted"> · {row.side} {formatLedgerAmount(row.amount)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selectedOpeningBalance ? (
+              <form className="mt-4 space-y-3 rounded-sm border border-border bg-surface2 p-3" onSubmit={saveOpeningBalanceEdit}>
+                <p className="text-sm font-medium text-textPrimary">
+                  Opening balance: {selectedOpeningBalance.accountName}
+                </p>
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput type="date" value={obEditDate} onChange={(e) => setObEditDate(e.target.value)} required />
+                </div>
+                {obEditWarning ? <p className="text-sm text-amber-700">{obEditWarning}</p> : null}
+                {obEditMessage ? (
+                  <p className={`text-sm ${obEditMessage.startsWith('Updated') ? 'text-accent' : 'text-danger'}`}>
+                    {obEditMessage}
+                  </p>
+                ) : null}
+                <PrimaryButton type="submit" disabled={obEditSaving}>
+                  {obEditSaving ? 'Saving…' : 'Save date'}
+                </PrimaryButton>
+              </form>
+            ) : null}
+          </div>
         </Panel>
       )}
 

@@ -9,12 +9,18 @@ const lineSchema = z.object({
   rate: z.number().min(0),
 });
 
+const embeddedLineSchema = z.object({
+  amount: z.number().positive(),
+  accountId: z.number().int().positive(),
+});
+
 const createSchema = z.object({
   invoiceDate: z.string().min(1),
   billNo: z.string().optional(),
   notes: z.string().optional(),
   storeId: z.number().int().positive(),
   customerAccountId: z.number().int().positive(),
+  receipts: z.array(embeddedLineSchema).optional(),
   receiptAmount: z.number().min(0).optional(),
   receiptAccountId: z.number().int().positive().optional(),
   lines: z.array(lineSchema).min(1),

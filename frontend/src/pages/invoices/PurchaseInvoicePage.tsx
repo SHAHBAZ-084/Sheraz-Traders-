@@ -32,6 +32,14 @@ import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
 import { urduLabelClassName } from '../../lib/urduScript';
 import { bankCashAccountOptions, bankCashCategoryOptions } from '../../lib/bankCashAccounts';
+import {
+  embeddedLinesFromInvoiceVouchers,
+  embeddedLinesFromLegacyScalar,
+  newEmbeddedPaymentLineDraft,
+  parseEmbeddedPaymentLinesPayload,
+  sumEmbeddedLineAmounts,
+  type EmbeddedPaymentLineDraft,
+} from '../../lib/embeddedInvoicePaymentLines';
 
 type GridRow = {
   clientId: string;
@@ -60,9 +68,7 @@ type PurchaseInvoiceDraft = {
   mazduriAmount: string;
   partyCategoryId: string;
   supplierAccountId: string;
-  paymentCategoryId: string;
-  paymentAccountId: string;
-  paymentAmount: string;
+  paymentLines: EmbeddedPaymentLineDraft[];
 };
 
 function todayInputValue() {
@@ -73,29 +79,45 @@ function todayInputValue() {
 function LinesTable({
   rows,
   onRemove,
+  partyName,
+  invoiceTotal,
+  paidTotal,
 }: {
   rows: GridRow[];
   onRemove?: (clientId: string) => void;
+  partyName: string;
+  invoiceTotal: number;
+  paidTotal: number;
 }) {
   const hasAnyMazduri = rows.some((r) => r.mazduriAmount > 0);
+  const remaining = Math.max(0, invoiceTotal - paidTotal);
+  const baseCols = hasAnyMazduri ? 5 : 4;
+  const colSpan = onRemove ? baseCols + 1 : baseCols;
+  const labelColSpan = hasAnyMazduri ? 4 : 3;
+
   return (
-    <InvoicePreviewGridShell isEmpty={rows.length === 0}>
+    <InvoicePreviewGridShell isEmpty={rows.length === 0 && !partyName}>
       <table className="w-full min-w-[420px] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface2">
+          <tr className="border-b border-border">
+            <th colSpan={colSpan} className="px-3 py-2.5 text-left">
+              <span className="inv-bill-party-name">{partyName.trim() || '—'}</span>
+            </th>
+          </tr>
           <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
             <th className="px-3 py-2.5">Product</th>
-            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
-              {salePurchaseInvoiceLabel('qty')}
-            </th>
             <th className={urduLabelClassName(salePurchaseInvoiceLabel('rate'), 'px-3 py-2.5 text-right')}>
               {salePurchaseInvoiceLabel('rate')}
+            </th>
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('qty')}
             </th>
             {hasAnyMazduri ? (
               <th className={urduLabelClassName(salePurchaseInvoiceLabel('mazduri'), 'px-3 py-2.5 text-right')}>
                 {salePurchaseInvoiceLabel('mazduri')}
               </th>
             ) : null}
-            <th className="px-3 py-2.5 text-right">Total</th>
+            <th className="px-3 py-2.5 text-right">Amount</th>
             {onRemove ? <th className="px-3 py-2.5" /> : null}
           </tr>
         </thead>
@@ -103,8 +125,8 @@ function LinesTable({
           {rows.map((row) => (
             <tr key={row.clientId} className="border-b border-border/50">
               <td className="px-3 py-2 inv-bill-product-name">{row.productName}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.rate)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
               {hasAnyMazduri ? (
                 <td className="px-3 py-2 text-right tabular-nums">
                   {row.mazduriAmount > 0 ? formatLedgerAmount(row.mazduriAmount) : '—'}
@@ -120,6 +142,37 @@ function LinesTable({
               ) : null}
             </tr>
           ))}
+          {rows.length > 0 ? (
+            <>
+              <tr className="border-t border-border bg-surface2/60">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Total
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">
+                  {formatLedgerAmount(invoiceTotal)}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+              <tr className="border-b border-border/50 bg-surface2/40">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Paid
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {paidTotal > 0 ? formatLedgerAmount(paidTotal) : '0'}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+              <tr className="bg-surface2/40">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Remaining
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                  {formatLedgerAmount(remaining)}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+            </>
+          ) : null}
         </tbody>
       </table>
     </InvoicePreviewGridShell>
@@ -153,9 +206,9 @@ export function PurchaseInvoicePage() {
   const [mazduriAmount, setMazduriAmount] = useState(() => restoredState?.mazduriAmount ?? '');
   const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [supplierAccountId, setSupplierAccountId] = useState(() => restoredState?.supplierAccountId ?? '');
-  const [paymentCategoryId, setPaymentCategoryId] = useState(() => restoredState?.paymentCategoryId ?? '');
-  const [paymentAccountId, setPaymentAccountId] = useState(() => restoredState?.paymentAccountId ?? '');
-  const [paymentAmount, setPaymentAmount] = useState(() => restoredState?.paymentAmount ?? '');
+  const [paymentLines, setPaymentLines] = useState<EmbeddedPaymentLineDraft[]>(
+    () => restoredState?.paymentLines ?? [],
+  );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -174,9 +227,7 @@ export function PurchaseInvoicePage() {
       if (restoredState.mazduriAmount !== undefined) setMazduriAmount(restoredState.mazduriAmount);
       if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.supplierAccountId) setSupplierAccountId(restoredState.supplierAccountId);
-      if (restoredState.paymentCategoryId) setPaymentCategoryId(restoredState.paymentCategoryId);
-      if (restoredState.paymentAccountId) setPaymentAccountId(restoredState.paymentAccountId);
-      if (restoredState.paymentAmount) setPaymentAmount(restoredState.paymentAmount);
+      if (restoredState.paymentLines) setPaymentLines(restoredState.paymentLines);
     }
   }, [restoredState]);
 
@@ -243,15 +294,17 @@ export function PurchaseInvoicePage() {
         setBillNo(inv.billNo ?? '');
         if (inv.storeId != null) setStoreId(String(inv.storeId));
         if (inv.debitAccountId != null) setSupplierAccountId(String(inv.debitAccountId));
-        const paymentAmt = (inv as { embeddedPaymentAmount?: number | null }).embeddedPaymentAmount;
-        const paymentAcct = (inv as { embeddedPaymentAccountId?: number | null }).embeddedPaymentAccountId;
-        if (paymentAmt != null && Number(paymentAmt) > 0) {
-          setPaymentAmount(String(paymentAmt));
-        }
-        if (paymentAcct != null) {
-          setPaymentAccountId(String(paymentAcct));
-          const acct = accounts.find((a) => a.id === paymentAcct);
-          if (acct) setPaymentCategoryId(String(acct.categoryId));
+        const fromVouchers = embeddedLinesFromInvoiceVouchers(
+          accounts,
+          (inv as { vouchers?: Array<{ voucher?: { id: number; type: string; status: string; amount: number | string; debitAccountId?: number | null; creditAccountId?: number | null } | null }> }).vouchers ?? [],
+          'PURCHASE_PAYMENT',
+        );
+        if (fromVouchers.length > 0) {
+          setPaymentLines(fromVouchers);
+        } else {
+          const paymentAmt = (inv as { embeddedPaymentAmount?: number | null }).embeddedPaymentAmount;
+          const paymentAcct = (inv as { embeddedPaymentAccountId?: number | null }).embeddedPaymentAccountId;
+          setPaymentLines(embeddedLinesFromLegacyScalar(accounts, paymentAcct, paymentAmt));
         }
         setGridRows(
           (inv.items ?? []).map((item, index) => {
@@ -306,14 +359,11 @@ export function PurchaseInvoicePage() {
     [accounts, partyCategoryId],
   );
   const paymentCategoryOptions = useMemo(() => bankCashCategoryOptions(categories), [categories]);
-  const paymentAccountOptions = useMemo(
-    () => bankCashAccountOptions(accounts, paymentCategoryId),
-    [accounts, paymentCategoryId],
-  );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
     [gridRows],
   );
+  const paymentTotal = useMemo(() => sumEmbeddedLineAmounts(paymentLines), [paymentLines]);
 
   function onProductCategoryChange(value: string) {
     setProductCategoryId(value);
@@ -325,24 +375,22 @@ export function PurchaseInvoicePage() {
     setSupplierAccountId('');
   }
 
-  function onPaymentCategoryChange(value: string) {
-    setPaymentCategoryId(value);
-    setPaymentAccountId('');
+  function addPaymentLine() {
+    setPaymentLines((lines) => [...lines, newEmbeddedPaymentLineDraft()]);
+  }
+
+  function removePaymentLine(clientId: string) {
+    setPaymentLines((lines) => lines.filter((line) => line.clientId !== clientId));
+  }
+
+  function updatePaymentLine(clientId: string, patch: Partial<EmbeddedPaymentLineDraft>) {
+    setPaymentLines((lines) =>
+      lines.map((line) => (line.clientId === clientId ? { ...line, ...patch } : line)),
+    );
   }
 
   function parsePaymentPayload() {
-    const amount = paymentAmount.trim() ? Number(paymentAmount) : 0;
-    if (amount <= 0) return {};
-    if (!paymentAccountId) {
-      throw new Error('Select a Bank/Cash account for the payment amount');
-    }
-    if (amount > invoiceTotal + 0.01) {
-      throw new Error('Payment amount cannot exceed invoice total');
-    }
-    return {
-      paymentAmount: amount,
-      paymentAccountId: Number(paymentAccountId),
-    };
+    return parseEmbeddedPaymentLinesPayload(paymentLines, invoiceTotal, 'Payment');
   }
 
   function addRow() {
@@ -568,31 +616,69 @@ export function PurchaseInvoicePage() {
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Payment (optional)">
-                <InvoiceFieldRow cols={3} className="inv-sp-embedded-pay-row">
-                  <InvoiceField>
-                    <FieldLabel>Bank / Cash category</FieldLabel>
-                    <SearchSelect
-                      options={[{ value: '', label: 'None' }, ...paymentCategoryOptions]}
-                      value={paymentCategoryId}
-                      onChange={onPaymentCategoryChange}
-                      placeholder="None"
-                    />
-                  </InvoiceField>
-                  <InvoiceField>
-                    <FieldLabel>Payment account</FieldLabel>
-                    <SearchSelect
-                      options={paymentAccountOptions}
-                      value={paymentAccountId}
-                      onChange={setPaymentAccountId}
-                      placeholder={paymentCategoryId ? 'Select account' : 'Select category first'}
-                      disabled={!paymentCategoryId}
-                    />
-                  </InvoiceField>
-                  <InvoiceField>
-                    <FieldLabel>Paid amount</FieldLabel>
-                    <DecimalInput value={paymentAmount} onChange={setPaymentAmount} />
-                  </InvoiceField>
-                </InvoiceFieldRow>
+                {paymentLines.length === 0 ? (
+                  <p className="text-xs text-textMuted">No payment lines yet. Add one if payment was made.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {paymentLines.map((line) => (
+                      <InvoiceFieldRow key={line.clientId} cols={3} className="inv-sp-embedded-pay-row">
+                        <InvoiceField>
+                          <FieldLabel>Bank / Cash category</FieldLabel>
+                          <SearchSelect
+                            options={[{ value: '', label: 'None' }, ...paymentCategoryOptions]}
+                            value={line.categoryId}
+                            onChange={(value) =>
+                              updatePaymentLine(line.clientId, { categoryId: value, accountId: '' })
+                            }
+                            placeholder="Select category"
+                          />
+                        </InvoiceField>
+                        <InvoiceField>
+                          <FieldLabel>Payment account</FieldLabel>
+                          <SearchSelect
+                            options={bankCashAccountOptions(accounts, line.categoryId)}
+                            value={line.accountId}
+                            onChange={(value) => updatePaymentLine(line.clientId, { accountId: value })}
+                            placeholder={line.categoryId ? 'Select account' : 'Select category first'}
+                            disabled={!line.categoryId}
+                          />
+                        </InvoiceField>
+                        <InvoiceField>
+                          <div className="flex items-end gap-2">
+                            <div className="min-w-0 flex-1">
+                              <FieldLabel>Paid amount</FieldLabel>
+                              <DecimalInput
+                                value={line.amount}
+                                onChange={(value) => updatePaymentLine(line.clientId, { amount: value })}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="mb-0.5 shrink-0 text-xs text-danger"
+                              onClick={() => removePaymentLine(line.clientId)}
+                              aria-label="Remove payment line"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </InvoiceField>
+                      </InvoiceFieldRow>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <InvoiceAddRowAction onClick={addPaymentLine} disabled={saving}>
+                    + Add line
+                  </InvoiceAddRowAction>
+                  {paymentLines.length > 0 ? (
+                    <p className="text-xs text-textSecondary">
+                      Total paid:{' '}
+                      <span className="font-medium tabular-nums">{formatLedgerAmount(paymentTotal)}</span>
+                      {' of '}
+                      <span className="font-medium tabular-nums">{formatLedgerAmount(invoiceTotal)}</span>
+                    </p>
+                  ) : null}
+                </div>
               </InvoiceFormSection>
 
               <InvoiceAddRowAction onClick={addRow}>{salePurchaseInvoiceLabel('addToGrid')}</InvoiceAddRowAction>
@@ -600,6 +686,11 @@ export function PurchaseInvoicePage() {
               <InvoiceFormSection label={salePurchaseInvoiceLabel('previewGrid')}>
                 <LinesTable
                   rows={gridRows}
+                  partyName={
+                    accounts.find((a) => String(a.id) === supplierAccountId)?.name ?? ''
+                  }
+                  invoiceTotal={invoiceTotal}
+                  paidTotal={paymentTotal}
                   onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
                 />
               </InvoiceFormSection>
@@ -632,9 +723,7 @@ export function PurchaseInvoicePage() {
                             mazduriAmount,
                             partyCategoryId,
                             supplierAccountId,
-                            paymentCategoryId,
-                            paymentAccountId,
-                            paymentAmount,
+                            paymentLines,
                           },
                           predictedRef || 'Purchase Invoice',
                         )

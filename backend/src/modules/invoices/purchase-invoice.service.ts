@@ -23,9 +23,9 @@ import { assertActiveStore } from '../stores/stores.service';
 import { getCurrentStockBalance, postPurchaseInvoiceStockIn } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import {
-  createEmbeddedPurchasePaymentInTx,
-  parseEmbeddedPaymentInput,
-  type EmbeddedPaymentInput,
+  parseEmbeddedPaymentLinesInput,
+  syncEmbeddedPurchasePaymentsInTx,
+  type EmbeddedPaymentLineInput,
 } from './invoice-embedded-voucher';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
@@ -49,7 +49,10 @@ export type CreatePurchaseInvoiceInput = {
   supplierAccountId: number;
   createdById: number;
   lines: PurchaseInvoiceLineInput[];
+  payments?: Array<{ amount: number; accountId: number }>;
+  /** @deprecated Use payments array */
   paymentAmount?: number;
+  /** @deprecated Use payments array */
   paymentAccountId?: number;
 };
 
@@ -138,7 +141,6 @@ async function postPurchaseInvoiceAccounting(
     createdById: number;
   },
   resolvedLines: ResolvedPurchaseLine[],
-  embeddedPayment: EmbeddedPaymentInput | null,
 ) {
   // WAC update happens inside the same transaction as:
   // 1) purchase voucher ledger posting, and
@@ -236,17 +238,17 @@ async function postPurchaseInvoiceAccounting(
       data: { averageCost: avgCost },
     });
   }
+}
 
-  if (embeddedPayment) {
-    await createEmbeddedPurchasePaymentInTx(tx, {
-      invoiceId: invoice.id,
-      supplierAccountId: invoice.debitAccountId,
-      payment: embeddedPayment,
-      invoiceDate: invoice.invoiceDate,
-      invoiceReference: invoice.reference,
-      createdById: invoice.createdById,
-    });
+function embeddedPaymentScalarFields(payments: EmbeddedPaymentLineInput[]) {
+  if (payments.length === 0) {
+    return { embeddedPaymentAmount: null, embeddedPaymentAccountId: null };
   }
+  const sum = roundMoney(payments.reduce((total, line) => total + line.amount, 0));
+  return {
+    embeddedPaymentAmount: sum,
+    embeddedPaymentAccountId: payments[0].accountId,
+  };
 }
 
 export async function createPurchaseInvoice(
@@ -304,11 +306,15 @@ export async function createPurchaseInvoice(
         : null,
     );
 
-    const embeddedPayment = parseEmbeddedPaymentInput(
-      data.paymentAmount,
-      data.paymentAccountId,
+    const embeddedPayments = parseEmbeddedPaymentLinesInput(
+      {
+        payments: data.payments,
+        paymentAmount: data.paymentAmount,
+        paymentAccountId: data.paymentAccountId,
+      },
       totals.invoiceTotal,
     );
+    const paymentScalars = embeddedPaymentScalarFields(embeddedPayments);
 
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.PURCHASE_INVOICE, financialYearId);
 
@@ -324,8 +330,7 @@ export async function createPurchaseInvoice(
         debitAccountId: data.supplierAccountId,
         total: totals.invoiceTotal,
         financialYearId,
-        embeddedPaymentAmount: embeddedPayment?.amount ?? null,
-        embeddedPaymentAccountId: embeddedPayment?.accountId ?? null,
+        ...paymentScalars,
         createdById: data.createdById,
         items: {
           create: resolvedLines.map((line) => ({
@@ -354,8 +359,18 @@ export async function createPurchaseInvoice(
           createdById: data.createdById,
         },
         resolvedLines,
-        embeddedPayment,
       );
+    }
+
+    if (embeddedPayments.length > 0) {
+      await syncEmbeddedPurchasePaymentsInTx(tx, {
+        invoiceId: invoice.id,
+        supplierAccountId: data.supplierAccountId,
+        payments: embeddedPayments,
+        invoiceDate,
+        invoiceReference: reference,
+        createdById: data.createdById,
+      });
     }
 
     return invoice;
@@ -417,12 +432,31 @@ export async function approvePurchaseInvoice(invoiceId: number) {
         createdById: invoice.createdById,
       },
       resolvedLines,
-      parseEmbeddedPaymentInput(
-        invoice.embeddedPaymentAmount != null ? Number(invoice.embeddedPaymentAmount) : undefined,
-        invoice.embeddedPaymentAccountId ?? undefined,
-        Number(invoice.total),
-      ),
     );
+
+    const existingEmbedded = await tx.invoiceVoucher.count({
+      where: { invoiceId: invoice.id, voucher: { type: VoucherType.PURCHASE_PAYMENT } },
+    });
+    if (existingEmbedded === 0) {
+      const embeddedPayments = parseEmbeddedPaymentLinesInput(
+        {
+          paymentAmount:
+            invoice.embeddedPaymentAmount != null ? Number(invoice.embeddedPaymentAmount) : undefined,
+          paymentAccountId: invoice.embeddedPaymentAccountId ?? undefined,
+        },
+        Number(invoice.total),
+      );
+      if (embeddedPayments.length > 0) {
+        await syncEmbeddedPurchasePaymentsInTx(tx, {
+          invoiceId: invoice.id,
+          supplierAccountId: invoice.debitAccountId,
+          payments: embeddedPayments,
+          invoiceDate: invoice.invoiceDate ?? new Date(),
+          invoiceReference: invoice.reference,
+          createdById: invoice.createdById,
+        });
+      }
+    }
 
     return tx.invoice.update({
       where: { id: invoice.id },
@@ -504,15 +538,19 @@ export async function updatePendingPurchaseInvoice(
         : null,
     );
 
-    const embeddedPayment = parseEmbeddedPaymentInput(
-      data.paymentAmount,
-      data.paymentAccountId,
+    const embeddedPayments = parseEmbeddedPaymentLinesInput(
+      {
+        payments: data.payments,
+        paymentAmount: data.paymentAmount,
+        paymentAccountId: data.paymentAccountId,
+      },
       totals.invoiceTotal,
     );
+    const paymentScalars = embeddedPaymentScalarFields(embeddedPayments);
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 
-    return tx.invoice.update({
+    const updated = await tx.invoice.update({
       where: { id: invoiceId },
       data: {
         invoiceDate,
@@ -522,8 +560,7 @@ export async function updatePendingPurchaseInvoice(
         debitAccountId: data.supplierAccountId,
         total: totals.invoiceTotal,
         financialYearId,
-        embeddedPaymentAmount: embeddedPayment?.amount ?? null,
-        embeddedPaymentAccountId: embeddedPayment?.accountId ?? null,
+        ...paymentScalars,
         status: InvoiceStatus.PENDING_APPROVAL,
         items: {
           create: resolvedLines.map((line) => ({
@@ -538,5 +575,16 @@ export async function updatePendingPurchaseInvoice(
       },
       include: { items: { include: { product: true } } },
     });
+
+    await syncEmbeddedPurchasePaymentsInTx(tx, {
+      invoiceId,
+      supplierAccountId: data.supplierAccountId,
+      payments: embeddedPayments,
+      invoiceDate,
+      invoiceReference: existing.reference,
+      createdById: existing.createdById,
+    });
+
+    return updated;
   }, WRITE_TRANSACTION_OPTIONS);
 }

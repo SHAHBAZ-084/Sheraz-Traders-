@@ -202,6 +202,62 @@ describe('Pending approval workflow', () => {
     expect(posted.status).toBe(InvoiceStatus.POSTED);
   });
 
+  it('pending sale invoice lists product-line description in pending approvals', async () => {
+    const secondProduct = await createProduct({ name: `Approval Product B ${Date.now()}` });
+    await createPurchaseInvoice({
+      invoiceDate,
+      storeId,
+      supplierAccountId: purchasePartyId,
+      createdById: adminId,
+      lines: [
+        { productId, quantity: 20, rate: 40 },
+        { productId: secondProduct.id, quantity: 10, rate: 125 },
+      ],
+    });
+
+    const sale = await createSaleInvoice(
+      {
+        invoiceDate,
+        storeId,
+        customerAccountId: salePartyId,
+        notes: 'Rush order',
+        createdById: userId,
+        lines: [
+          { productId, quantity: 5, rate: 4550 },
+          { productId: secondProduct.id, quantity: 6, rate: 12500 },
+        ],
+        receipts: [{ amount: 20000, accountId: cashId }],
+      },
+      { postImmediately: false },
+    );
+
+    const pending = await listPendingApprovals();
+    const row = pending.find((p) => p.kind === 'invoice' && p.id === sale.id);
+    expect(row).toBeTruthy();
+    expect(row!.description).toContain('5@4550');
+    expect(row!.description).toContain('6@12500');
+    expect(row!.description).toContain('Rush order');
+    expect(row!.description).toContain('Received 20000');
+  });
+
+  it('pending purchase invoice lists product-line description in pending approvals', async () => {
+    const purchase = await createPurchaseInvoice(
+      {
+        invoiceDate,
+        storeId,
+        supplierAccountId: purchasePartyId,
+        createdById: userId,
+        lines: [{ productId, quantity: 3, rate: 290 }],
+      },
+      { postImmediately: false },
+    );
+
+    const pending = await listPendingApprovals();
+    const row = pending.find((p) => p.kind === 'invoice' && p.id === purchase.id);
+    expect(row).toBeTruthy();
+    expect(row!.description).toMatch(/3@290/);
+  });
+
   it('pending stock adjustment stays off ledger/stock until ADMIN approves via stock-adjustment endpoint', async () => {
     const adjProduct = await createProduct({
       name: `Pending Stock Adj Product ${Date.now()}`,

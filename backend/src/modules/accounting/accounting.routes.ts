@@ -95,6 +95,7 @@ accountingRouter.post(
       accountId: z.number().int().positive(),
       amount: z.number().positive(),
       side: z.enum(['DR', 'CR']),
+      description: z.string().max(500).optional(),
     }),
   ),
   asyncHandler(async (req, res) => {
@@ -307,12 +308,21 @@ accountingRouter.post(
 accountingRouter.patch(
   '/vouchers/:voucherId',
   requireAdmin,
-  validateBody(z.object({ amount: z.number().positive() })),
+  validateBody(
+    z
+      .object({
+        amount: z.number().positive().optional(),
+        date: z.string().min(1).optional(),
+      })
+      .refine((body) => body.amount != null || body.date != null, {
+        message: 'Provide amount and/or date',
+      }),
+  ),
   asyncHandler(async (req, res) => {
-    const voucher = await accountingService.updateVoucherAmount(
+    const voucher = await accountingService.updatePostedVoucher(
       parseInt(param(req.params.voucherId), 10),
-      req.body.amount,
       req.session.userId!,
+      req.body,
     );
     res.json(voucher);
   }),
@@ -475,5 +485,66 @@ accountingRouter.delete(
   asyncHandler(async (req, res) => {
     const account = await accountingService.softDeleteAccount(parseInt(param(req.params.id), 10));
     res.json(account);
+  }),
+);
+
+accountingRouter.get(
+  '/account-adjustments/search',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const query = (req.query.q as string | undefined) ?? '';
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const items = await accountingService.searchAccountAdjustments(query, limit);
+    res.json({ items });
+  }),
+);
+
+accountingRouter.patch(
+  '/account-adjustments/:entryId',
+  requireAdmin,
+  validateBody(
+    z
+      .object({
+        adjustmentDate: z.string().min(1).optional(),
+        description: z.string().max(500).optional(),
+      })
+      .refine((body) => body.adjustmentDate != null || body.description != null, {
+        message: 'Provide adjustmentDate and/or description',
+      }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await accountingService.updateAccountAdjustment(
+      parseInt(param(req.params.entryId), 10),
+      req.body,
+    );
+    res.json(result);
+  }),
+);
+
+accountingRouter.get(
+  '/opening-balances/search',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const query = (req.query.q as string | undefined) ?? '';
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const items = await accountingService.searchAccountOpeningBalances(query, limit);
+    res.json({ items });
+  }),
+);
+
+accountingRouter.patch(
+  '/opening-balances/:entryId',
+  requireAdmin,
+  validateBody(
+    z.object({
+      adjustmentDate: z.string().min(1),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await accountingService.updateAccountOpeningBalanceDate(
+      parseInt(param(req.params.entryId), 10),
+      req.body.adjustmentDate,
+    );
+    res.json(result);
   }),
 );

@@ -1,4 +1,7 @@
+import { InvoiceType, VoucherStatus, VoucherType } from '@prisma/client';
+import { formatBankCashAccountLabel } from './invoice-embedded-voucher';
 import { formatWeightMaundKg } from './kachi-maal.calculations';
+import { roundMoney } from './sale-invoice.calculations';
 
 export type InvoiceVoucherHeader = {
   tafseel?: string | null;
@@ -111,4 +114,159 @@ export function isBardanaLedgerNote(notes?: string | null): boolean {
   const n = notes?.trim().toLowerCase() ?? '';
   if (!n) return false;
   return n === 'bardana' || n.startsWith('bardana against') || n.startsWith('bardana ');
+}
+
+type PendingInvoiceLineItem = {
+  label?: string | null;
+  quantity: number | string | { toString(): string };
+  unitPrice: number | string | { toString(): string };
+  product?: { name: string } | null;
+};
+
+type PendingInvoiceKachiLine = {
+  jins?: string | null;
+  totalWeightKg: number | string | { toString(): string };
+  ratePerMaund: number | string | { toString(): string };
+};
+
+type PendingInvoiceEmbeddedVoucher = {
+  type: string;
+  status: string;
+  amount: number | string | { toString(): string };
+  debitAccount?: { name: string; category?: { name: string } | null } | null;
+  creditAccount?: { name: string; category?: { name: string } | null } | null;
+};
+
+export type PendingInvoiceDescriptionInput = {
+  type: InvoiceType | string;
+  notes?: string | null;
+  billNo?: string | null;
+  jins?: string | null;
+  tafseel?: string | null;
+  gariNo?: string | null;
+  items?: PendingInvoiceLineItem[];
+  kachiMaalLines?: PendingInvoiceKachiLine[];
+  embeddedReceiptAmount?: number | string | null;
+  embeddedPaymentAmount?: number | string | null;
+  embeddedReceiptAccount?: { name: string; category?: { name: string } | null } | null;
+  embeddedPaymentAccount?: { name: string; category?: { name: string } | null } | null;
+  vouchers?: Array<{ voucher: PendingInvoiceEmbeddedVoucher }>;
+};
+
+function formatPendingPaymentAmount(amount: number) {
+  const n = roundMoney(amount);
+  if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+  return String(n);
+}
+
+function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string | null {
+  const appendParts: string[] = [];
+
+  if (inv.type === InvoiceType.SALE_INVOICE) {
+    const pendingReceipts =
+      inv.vouchers?.filter(
+        (link) =>
+          link.voucher.type === VoucherType.SALE_RECEIPT
+          && link.voucher.status === VoucherStatus.PENDING_APPROVAL,
+      ) ?? [];
+
+    if (pendingReceipts.length > 0) {
+      const total = roundMoney(
+        pendingReceipts.reduce((sum, link) => sum + Number(link.voucher.amount), 0),
+      );
+      const labels = pendingReceipts.map((link) => {
+        const acct = link.voucher.debitAccount;
+        return acct
+          ? formatBankCashAccountLabel(acct.category?.name ?? '', acct.name)
+          : 'Cash/Bank';
+      });
+      appendParts.push(`Received ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
+    } else if (
+      inv.embeddedReceiptAmount != null
+      && Number(inv.embeddedReceiptAmount) > 0
+      && inv.embeddedReceiptAccount
+    ) {
+      appendParts.push(
+        `Received ${formatPendingPaymentAmount(Number(inv.embeddedReceiptAmount))} (${formatBankCashAccountLabel(
+          inv.embeddedReceiptAccount.category?.name ?? '',
+          inv.embeddedReceiptAccount.name,
+        )})`,
+      );
+    }
+  } else if (inv.type === InvoiceType.PURCHASE_INVOICE) {
+    const pendingPayments =
+      inv.vouchers?.filter(
+        (link) =>
+          link.voucher.type === VoucherType.PURCHASE_PAYMENT
+          && link.voucher.status === VoucherStatus.PENDING_APPROVAL,
+      ) ?? [];
+
+    if (pendingPayments.length > 0) {
+      const total = roundMoney(
+        pendingPayments.reduce((sum, link) => sum + Number(link.voucher.amount), 0),
+      );
+      const labels = pendingPayments.map((link) => {
+        const acct = link.voucher.creditAccount;
+        return acct
+          ? formatBankCashAccountLabel(acct.category?.name ?? '', acct.name)
+          : 'Cash/Bank';
+      });
+      appendParts.push(`Paid ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
+    } else if (
+      inv.embeddedPaymentAmount != null
+      && Number(inv.embeddedPaymentAmount) > 0
+      && inv.embeddedPaymentAccount
+    ) {
+      appendParts.push(
+        `Paid ${formatPendingPaymentAmount(Number(inv.embeddedPaymentAmount))} (${formatBankCashAccountLabel(
+          inv.embeddedPaymentAccount.category?.name ?? '',
+          inv.embeddedPaymentAccount.name,
+        )})`,
+      );
+    }
+  }
+
+  return appendParts.length > 0 ? appendParts.join('; ') : null;
+}
+
+/** Rich pending-approval list description for invoices (product lines, kachi blend, notes, payment). */
+export function buildPendingInvoiceApprovalDescription(inv: PendingInvoiceDescriptionInput): string | null {
+  let core: string | null = null;
+
+  if (inv.type === InvoiceType.KACHI_MAAL) {
+    const lines = inv.kachiMaalLines ?? [];
+    if (lines.length > 0) {
+      core = blendedLegDescription(
+        lines.map((line) => ({
+          totalWeightKg: Number(line.totalWeightKg),
+          ratePerMaund: Number(line.ratePerMaund),
+          jins: line.jins,
+        })),
+        { tafseel: inv.tafseel, gariNo: inv.gariNo },
+        inv.jins,
+      );
+      if (core === '—') core = null;
+    }
+  } else {
+    const items = inv.items ?? [];
+    if (items.length > 0) {
+      core = formatInvoiceProductLinesDescription(
+        items.map((item) => ({
+          productName: item.product?.name?.trim() || item.label?.trim() || 'Unknown product',
+          quantity: Number(item.quantity),
+          rate: Number(item.unitPrice),
+        })),
+      );
+    }
+  }
+
+  const notes = inv.notes?.trim() || null;
+  const billNo = inv.billNo?.trim() || null;
+  const paymentNote = embeddedReceiptPaymentNote(inv);
+
+  const parts = [core, notes, paymentNote].filter((part): part is string => Boolean(part?.trim()));
+
+  if (parts.length > 0) return parts.join(' — ');
+
+  return billNo;
 }

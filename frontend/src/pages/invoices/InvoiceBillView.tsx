@@ -13,6 +13,12 @@ import {
   sumLineAmounts,
   type BillLineRow,
 } from '../../lib/billPrintFormat';
+import {
+  embeddedPaymentsFromInvoice,
+  formatPaymentLinesDetail,
+  invoiceRemaining,
+  sumPaymentDisplayAmounts,
+} from '../../lib/invoicePaymentDisplay';
 
 const DEFAULT_PREFS: SystemPreferences = {
   daamiPercent: 0,
@@ -137,7 +143,7 @@ function TotalsStack({
   netAmount,
 }: {
   lines: Array<{ label: string; value: string; bold?: boolean }>;
-  netAmount: string;
+  netAmount?: string;
 }) {
   return (
     <div className="invoice-bill__totals">
@@ -151,10 +157,12 @@ function TotalsStack({
             <span>{line.value}</span>
           </div>
         ))}
-        <div className="invoice-bill__net">
-          <span>Net Amount:</span>
-          <span className="invoice-bill__net-value">{netAmount}</span>
-        </div>
+        {netAmount != null ? (
+          <div className="invoice-bill__net">
+            <span>Net Amount:</span>
+            <span className="invoice-bill__net-value">{netAmount}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -377,6 +385,11 @@ function SaleInvoiceBillBody({
   const rows = salePurchaseInvoiceRows(invoice);
   const party = invoice.debitAccount;
   const goodsTotal = rows.reduce((sum, row) => sum + row.lineTotal, 0);
+  const invoiceTotal = Number(invoice.total) || goodsTotal;
+  const payments = embeddedPaymentsFromInvoice(invoice, 'SALE_RECEIPT');
+  const received = sumPaymentDisplayAmounts(payments);
+  const remaining = invoiceRemaining(invoiceTotal, received);
+  const receivedDetail = formatPaymentLinesDetail(payments, formatBillAmount);
 
   return (
     <>
@@ -389,8 +402,11 @@ function SaleInvoiceBillBody({
       />
       <SimpleInvoiceLineTable rows={rows} />
       <TotalsStack
-        lines={[{ label: 'Total Amount:', value: formatBillAmount(goodsTotal), bold: true }]}
-        netAmount={formatBillAmount(invoice.total)}
+        lines={[
+          { label: 'Total Amount:', value: formatBillAmount(invoiceTotal), bold: true },
+          { label: 'Received:', value: receivedDetail },
+          { label: 'Remaining:', value: formatBillAmount(remaining), bold: true },
+        ]}
       />
       <BillSignature />
     </>
@@ -408,6 +424,11 @@ function PurchaseInvoiceBillBody({
   const rows = salePurchaseInvoiceRows(invoice);
   const party = invoice.debitAccount;
   const goodsTotal = rows.reduce((sum, row) => sum + row.lineTotal, 0);
+  const invoiceTotal = Number(invoice.total) || goodsTotal;
+  const payments = embeddedPaymentsFromInvoice(invoice, 'PURCHASE_PAYMENT');
+  const paid = sumPaymentDisplayAmounts(payments);
+  const remaining = invoiceRemaining(invoiceTotal, paid);
+  const paidDetail = formatPaymentLinesDetail(payments, formatBillAmount);
 
   return (
     <>
@@ -420,8 +441,11 @@ function PurchaseInvoiceBillBody({
       />
       <SimpleInvoiceLineTable rows={rows} />
       <TotalsStack
-        lines={[{ label: 'Total Amount:', value: formatBillAmount(goodsTotal), bold: true }]}
-        netAmount={formatBillAmount(invoice.total)}
+        lines={[
+          { label: 'Total Amount:', value: formatBillAmount(invoiceTotal), bold: true },
+          { label: 'Paid:', value: paidDetail },
+          { label: 'Remaining:', value: formatBillAmount(remaining), bold: true },
+        ]}
       />
       <BillSignature />
     </>

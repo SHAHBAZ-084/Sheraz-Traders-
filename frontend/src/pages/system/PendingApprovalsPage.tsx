@@ -11,6 +11,7 @@ type PendingKind = 'voucher' | 'invoice' | 'account' | 'product' | 'account_adju
 type PendingItem = {
   kind: PendingKind;
   id: number;
+  number: number;
   type: string;
   reference: string | null;
   date: string | null;
@@ -20,6 +21,25 @@ type PendingItem = {
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
 };
+
+function formatKindLabel(kind: PendingKind) {
+  switch (kind) {
+    case 'voucher':
+      return 'Voucher';
+    case 'invoice':
+      return 'Invoice';
+    case 'account':
+      return 'Account';
+    case 'product':
+      return 'Product';
+    case 'account_adjustment':
+      return 'Adjustment';
+    case 'stock_adjustment':
+      return 'Adjustment';
+    default:
+      return kind;
+  }
+}
 
 function editPathForPending(item: PendingItem): string | null {
   const q = `pendingId=${item.id}`;
@@ -144,6 +164,12 @@ export function PendingApprovalsPage() {
             Viewing pending submissions. Voucher Edit / Approve / Cancel are Admin only. You can edit your own pending invoices.
           </p>
         ) : null}
+        {(items ?? []).some((item) => item.kind === 'stock_adjustment') ? (
+          <p className="mb-3 rounded border border-amber-600/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 font-medium">
+            Pending Stock Adjustments do not update stock quantity or product average cost until approved.
+            Approve them here before selling those products, or sales may use a provisional cost from the pending rate.
+          </p>
+        ) : null}
         {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
         {message ? <p className="mb-3 text-sm text-success">{message}</p> : null}
         {loading ? (
@@ -159,8 +185,8 @@ export function PendingApprovalsPage() {
                   <th className="py-2 pr-3">Type</th>
                   <th className="py-2 pr-3">Reference</th>
                   <th className="py-2 pr-3">Date</th>
-                  <th className="py-2 pr-3">Debit Account</th>
                   <th className="py-2 pr-3">Credit Account</th>
+                  <th className="py-2 pr-3">Debit Account</th>
                   <th className="py-2 pr-3">Creator</th>
                   <th className="py-2 pr-3 text-right">Amount</th>
                   <th className="py-2 pr-3">Description</th>
@@ -176,17 +202,19 @@ export function PendingApprovalsPage() {
                   const showAdminActions = isAdmin;
                   return (
                     <tr key={`${item.kind}-${item.id}`} className="border-b border-border">
-                      <td className="py-2 pr-3 capitalize">{item.kind}</td>
+                      <td className="py-2 pr-3 font-medium text-textPrimary">
+                        {formatKindLabel(item.kind)} #{item.number}
+                      </td>
                       <td className="py-2 pr-3">{item.type ? formatVoucherTypeLabel(item.type) : '—'}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{item.reference ?? '—'}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {item.date ? formatDate(item.date) : '—'}
                       </td>
-                      <td className={`py-2 pr-3 font-medium ${item.debitAccountName ? ledgerDebitAmountClass(true) : 'text-textPrimary'}`}>
-                        {item.debitAccountName ?? '—'}
-                      </td>
                       <td className={`py-2 pr-3 font-medium ${item.creditAccountName ? ledgerCreditAmountClass(true) : 'text-textPrimary'}`}>
                         {item.creditAccountName ?? '—'}
+                      </td>
+                      <td className={`py-2 pr-3 font-medium ${item.debitAccountName ? ledgerDebitAmountClass(true) : 'text-textPrimary'}`}>
+                        {item.debitAccountName ?? '—'}
                       </td>
                       <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">

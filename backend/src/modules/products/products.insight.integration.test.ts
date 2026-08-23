@@ -53,6 +53,8 @@ describe('Product insight (average purchase rate + store stock)', () => {
     expect(insight.averageRate).toBeNull();
     expect(insight.storeStock).toBe(0);
     expect(insight.storeName).toBe(store.name);
+    expect(insight.hasCostBasis).toBe(false);
+    expect(insight.costStatusMessage).toMatch(/No cost basis yet/i);
   });
 
   it('computes a quantity-weighted average purchase rate, not a plain average', async () => {

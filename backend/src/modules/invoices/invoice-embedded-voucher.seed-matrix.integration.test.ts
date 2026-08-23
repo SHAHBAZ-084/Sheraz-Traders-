@@ -208,7 +208,7 @@ describe.skipIf(!seedReady)('embedded invoice vouchers — test-seed matrix', ()
         ),
       ).rejects.toMatchObject({
         statusCode: 400,
-        message: 'Receipt amount cannot exceed invoice total',
+        message: 'Total receipt amount cannot exceed invoice total',
       });
     });
 
@@ -332,7 +332,7 @@ describe.skipIf(!seedReady)('embedded invoice vouchers — test-seed matrix', ()
         ),
       ).rejects.toMatchObject({
         statusCode: 400,
-        message: 'Payment amount cannot exceed invoice total',
+        message: 'Total payment amount cannot exceed invoice total',
       });
     });
   });

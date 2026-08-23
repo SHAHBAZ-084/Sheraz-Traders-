@@ -3,6 +3,7 @@ import {
   InvoiceType,
   LedgerEntryType,
   Prisma,
+  RecordStatus,
   VoucherType,
 } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
@@ -20,12 +21,12 @@ import {
 import { parseVoucherDateInput } from '../accounting/ledger-utils';
 import { resolveMaalKhataAccountsForProductIds } from '../products/maal-khata';
 import { assertActiveStore } from '../stores/stores.service';
-import { postSaleInvoiceStockOut } from '../stock/stock.service';
+import { getCurrentStockBalance, postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import {
-  createEmbeddedSaleReceiptInTx,
-  parseEmbeddedReceiptInput,
-  type EmbeddedReceiptInput,
+  parseEmbeddedReceiptLinesInput,
+  syncEmbeddedSaleReceiptsInTx,
+  type EmbeddedReceiptLineInput,
 } from './invoice-embedded-voucher';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
 import {
@@ -51,7 +52,10 @@ export type CreateSaleInvoiceInput = {
   customerAccountId: number;
   createdById: number;
   lines: SaleInvoiceLineInput[];
+  receipts?: Array<{ amount: number; accountId: number }>;
+  /** @deprecated Use receipts array */
   receiptAmount?: number;
+  /** @deprecated Use receipts array */
   receiptAccountId?: number;
 };
 
@@ -91,6 +95,95 @@ async function averagePurchaseRateForProduct(tx: Prisma.TransactionClient, produ
   return totalQty > 0 ? totalValue / totalQty : null;
 }
 
+type ResolvedSaleCost = {
+  avgCost: number;
+  /** Extra note appended to inventory/revenue leg descriptions when cost is provisional. */
+  costNote?: string;
+};
+
+async function findPendingStockAdjustmentRate(
+  tx: Prisma.TransactionClient,
+  productId: number,
+): Promise<{ id: number; rate: number } | null> {
+  const pending = await tx.pendingAdjustment.findFirst({
+    where: {
+      kind: 'STOCK',
+      status: RecordStatus.PENDING_APPROVAL,
+      productId,
+      rate: { not: null },
+    },
+    orderBy: { id: 'desc' },
+    select: { id: true, rate: true, kachiOpening: true, product: { select: { kind: true } } },
+  });
+  if (!pending) return null;
+
+  const rate = pending.rate != null ? Number(pending.rate) : NaN;
+  if (Number.isFinite(rate) && rate > 0) {
+    return { id: pending.id, rate };
+  }
+
+  // Kachi pending adjustments store rate inside kachiOpening JSON.
+  const kachi = pending.kachiOpening;
+  if (kachi && typeof kachi === 'object' && kachi !== null && 'ratePerMaund' in kachi) {
+    const ratePerMaund = Number((kachi as { ratePerMaund?: number }).ratePerMaund);
+    if (Number.isFinite(ratePerMaund) && ratePerMaund > 0) {
+      return { id: pending.id, rate: ratePerMaund };
+    }
+  }
+  return null;
+}
+
+async function averageCostFromLedgerStock(
+  tx: Prisma.TransactionClient,
+  productId: number,
+  maalKhataAccountId: number,
+): Promise<number | null> {
+  const [stockQty, ledger] = await Promise.all([
+    getCurrentStockBalance(productId, null, tx),
+    tx.ledger.findFirst({
+      where: { accountId: maalKhataAccountId },
+      select: { balance: true },
+    }),
+  ]);
+  if (!(stockQty > 0) || !ledger) return null;
+  const balance = Number(ledger.balance);
+  if (!(balance > 0)) return null;
+  return balance / stockQty;
+}
+
+async function resolveAverageCostForSaleLine(
+  tx: Prisma.TransactionClient,
+  line: ResolvedSaleLine,
+  productAverageCost: number | null,
+): Promise<ResolvedSaleCost> {
+  if (productAverageCost != null && Number.isFinite(productAverageCost)) {
+    return { avgCost: productAverageCost };
+  }
+
+  const fromPurchases = await averagePurchaseRateForProduct(tx, line.productId);
+  if (fromPurchases != null) {
+    return { avgCost: fromPurchases };
+  }
+
+  const fromLedger = await averageCostFromLedgerStock(tx, line.productId, line.maalKhataAccountId);
+  if (fromLedger != null) {
+    return { avgCost: fromLedger };
+  }
+
+  const pending = await findPendingStockAdjustmentRate(tx, line.productId);
+  if (pending) {
+    return {
+      avgCost: pending.rate,
+      costNote: `cost basis from pending Stock Adjustment #${pending.id}, pending approval`,
+    };
+  }
+
+  throw new AppError(
+    400,
+    `“${line.productName}” has no recorded cost. Go to Stock Adjustment, add stock with a rate for this product, then approve it in Pending Approvals (or enter Opening Stock / a Purchase Invoice).`,
+  );
+}
+
 async function buildSaleInvoiceLegs(
   tx: Prisma.TransactionClient,
   customerAccountId: number,
@@ -128,25 +221,20 @@ async function buildSaleInvoiceLegs(
   for (const line of resolvedLines) {
     const product = productById.get(line.productId);
     const avgCostFromField = product?.averageCost != null ? Number(product.averageCost) : null;
-    const avgCost =
-      avgCostFromField != null ? avgCostFromField : await averagePurchaseRateForProduct(tx, line.productId);
-
-    if (avgCost == null) {
-      throw new AppError(
-        400,
-        'Product average cost is not initialized yet. Add a Purchase Invoice / Stock Adjustment first (or ensure Product has opening stock).',
-      );
-    }
+    const { avgCost, costNote } = await resolveAverageCostForSaleLine(tx, line, avgCostFromField);
 
     const costAmount = roundMoney(avgCost * line.quantity);
     const profitAmount = roundMoney(line.lineTotal - costAmount);
+    const legDescription = costNote
+      ? `${productDescription} (${costNote})`
+      : productDescription;
 
     // Inventory leg (cost only)
     legs.push({
       accountId: line.maalKhataAccountId,
       type: LedgerEntryType.CREDIT,
       amount: costAmount,
-      description: productDescription,
+      description: legDescription,
     });
 
     // Sales revenue leg (profit, can be a loss => debit)
@@ -155,14 +243,14 @@ async function buildSaleInvoiceLegs(
         accountId: salesRevenueAccountId,
         type: LedgerEntryType.CREDIT,
         amount: profitAmount,
-        description: productDescription,
+        description: legDescription,
       });
     } else {
       legs.push({
         accountId: salesRevenueAccountId,
         type: LedgerEntryType.DEBIT,
         amount: Math.abs(profitAmount),
-        description: productDescription,
+        description: legDescription,
       });
     }
   }
@@ -192,7 +280,6 @@ async function postSaleInvoiceAccounting(
     createdById: number;
   },
   resolvedLines: ResolvedSaleLine[],
-  embeddedReceipt: EmbeddedReceiptInput | null,
 ) {
   const { legs, productDescription } = await buildSaleInvoiceLegs(
     tx,
@@ -225,17 +312,17 @@ async function postSaleInvoiceAccounting(
       quantity: line.quantity,
     })),
   });
+}
 
-  if (embeddedReceipt) {
-    await createEmbeddedSaleReceiptInTx(tx, {
-      invoiceId: invoice.id,
-      customerAccountId: invoice.debitAccountId,
-      receipt: embeddedReceipt,
-      invoiceDate: invoice.invoiceDate,
-      invoiceReference: invoice.reference,
-      createdById: invoice.createdById,
-    });
+function embeddedReceiptScalarFields(receipts: EmbeddedReceiptLineInput[]) {
+  if (receipts.length === 0) {
+    return { embeddedReceiptAmount: null, embeddedReceiptAccountId: null };
   }
+  const sum = roundMoney(receipts.reduce((total, line) => total + line.amount, 0));
+  return {
+    embeddedReceiptAmount: sum,
+    embeddedReceiptAccountId: receipts[0].accountId,
+  };
 }
 
 export async function createSaleInvoice(
@@ -282,11 +369,15 @@ export async function createSaleInvoice(
 
     await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
-    const embeddedReceipt = parseEmbeddedReceiptInput(
-      data.receiptAmount,
-      data.receiptAccountId,
+    const embeddedReceipts = parseEmbeddedReceiptLinesInput(
+      {
+        receipts: data.receipts,
+        receiptAmount: data.receiptAmount,
+        receiptAccountId: data.receiptAccountId,
+      },
       totals.invoiceTotal,
     );
+    const receiptScalars = embeddedReceiptScalarFields(embeddedReceipts);
 
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
 
@@ -302,8 +393,7 @@ export async function createSaleInvoice(
         debitAccountId: data.customerAccountId,
         total: totals.invoiceTotal,
         financialYearId,
-        embeddedReceiptAmount: embeddedReceipt?.amount ?? null,
-        embeddedReceiptAccountId: embeddedReceipt?.accountId ?? null,
+        ...receiptScalars,
         createdById: data.createdById,
         items: {
           create: resolvedLines.map((line) => ({
@@ -332,8 +422,18 @@ export async function createSaleInvoice(
           createdById: data.createdById,
         },
         resolvedLines,
-        embeddedReceipt,
       );
+    }
+
+    if (embeddedReceipts.length > 0) {
+      await syncEmbeddedSaleReceiptsInTx(tx, {
+        invoiceId: invoice.id,
+        customerAccountId: data.customerAccountId,
+        receipts: embeddedReceipts,
+        invoiceDate,
+        invoiceReference: reference,
+        createdById: data.createdById,
+      });
     }
 
     return invoice;
@@ -392,12 +492,31 @@ export async function approveSaleInvoice(invoiceId: number) {
         createdById: invoice.createdById,
       },
       resolvedLines,
-      parseEmbeddedReceiptInput(
-        invoice.embeddedReceiptAmount != null ? Number(invoice.embeddedReceiptAmount) : undefined,
-        invoice.embeddedReceiptAccountId ?? undefined,
-        Number(invoice.total),
-      ),
     );
+
+    const existingEmbedded = await tx.invoiceVoucher.count({
+      where: { invoiceId: invoice.id, voucher: { type: VoucherType.SALE_RECEIPT } },
+    });
+    if (existingEmbedded === 0) {
+      const embeddedReceipts = parseEmbeddedReceiptLinesInput(
+        {
+          receiptAmount:
+            invoice.embeddedReceiptAmount != null ? Number(invoice.embeddedReceiptAmount) : undefined,
+          receiptAccountId: invoice.embeddedReceiptAccountId ?? undefined,
+        },
+        Number(invoice.total),
+      );
+      if (embeddedReceipts.length > 0) {
+        await syncEmbeddedSaleReceiptsInTx(tx, {
+          invoiceId: invoice.id,
+          customerAccountId: invoice.debitAccountId,
+          receipts: embeddedReceipts,
+          invoiceDate: invoice.invoiceDate ?? new Date(),
+          invoiceReference: invoice.reference,
+          createdById: invoice.createdById,
+        });
+      }
+    }
 
     return tx.invoice.update({
       where: { id: invoice.id },
@@ -468,15 +587,19 @@ export async function updatePendingSaleInvoice(
 
     await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
 
-    const embeddedReceipt = parseEmbeddedReceiptInput(
-      data.receiptAmount,
-      data.receiptAccountId,
+    const embeddedReceipts = parseEmbeddedReceiptLinesInput(
+      {
+        receipts: data.receipts,
+        receiptAmount: data.receiptAmount,
+        receiptAccountId: data.receiptAccountId,
+      },
       totals.invoiceTotal,
     );
+    const receiptScalars = embeddedReceiptScalarFields(embeddedReceipts);
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 
-    return tx.invoice.update({
+    const updated = await tx.invoice.update({
       where: { id: invoiceId },
       data: {
         invoiceDate,
@@ -486,8 +609,7 @@ export async function updatePendingSaleInvoice(
         debitAccountId: data.customerAccountId,
         total: totals.invoiceTotal,
         financialYearId,
-        embeddedReceiptAmount: embeddedReceipt?.amount ?? null,
-        embeddedReceiptAccountId: embeddedReceipt?.accountId ?? null,
+        ...receiptScalars,
         status: InvoiceStatus.PENDING_APPROVAL,
         items: {
           create: resolvedLines.map((line) => ({
@@ -501,5 +623,16 @@ export async function updatePendingSaleInvoice(
       },
       include: { items: { include: { product: true } } },
     });
+
+    await syncEmbeddedSaleReceiptsInTx(tx, {
+      invoiceId,
+      customerAccountId: data.customerAccountId,
+      receipts: embeddedReceipts,
+      invoiceDate,
+      invoiceReference: existing.reference,
+      createdById: existing.createdById,
+    });
+
+    return updated;
   }, WRITE_TRANSACTION_OPTIONS);
 }

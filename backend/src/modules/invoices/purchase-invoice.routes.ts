@@ -10,12 +10,18 @@ const lineSchema = z.object({
   mazduriAmount: z.number().min(0).optional(),
 });
 
+const embeddedLineSchema = z.object({
+  amount: z.number().positive(),
+  accountId: z.number().int().positive(),
+});
+
 const createSchema = z.object({
   invoiceDate: z.string().min(1),
   billNo: z.string().optional(),
   notes: z.string().optional(),
   storeId: z.number().int().positive(),
   supplierAccountId: z.number().int().positive(),
+  payments: z.array(embeddedLineSchema).optional(),
   paymentAmount: z.number().min(0).optional(),
   paymentAccountId: z.number().int().positive().optional(),
   lines: z.array(lineSchema).min(1),

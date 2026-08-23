@@ -1158,11 +1158,11 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
     }
   }
 
-  async function handleUpdateAmount(amount: number) {
+  async function handleUpdatePosted(updates: { amount?: number; date?: string }) {
     if (!selected) return;
     setUpdating(true);
     try {
-      const updated = await api.updateVoucherAmount(selected.id, amount);
+      const updated = await api.updateVoucher(selected.id, updates);
       setSelected(updated);
       await loadReport();
     } catch (err) {
@@ -1220,7 +1220,7 @@ export function VouchersReportPage({ historicalScope, embedded }: ReportPageOpti
     <VoucherDetailCard
       voucher={selected}
       onCancel={readOnly ? () => {} : handleCancel}
-      onUpdateAmount={readOnly ? () => {} : handleUpdateAmount}
+      onUpdatePosted={readOnly ? () => {} : handleUpdatePosted}
       cancelling={cancelling}
       updating={updating}
       readOnly={readOnly}

@@ -96,34 +96,50 @@ export async function getSaleBillSummary(options: {
     const partyName = invoice.debitAccount?.name ?? 'Unknown party';
     const netTotal = roundMoney(Number(invoice.total));
 
-    const postedReceipt = invoice.vouchers.find(
-      (link) =>
-        link.voucher.type === VoucherType.SALE_RECEIPT
-        && link.voucher.status === VoucherStatus.ACTIVE,
-    )?.voucher;
+    const postedReceipts = invoice.vouchers
+      .filter(
+        (link) =>
+          link.voucher.type === VoucherType.SALE_RECEIPT
+          && link.voucher.status === VoucherStatus.ACTIVE,
+      )
+      .map((link) => link.voucher);
 
-    const pendingReceipt = invoice.vouchers.find(
+    const pendingReceipts = invoice.vouchers.filter(
       (link) =>
         link.voucher.type === VoucherType.SALE_RECEIPT
         && link.voucher.status === VoucherStatus.PENDING_APPROVAL,
-    )?.voucher;
+    );
 
     let receivedAmount = 0;
     let receivedAccountLabel: string | null = null;
     let receivedPending = false;
 
-    if (postedReceipt?.debitAccount) {
-      receivedAmount = roundMoney(Number(postedReceipt.amount));
-      receivedAccountLabel = formatBankCashAccountLabel(
-        postedReceipt.debitAccount.category.name,
-        postedReceipt.debitAccount.name,
+    if (postedReceipts.length > 0) {
+      receivedAmount = roundMoney(
+        postedReceipts.reduce((sum, voucher) => sum + Number(voucher.amount), 0),
       );
-    } else if (pendingReceipt?.debitAccount) {
+      const first = postedReceipts[0];
+      if (first.debitAccount) {
+        receivedAccountLabel = formatBankCashAccountLabel(
+          first.debitAccount.category.name,
+          first.debitAccount.name,
+        );
+        if (postedReceipts.length > 1) {
+          receivedAccountLabel = `${receivedAccountLabel} (+${postedReceipts.length - 1} more)`;
+        }
+      }
+    } else if (pendingReceipts.length > 0) {
       receivedPending = true;
-      receivedAccountLabel = formatBankCashAccountLabel(
-        pendingReceipt.debitAccount.category.name,
-        pendingReceipt.debitAccount.name,
-      );
+      const first = pendingReceipts[0].voucher;
+      if (first.debitAccount) {
+        receivedAccountLabel = formatBankCashAccountLabel(
+          first.debitAccount.category.name,
+          first.debitAccount.name,
+        );
+        if (pendingReceipts.length > 1) {
+          receivedAccountLabel = `${receivedAccountLabel} (+${pendingReceipts.length - 1} pending)`;
+        }
+      }
     } else if (
       invoice.embeddedReceiptAmount != null
       && Number(invoice.embeddedReceiptAmount) > 0

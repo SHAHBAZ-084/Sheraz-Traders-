@@ -32,6 +32,14 @@ import { InvoicePreviewGridShell } from './InvoicePreviewGrid';
 import { salePurchaseInvoiceLabel } from '../../lib/salePurchaseInvoiceLabels';
 import { urduLabelClassName } from '../../lib/urduScript';
 import { bankCashAccountOptions, bankCashCategoryOptions } from '../../lib/bankCashAccounts';
+import {
+  embeddedLinesFromInvoiceVouchers,
+  embeddedLinesFromLegacyScalar,
+  newEmbeddedPaymentLineDraft,
+  parseEmbeddedPaymentLinesPayload,
+  sumEmbeddedLineAmounts,
+  type EmbeddedPaymentLineDraft,
+} from '../../lib/embeddedInvoicePaymentLines';
 
 import { ProductInsightPopover } from '../../components/invoices/ProductInsightPopover';
 
@@ -56,9 +64,7 @@ type SaleInvoiceDraft = {
   rate: string;
   partyCategoryId: string;
   customerAccountId: string;
-  receiptCategoryId: string;
-  receiptAccountId: string;
-  receiptAmount: string;
+  receiptLines: EmbeddedPaymentLineDraft[];
 };
 
 function todayInputValue() {
@@ -69,23 +75,37 @@ function todayInputValue() {
 function LinesTable({
   rows,
   onRemove,
+  partyName,
+  invoiceTotal,
+  receivedTotal,
 }: {
   rows: GridRow[];
   onRemove?: (clientId: string) => void;
+  partyName: string;
+  invoiceTotal: number;
+  receivedTotal: number;
 }) {
+  const remaining = Math.max(0, invoiceTotal - receivedTotal);
+  const colSpan = onRemove ? 5 : 4;
+
   return (
-    <InvoicePreviewGridShell isEmpty={rows.length === 0}>
+    <InvoicePreviewGridShell isEmpty={rows.length === 0 && !partyName}>
       <table className="w-full min-w-[420px] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface2">
+          <tr className="border-b border-border">
+            <th colSpan={colSpan} className="px-3 py-2.5 text-left">
+              <span className="inv-bill-party-name">{partyName.trim() || '—'}</span>
+            </th>
+          </tr>
           <tr className="border-b border-border text-xs uppercase tracking-wide text-textMuted">
             <th className="px-3 py-2.5">Product</th>
-            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
-              {salePurchaseInvoiceLabel('qty')}
-            </th>
             <th className={urduLabelClassName(salePurchaseInvoiceLabel('rate'), 'px-3 py-2.5 text-right')}>
               {salePurchaseInvoiceLabel('rate')}
             </th>
-            <th className="px-3 py-2.5 text-right">Total</th>
+            <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
+              {salePurchaseInvoiceLabel('qty')}
+            </th>
+            <th className="px-3 py-2.5 text-right">Amount</th>
             {onRemove ? <th className="px-3 py-2.5" /> : null}
           </tr>
         </thead>
@@ -93,8 +113,8 @@ function LinesTable({
           {rows.map((row) => (
             <tr key={row.clientId} className="border-b border-border/50">
               <td className="px-3 py-2 inv-bill-product-name">{row.productName}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.rate)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.lineTotal)}</td>
               {onRemove ? (
                 <td className="px-3 py-2 text-right">
@@ -105,6 +125,37 @@ function LinesTable({
               ) : null}
             </tr>
           ))}
+          {rows.length > 0 ? (
+            <>
+              <tr className="border-t border-border bg-surface2/60">
+                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Total
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">
+                  {formatLedgerAmount(invoiceTotal)}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+              <tr className="border-b border-border/50 bg-surface2/40">
+                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Received
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {receivedTotal > 0 ? formatLedgerAmount(receivedTotal) : '0'}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+              <tr className="bg-surface2/40">
+                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                  Remaining
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                  {formatLedgerAmount(remaining)}
+                </td>
+                {onRemove ? <td /> : null}
+              </tr>
+            </>
+          ) : null}
         </tbody>
       </table>
     </InvoicePreviewGridShell>
@@ -136,9 +187,9 @@ export function SaleInvoicePage() {
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
   const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [customerAccountId, setCustomerAccountId] = useState(() => restoredState?.customerAccountId ?? '');
-  const [receiptCategoryId, setReceiptCategoryId] = useState(() => restoredState?.receiptCategoryId ?? '');
-  const [receiptAccountId, setReceiptAccountId] = useState(() => restoredState?.receiptAccountId ?? '');
-  const [receiptAmount, setReceiptAmount] = useState(() => restoredState?.receiptAmount ?? '');
+  const [receiptLines, setReceiptLines] = useState<EmbeddedPaymentLineDraft[]>(
+    () => restoredState?.receiptLines ?? [],
+  );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
@@ -156,9 +207,7 @@ export function SaleInvoicePage() {
       if (restoredState.rate) setRate(restoredState.rate);
       if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.customerAccountId) setCustomerAccountId(restoredState.customerAccountId);
-      if (restoredState.receiptCategoryId) setReceiptCategoryId(restoredState.receiptCategoryId);
-      if (restoredState.receiptAccountId) setReceiptAccountId(restoredState.receiptAccountId);
-      if (restoredState.receiptAmount) setReceiptAmount(restoredState.receiptAmount);
+      if (restoredState.receiptLines) setReceiptLines(restoredState.receiptLines);
     }
   }, [restoredState]);
 
@@ -225,15 +274,17 @@ export function SaleInvoicePage() {
         setBillNo(inv.billNo ?? '');
         if (inv.storeId != null) setStoreId(String(inv.storeId));
         if (inv.debitAccountId != null) setCustomerAccountId(String(inv.debitAccountId));
-        const receiptAmt = (inv as { embeddedReceiptAmount?: number | null }).embeddedReceiptAmount;
-        const receiptAcct = (inv as { embeddedReceiptAccountId?: number | null }).embeddedReceiptAccountId;
-        if (receiptAmt != null && Number(receiptAmt) > 0) {
-          setReceiptAmount(String(receiptAmt));
-        }
-        if (receiptAcct != null) {
-          setReceiptAccountId(String(receiptAcct));
-          const acct = accounts.find((a) => a.id === receiptAcct);
-          if (acct) setReceiptCategoryId(String(acct.categoryId));
+        const fromVouchers = embeddedLinesFromInvoiceVouchers(
+          accounts,
+          (inv as { vouchers?: Array<{ voucher?: { id: number; type: string; status: string; amount: number | string; debitAccountId?: number | null; creditAccountId?: number | null } | null }> }).vouchers ?? [],
+          'SALE_RECEIPT',
+        );
+        if (fromVouchers.length > 0) {
+          setReceiptLines(fromVouchers);
+        } else {
+          const receiptAmt = (inv as { embeddedReceiptAmount?: number | null }).embeddedReceiptAmount;
+          const receiptAcct = (inv as { embeddedReceiptAccountId?: number | null }).embeddedReceiptAccountId;
+          setReceiptLines(embeddedLinesFromLegacyScalar(accounts, receiptAcct, receiptAmt));
         }
         setGridRows(
           (inv.items ?? []).map((item, index) => ({
@@ -280,14 +331,11 @@ export function SaleInvoicePage() {
     [accounts, partyCategoryId],
   );
   const receiptCategoryOptions = useMemo(() => bankCashCategoryOptions(categories), [categories]);
-  const receiptAccountOptions = useMemo(
-    () => bankCashAccountOptions(accounts, receiptCategoryId),
-    [accounts, receiptCategoryId],
-  );
   const invoiceTotal = useMemo(
     () => gridRows.reduce((sum, row) => sum + row.lineTotal, 0),
     [gridRows],
   );
+  const receiptTotal = useMemo(() => sumEmbeddedLineAmounts(receiptLines), [receiptLines]);
 
   function onProductCategoryChange(value: string) {
     setProductCategoryId(value);
@@ -299,24 +347,22 @@ export function SaleInvoicePage() {
     setCustomerAccountId('');
   }
 
-  function onReceiptCategoryChange(value: string) {
-    setReceiptCategoryId(value);
-    setReceiptAccountId('');
+  function addReceiptLine() {
+    setReceiptLines((lines) => [...lines, newEmbeddedPaymentLineDraft()]);
+  }
+
+  function removeReceiptLine(clientId: string) {
+    setReceiptLines((lines) => lines.filter((line) => line.clientId !== clientId));
+  }
+
+  function updateReceiptLine(clientId: string, patch: Partial<EmbeddedPaymentLineDraft>) {
+    setReceiptLines((lines) =>
+      lines.map((line) => (line.clientId === clientId ? { ...line, ...patch } : line)),
+    );
   }
 
   function parseReceiptPayload() {
-    const amount = receiptAmount.trim() ? Number(receiptAmount) : 0;
-    if (amount <= 0) return {};
-    if (!receiptAccountId) {
-      throw new Error('Select a Bank/Cash account for the receipt amount');
-    }
-    if (amount > invoiceTotal + 0.01) {
-      throw new Error('Receipt amount cannot exceed invoice total');
-    }
-    return {
-      receiptAmount: amount,
-      receiptAccountId: Number(receiptAccountId),
-    };
+    return parseEmbeddedPaymentLinesPayload(receiptLines, invoiceTotal, 'Receipt');
   }
 
   async function addRow() {
@@ -544,31 +590,69 @@ export function SaleInvoicePage() {
               </InvoiceFormSection>
 
               <InvoiceFormSection label="Receipt (optional)">
-                <InvoiceFieldRow cols={3} className="inv-sp-embedded-pay-row">
-                  <InvoiceField>
-                    <FieldLabel>Bank / Cash category</FieldLabel>
-                    <SearchSelect
-                      options={[{ value: '', label: 'None' }, ...receiptCategoryOptions]}
-                      value={receiptCategoryId}
-                      onChange={onReceiptCategoryChange}
-                      placeholder="None"
-                    />
-                  </InvoiceField>
-                  <InvoiceField>
-                    <FieldLabel>Receipt account</FieldLabel>
-                    <SearchSelect
-                      options={receiptAccountOptions}
-                      value={receiptAccountId}
-                      onChange={setReceiptAccountId}
-                      placeholder={receiptCategoryId ? 'Select account' : 'Select category first'}
-                      disabled={!receiptCategoryId}
-                    />
-                  </InvoiceField>
-                  <InvoiceField>
-                    <FieldLabel>Received amount</FieldLabel>
-                    <DecimalInput value={receiptAmount} onChange={setReceiptAmount} />
-                  </InvoiceField>
-                </InvoiceFieldRow>
+                {receiptLines.length === 0 ? (
+                  <p className="text-xs text-textMuted">No receipt lines yet. Add one if payment was received.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {receiptLines.map((line) => (
+                      <InvoiceFieldRow key={line.clientId} cols={3} className="inv-sp-embedded-pay-row">
+                        <InvoiceField>
+                          <FieldLabel>Bank / Cash category</FieldLabel>
+                          <SearchSelect
+                            options={[{ value: '', label: 'None' }, ...receiptCategoryOptions]}
+                            value={line.categoryId}
+                            onChange={(value) =>
+                              updateReceiptLine(line.clientId, { categoryId: value, accountId: '' })
+                            }
+                            placeholder="Select category"
+                          />
+                        </InvoiceField>
+                        <InvoiceField>
+                          <FieldLabel>Receipt account</FieldLabel>
+                          <SearchSelect
+                            options={bankCashAccountOptions(accounts, line.categoryId)}
+                            value={line.accountId}
+                            onChange={(value) => updateReceiptLine(line.clientId, { accountId: value })}
+                            placeholder={line.categoryId ? 'Select account' : 'Select category first'}
+                            disabled={!line.categoryId}
+                          />
+                        </InvoiceField>
+                        <InvoiceField>
+                          <div className="flex items-end gap-2">
+                            <div className="min-w-0 flex-1">
+                              <FieldLabel>Received amount</FieldLabel>
+                              <DecimalInput
+                                value={line.amount}
+                                onChange={(value) => updateReceiptLine(line.clientId, { amount: value })}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="mb-0.5 shrink-0 text-xs text-danger"
+                              onClick={() => removeReceiptLine(line.clientId)}
+                              aria-label="Remove receipt line"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </InvoiceField>
+                      </InvoiceFieldRow>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <InvoiceAddRowAction type="button" onClick={addReceiptLine} disabled={saving}>
+                    + Add line
+                  </InvoiceAddRowAction>
+                  {receiptLines.length > 0 ? (
+                    <p className="text-xs text-textSecondary">
+                      Total received:{' '}
+                      <span className="font-medium tabular-nums">{formatLedgerAmount(receiptTotal)}</span>
+                      {' of '}
+                      <span className="font-medium tabular-nums">{formatLedgerAmount(invoiceTotal)}</span>
+                    </p>
+                  ) : null}
+                </div>
               </InvoiceFormSection>
 
               <InvoiceAddRowAction onClick={addRow} disabled={addingRow || saving}>
@@ -578,6 +662,11 @@ export function SaleInvoicePage() {
               <InvoiceFormSection label={salePurchaseInvoiceLabel('previewGrid')}>
                 <LinesTable
                   rows={gridRows}
+                  partyName={
+                    accounts.find((a) => String(a.id) === customerAccountId)?.name ?? ''
+                  }
+                  invoiceTotal={invoiceTotal}
+                  receivedTotal={receiptTotal}
                   onRemove={(clientId) => setGridRows((rows) => rows.filter((r) => r.clientId !== clientId))}
                 />
               </InvoiceFormSection>
@@ -608,9 +697,7 @@ export function SaleInvoicePage() {
                             rate,
                             partyCategoryId,
                             customerAccountId,
-                            receiptCategoryId,
-                            receiptAccountId,
-                            receiptAmount,
+                            receiptLines,
                           },
                           predictedRef || 'Sale Invoice',
                         )

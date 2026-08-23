@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, requireReportsAccess } from '../../middleware/auth';
-import { asyncHandler } from '../../utils/helpers';
+import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
+import { asyncHandler, param } from '../../utils/helpers';
 import * as stockService from './stock.service';
 import { createStockAdjustment } from '../products/products.service';
 
@@ -179,6 +179,7 @@ stockRouter.post(
         quantity: z.number().positive().optional(),
         rate: z.number().positive().optional(),
         kachiOpening: kachiOpeningSchema.optional(),
+        description: z.string().max(500).optional(),
       })
       .superRefine((body, ctx) => {
         const hasStandard = body.quantity != null || body.rate != null;
@@ -204,5 +205,66 @@ stockRouter.post(
       postImmediately: false,
     });
     res.status(201).json(result);
+  }),
+);
+
+stockRouter.get(
+  '/adjustments/search',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { searchStockAdjustments } = await import('../accounting/accounting.service');
+    const query = (req.query.q as string | undefined) ?? '';
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const items = await searchStockAdjustments(query, limit);
+    res.json({ items });
+  }),
+);
+
+stockRouter.patch(
+  '/adjustments/:movementId',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { updateStockAdjustment } = await import('../accounting/accounting.service');
+    const schema = z
+      .object({
+        adjustmentDate: z.string().min(1).optional(),
+        description: z.string().max(500).optional(),
+      })
+      .refine((body) => body.adjustmentDate != null || body.description != null, {
+        message: 'Provide adjustmentDate and/or description',
+      });
+    const body = schema.parse(req.body);
+    const result = await updateStockAdjustment(parseInt(param(req.params.movementId), 10), body);
+    res.json(result);
+  }),
+);
+
+stockRouter.get(
+  '/opening-stock/search',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { searchProductOpeningStock } = await import('../accounting/accounting.service');
+    const query = (req.query.q as string | undefined) ?? '';
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const items = await searchProductOpeningStock(query, limit);
+    res.json({ items });
+  }),
+);
+
+stockRouter.patch(
+  '/opening-stock/:movementId',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { updateProductOpeningStockDate } = await import('../accounting/accounting.service');
+    const body = z
+      .object({
+        adjustmentDate: z.string().min(1),
+      })
+      .parse(req.body);
+    const result = await updateProductOpeningStockDate(
+      parseInt(param(req.params.movementId), 10),
+      body.adjustmentDate,
+    );
+    res.json(result);
   }),
 );
