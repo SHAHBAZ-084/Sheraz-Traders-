@@ -454,6 +454,8 @@ model InvoiceItem {
   total         Decimal @default(0)
   /** Flat labor fee for Purchase Invoice lines (not qty × rate). */
   mazduriAmount Decimal @default(0)
+  /** Flat tax deduction for Sale Invoice lines (reduces party debit, not added to line total). */
+  taxAmount       Decimal @default(0)
 
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)

@@ -15,6 +15,8 @@ export const SALE_PURCHASE_INVOICE_LABELS = {
   rate: 'ریٹ',
   addMazduri: 'Add Mazduri',
   mazduri: 'مزدوری',
+  applyTax: 'Apply Tax',
+  tax: 'Tax',
   party: 'Party',
   salePartyCategory: 'Sale party category',
   purchasePartyCategory: 'Purchase party category',

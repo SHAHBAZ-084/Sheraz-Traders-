@@ -14,6 +14,7 @@ import {
   assertVoucherDateInActiveFinancialYear,
   createMultiLegVoucherInTx,
   ensureSalesRevenueAccount,
+  ensureTaxDeductionAccount,
   getActiveFinancialYearId,
   WRITE_TRANSACTION_OPTIONS,
   type VoucherLeg,
@@ -65,6 +66,7 @@ type ResolvedSaleLine = {
   maalKhataAccountId: number;
   quantity: number;
   rate: number;
+  taxAmount: number;
   lineTotal: number;
 };
 
@@ -189,6 +191,7 @@ async function buildSaleInvoiceLegs(
   customerAccountId: number,
   resolvedLines: ResolvedSaleLine[],
   invoiceTotal: number,
+  taxTotal: number,
 ): Promise<{ legs: VoucherLeg[]; productDescription: string }> {
   const productDescription = formatInvoiceProductLinesDescription(
     resolvedLines.map((line) => ({
@@ -201,6 +204,11 @@ async function buildSaleInvoiceLegs(
   const salesRevenueAccount = await ensureSalesRevenueAccount(tx);
   const salesRevenueAccountId = salesRevenueAccount.id;
 
+  const partyDebit = roundMoney(invoiceTotal - taxTotal);
+  if (partyDebit < 0) {
+    throw new AppError(400, 'Total tax cannot exceed invoice total');
+  }
+
   const productIds = [...new Set(resolvedLines.map((l) => l.productId))];
   const products = await tx.product.findMany({
     where: { id: { in: productIds } },
@@ -208,15 +216,24 @@ async function buildSaleInvoiceLegs(
   });
   const productById = new Map(products.map((p) => [p.id, p]));
 
-  // Compute cost + profit per line using CURRENT averageCost per product.
   const legs: VoucherLeg[] = [
     {
       accountId: customerAccountId,
       type: LedgerEntryType.DEBIT,
-      amount: invoiceTotal,
+      amount: partyDebit,
       description: productDescription,
     },
   ];
+
+  if (taxTotal > 0) {
+    const taxAccount = await ensureTaxDeductionAccount(tx);
+    legs.push({
+      accountId: taxAccount.id,
+      type: LedgerEntryType.DEBIT,
+      amount: taxTotal,
+      description: productDescription,
+    });
+  }
 
   for (const line of resolvedLines) {
     const product = productById.get(line.productId);
@@ -280,12 +297,14 @@ async function postSaleInvoiceAccounting(
     createdById: number;
   },
   resolvedLines: ResolvedSaleLine[],
+  taxTotal: number,
 ) {
   const { legs, productDescription } = await buildSaleInvoiceLegs(
     tx,
     invoice.debitAccountId,
     resolvedLines,
     Number(invoice.total),
+    taxTotal,
   );
 
   const voucher = await createMultiLegVoucherInTx(tx, {
@@ -363,11 +382,18 @@ export async function createSaleInvoice(
         maalKhataAccountId,
         quantity: line.quantity,
         rate: line.rate,
+        taxAmount: line.taxAmount,
         lineTotal: line.lineTotal,
       });
     }
 
-    await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
+    await buildSaleInvoiceLegs(
+      tx,
+      data.customerAccountId,
+      resolvedLines,
+      totals.invoiceTotal,
+      totals.taxTotal,
+    );
 
     const embeddedReceipts = parseEmbeddedReceiptLinesInput(
       {
@@ -402,6 +428,7 @@ export async function createSaleInvoice(
             quantity: line.quantity,
             unitPrice: line.rate,
             total: line.lineTotal,
+            taxAmount: line.taxAmount,
           })),
         },
       },
@@ -422,6 +449,7 @@ export async function createSaleInvoice(
           createdById: data.createdById,
         },
         resolvedLines,
+        totals.taxTotal,
       );
     }
 
@@ -475,9 +503,12 @@ export async function approveSaleInvoice(invoiceId: number) {
         maalKhataAccountId,
         quantity: Number(item.quantity),
         rate: Number(item.unitPrice),
+        taxAmount: Number(item.taxAmount ?? 0),
         lineTotal: Number(item.total),
       });
     }
+
+    const taxTotal = roundMoney(resolvedLines.reduce((sum, line) => sum + line.taxAmount, 0));
 
     await postSaleInvoiceAccounting(
       tx,
@@ -492,6 +523,7 @@ export async function approveSaleInvoice(invoiceId: number) {
         createdById: invoice.createdById,
       },
       resolvedLines,
+      taxTotal,
     );
 
     const existingEmbedded = await tx.invoiceVoucher.count({
@@ -581,11 +613,18 @@ export async function updatePendingSaleInvoice(
         maalKhataAccountId,
         quantity: line.quantity,
         rate: line.rate,
+        taxAmount: line.taxAmount,
         lineTotal: line.lineTotal,
       });
     }
 
-    await buildSaleInvoiceLegs(tx, data.customerAccountId, resolvedLines, totals.invoiceTotal);
+    await buildSaleInvoiceLegs(
+      tx,
+      data.customerAccountId,
+      resolvedLines,
+      totals.invoiceTotal,
+      totals.taxTotal,
+    );
 
     const embeddedReceipts = parseEmbeddedReceiptLinesInput(
       {
@@ -618,6 +657,7 @@ export async function updatePendingSaleInvoice(
             quantity: line.quantity,
             unitPrice: line.rate,
             total: line.lineTotal,
+            taxAmount: line.taxAmount,
           })),
         },
       },

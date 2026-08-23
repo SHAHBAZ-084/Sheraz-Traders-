@@ -48,13 +48,21 @@ function invoiceProductLineSummary(description: string | null | undefined) {
   return first || null;
 }
 
+function isPurchaseInvoice(item: PendingItem) {
+  return item.type === 'PURCHASE_INVOICE';
+}
+
+function isSaleLikeInvoice(item: PendingItem) {
+  return item.type === 'SALE_INVOICE' || item.type === 'KACHI_MAAL';
+}
+
 function pendingDebitCell(item: PendingItem) {
   if (item.debitAccountName) {
     return { text: item.debitAccountName, tone: 'debit' as const };
   }
-  if (item.kind === 'invoice') {
+  if (item.kind === 'invoice' && isPurchaseInvoice(item)) {
     const products = invoiceProductLineSummary(item.description);
-    if (products) return { text: products, tone: 'detail' as const };
+    if (products) return { text: products, tone: 'debit' as const };
   }
   return { text: '—', tone: 'empty' as const };
 }
@@ -63,17 +71,16 @@ function pendingCreditCell(item: PendingItem) {
   if (item.creditAccountName) {
     return { text: item.creditAccountName, tone: 'credit' as const };
   }
-  if (item.kind === 'invoice') {
+  if (item.kind === 'invoice' && isSaleLikeInvoice(item)) {
     const products = invoiceProductLineSummary(item.description);
-    if (products) return { text: products, tone: 'detail' as const };
+    if (products) return { text: products, tone: 'credit' as const };
   }
   return { text: '—', tone: 'empty' as const };
 }
 
-function pendingCellClass(tone: 'debit' | 'credit' | 'detail' | 'empty') {
+function pendingCellClass(tone: 'debit' | 'credit' | 'empty') {
   if (tone === 'debit') return ledgerDebitAmountClass(true);
   if (tone === 'credit') return ledgerCreditAmountClass(true);
-  if (tone === 'detail') return 'text-textSecondary font-normal';
   return 'text-textPrimary';
 }
 

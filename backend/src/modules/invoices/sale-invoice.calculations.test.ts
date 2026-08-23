@@ -7,20 +7,39 @@ describe('sale-invoice.calculations', () => {
       productId: 1,
       quantity: 3,
       rate: 150,
+      goodsTotal: 450,
+      taxAmount: 0,
       lineTotal: 450,
     });
   });
 
-  it('sums invoice total across lines', () => {
+  it('tracks flat tax separately from goods total', () => {
+    expect(computeSaleInvoiceLine({ productId: 1, quantity: 10, rate: 5700, taxAmount: 1000 })).toEqual({
+      productId: 1,
+      quantity: 10,
+      rate: 5700,
+      goodsTotal: 57000,
+      taxAmount: 1000,
+      lineTotal: 57000,
+    });
+  });
+
+  it('sums invoice total and party debit across lines', () => {
     const totals = computeSaleInvoiceTotals([
       { productId: 1, quantity: 2, rate: 100 },
-      { productId: 2, quantity: 1.5, rate: 80 },
+      { productId: 2, quantity: 1.5, rate: 80, taxAmount: 20 },
     ]);
     expect(totals.invoiceTotal).toBe(roundMoney(200 + 120));
+    expect(totals.taxTotal).toBe(20);
+    expect(totals.partyDebitTotal).toBe(roundMoney(totals.invoiceTotal - 20));
     expect(totals.lineCount).toBe(2);
   });
 
   it('rejects non-positive quantity', () => {
     expect(() => computeSaleInvoiceLine({ productId: 1, quantity: 0, rate: 10 })).toThrow(/Quantity/);
+  });
+
+  it('rejects tax exceeding line amount', () => {
+    expect(() => computeSaleInvoiceLine({ productId: 1, quantity: 1, rate: 100, taxAmount: 101 })).toThrow(/Tax/);
   });
 });

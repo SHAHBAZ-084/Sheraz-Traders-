@@ -738,7 +738,7 @@ export const api = {
     receipts?: Array<{ amount: number; accountId: number }>;
     receiptAmount?: number;
     receiptAccountId?: number;
-    lines: Array<{ productId: number; quantity: number; rate: number }>;
+    lines: Array<{ productId: number; quantity: number; rate: number; taxAmount?: number }>;
   }) {
     return request<InvoiceDetail>('/api/invoices/sale-invoice', { method: 'POST', body: JSON.stringify(data) });
   },

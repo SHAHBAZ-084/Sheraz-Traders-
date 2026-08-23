@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { prisma } from './lib/prisma';
 import { initializeDatabase, shutdownDatabase } from './lib/startup';
 import { runAccountingMaintenance } from './modules/accounting/accounting.service';
+import { backfillNullProductAverageCosts } from './modules/products/backfill-product-average-cost';
 import { logger } from './lib/logger';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -48,11 +49,22 @@ async function main() {
 
   // Defer maintenance so startup + first user actions are not competing for the single SQLite connection.
   setImmediate(() => {
-    void runAccountingMaintenance().catch((err) => {
-      logger.warn('Accounting maintenance on startup failed', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    });
+    void (async () => {
+      try {
+        await runAccountingMaintenance();
+      } catch (err) {
+        logger.warn('Accounting maintenance on startup failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+      try {
+        await backfillNullProductAverageCosts(prisma);
+      } catch (err) {
+        logger.warn('Product averageCost backfill on startup failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
   });
 
   const shutdown = async (signal: string) => {

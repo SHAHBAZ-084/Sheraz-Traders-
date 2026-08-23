@@ -1920,6 +1920,9 @@ export async function ensureKachiMaalAccounts(
 
 export const PURCHASE_MAZDURI_ACCOUNT_NAME = 'Purchase Mazduri';
 
+/** System fee account debited for Sale Invoice tax deductions (under Sale Fee category). */
+export const TAX_DEDUCTION_ACCOUNT_NAME = 'Tax Deduction';
+
 /** System fee account credited for Purchase Invoice Mazduri (under Sale Fee category). */
 export async function ensurePurchaseMazduriAccount(
   tx: Prisma.TransactionClient,
@@ -1931,6 +1934,21 @@ export async function ensurePurchaseMazduriAccount(
     PURCHASE_MAZDURI_ACCOUNT_NAME,
     AccountType.EXPENSE,
     'SF-PMAZ',
+  );
+  return { id: account.id, name: account.name };
+}
+
+/** System expense account debited when Sale Invoice tax is withheld from the party. */
+export async function ensureTaxDeductionAccount(
+  tx: Prisma.TransactionClient,
+): Promise<{ id: number; name: string }> {
+  const saleFee = await ensureCategoryInTx(tx, KACHI_MAAL_CATEGORY_NAMES.SALE_FEE);
+  const account = await ensureDefaultAccountInTx(
+    tx,
+    saleFee.id,
+    TAX_DEDUCTION_ACCOUNT_NAME,
+    AccountType.EXPENSE,
+    'SF-TAX',
   );
   return { id: account.id, name: account.name };
 }

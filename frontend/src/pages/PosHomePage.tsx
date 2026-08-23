@@ -19,7 +19,14 @@ import { INVOICE_QUICK_LINKS, REPORT_QUICK_LINKS, VOUCHER_QUICK_LINKS } from '..
 import { LegacyTable, PageShell, Tile } from '../components/ui/PageShell';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
-import { formatLedgerAmount, formatVoucherNumber, formatVoucherTypeLabel, voucherTypeColorClass } from '../lib/format';
+import {
+  formatLedgerAmount,
+  formatVoucherNumber,
+  formatVoucherTypeLabel,
+  ledgerCreditAmountClass,
+  ledgerDebitAmountClass,
+  voucherTypeColorClass,
+} from '../lib/format';
 
 type DashboardSummary = Awaited<ReturnType<typeof api.getDashboardSummary>>;
 
@@ -48,11 +55,18 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
   '/reports/sale-bill': { variant: 'report', icon: Receipt },
 };
 
-function StatBox({ label, value }: { label: string; value: string }) {
+/** Positive ledger balance = Dr (asset); negative = Cr — same convention as account reports. */
+function ledgerBalanceAmountClass(balance: number) {
+  if (balance > 0) return ledgerDebitAmountClass(true);
+  if (balance < 0) return ledgerCreditAmountClass(true);
+  return '';
+}
+
+function StatBox({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <Tile className="flex min-h-[4.5rem] min-w-0 flex-col justify-center">
       <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-textMuted">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums text-financial">{value}</p>
+      <p className={`mt-1 text-xl font-semibold tabular-nums ${valueClassName ?? 'text-financial'}`}>{value}</p>
     </Tile>
   );
 }
@@ -109,6 +123,9 @@ export function PosHomePage() {
         <StatBox
           label="Cash Balance"
           value={summary ? formatLedgerAmount(Math.round(summary.cashBalance), 0) : '—'}
+          valueClassName={
+            summary ? ledgerBalanceAmountClass(summary.cashBalance) || 'text-financial' : undefined
+          }
         />
         <Tile className="flex min-h-[4.5rem] min-w-0 flex-col sm:col-span-2">
           <div className="flex items-center justify-between gap-2">

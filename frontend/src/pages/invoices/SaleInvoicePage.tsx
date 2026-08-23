@@ -49,6 +49,7 @@ type GridRow = {
   productName: string;
   quantity: number;
   rate: number;
+  taxAmount: number;
   lineTotal: number;
 };
 
@@ -62,6 +63,8 @@ type SaleInvoiceDraft = {
   productId: string;
   quantity: string;
   rate: string;
+  taxEnabled: boolean;
+  taxAmount: string;
   partyCategoryId: string;
   customerAccountId: string;
   receiptLines: EmbeddedPaymentLineDraft[];
@@ -85,8 +88,11 @@ function LinesTable({
   invoiceTotal: number;
   receivedTotal: number;
 }) {
+  const hasAnyTax = rows.some((r) => r.taxAmount > 0);
   const remaining = Math.max(0, invoiceTotal - receivedTotal);
-  const colSpan = onRemove ? 5 : 4;
+  const baseCols = hasAnyTax ? 5 : 4;
+  const colSpan = onRemove ? baseCols + 1 : baseCols;
+  const labelColSpan = hasAnyTax ? 4 : 3;
 
   return (
     <InvoicePreviewGridShell isEmpty={rows.length === 0 && !partyName}>
@@ -105,6 +111,11 @@ function LinesTable({
             <th className={urduLabelClassName(salePurchaseInvoiceLabel('qty'), 'px-3 py-2.5 text-right')}>
               {salePurchaseInvoiceLabel('qty')}
             </th>
+            {hasAnyTax ? (
+              <th className={urduLabelClassName(salePurchaseInvoiceLabel('tax'), 'px-3 py-2.5 text-right')}>
+                {salePurchaseInvoiceLabel('tax')}
+              </th>
+            ) : null}
             <th className="px-3 py-2.5 text-right">Amount</th>
             {onRemove ? <th className="px-3 py-2.5" /> : null}
           </tr>
@@ -115,6 +126,11 @@ function LinesTable({
               <td className="px-3 py-2 inv-bill-product-name">{row.productName}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.rate)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{row.quantity}</td>
+              {hasAnyTax ? (
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {row.taxAmount > 0 ? formatLedgerAmount(row.taxAmount) : '—'}
+                </td>
+              ) : null}
               <td className="px-3 py-2 text-right tabular-nums">{formatLedgerAmount(row.lineTotal)}</td>
               {onRemove ? (
                 <td className="px-3 py-2 text-right">
@@ -128,7 +144,7 @@ function LinesTable({
           {rows.length > 0 ? (
             <>
               <tr className="border-t border-border bg-surface2/60">
-                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
                   Total
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium">
@@ -137,7 +153,7 @@ function LinesTable({
                 {onRemove ? <td /> : null}
               </tr>
               <tr className="border-b border-border/50 bg-surface2/40">
-                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
                   Received
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
@@ -146,7 +162,7 @@ function LinesTable({
                 {onRemove ? <td /> : null}
               </tr>
               <tr className="bg-surface2/40">
-                <td colSpan={3} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
+                <td colSpan={labelColSpan} className="px-3 py-2 text-right text-xs font-medium text-textMuted">
                   Remaining
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">
@@ -185,6 +201,8 @@ export function SaleInvoicePage() {
   const [productId, setProductId] = useState(() => restoredState?.productId ?? '');
   const [quantity, setQuantity] = useState(() => restoredState?.quantity ?? '1');
   const [rate, setRate] = useState(() => restoredState?.rate ?? '');
+  const [taxEnabled, setTaxEnabled] = useState(() => restoredState?.taxEnabled ?? false);
+  const [taxAmount, setTaxAmount] = useState(() => restoredState?.taxAmount ?? '');
   const [partyCategoryId, setPartyCategoryId] = useState(() => restoredState?.partyCategoryId ?? '');
   const [customerAccountId, setCustomerAccountId] = useState(() => restoredState?.customerAccountId ?? '');
   const [receiptLines, setReceiptLines] = useState<EmbeddedPaymentLineDraft[]>(
@@ -205,6 +223,8 @@ export function SaleInvoicePage() {
       if (restoredState.productId) setProductId(restoredState.productId);
       if (restoredState.quantity) setQuantity(restoredState.quantity);
       if (restoredState.rate) setRate(restoredState.rate);
+      if (restoredState.taxEnabled != null) setTaxEnabled(restoredState.taxEnabled);
+      if (restoredState.taxAmount !== undefined) setTaxAmount(restoredState.taxAmount);
       if (restoredState.partyCategoryId) setPartyCategoryId(restoredState.partyCategoryId);
       if (restoredState.customerAccountId) setCustomerAccountId(restoredState.customerAccountId);
       if (restoredState.receiptLines) setReceiptLines(restoredState.receiptLines);
@@ -287,14 +307,18 @@ export function SaleInvoicePage() {
           setReceiptLines(embeddedLinesFromLegacyScalar(accounts, receiptAcct, receiptAmt));
         }
         setGridRows(
-          (inv.items ?? []).map((item, index) => ({
-            clientId: `pending-${item.id ?? index}`,
-            productId: item.productId ?? item.product?.id ?? 0,
-            productName: item.product?.name ?? item.label,
-            quantity: Number(item.quantity),
-            rate: Number(item.unitPrice),
-            lineTotal: Number(item.total),
-          })),
+          (inv.items ?? []).map((item, index) => {
+            const tax = Number((item as { taxAmount?: number | string | null }).taxAmount ?? 0);
+            return {
+              clientId: `pending-${item.id ?? index}`,
+              productId: item.productId ?? item.product?.id ?? 0,
+              productName: item.product?.name ?? item.label,
+              quantity: Number(item.quantity),
+              rate: Number(item.unitPrice),
+              taxAmount: tax,
+              lineTotal: Number(item.total),
+            };
+          }),
         );
       })
       .catch((err) => {
@@ -374,12 +398,23 @@ export function SaleInvoicePage() {
     const product = products.find((p) => String(p.id) === productId);
     const qty = Number(quantity);
     const unitRate = Number(rate);
+    const tax = taxEnabled ? Number(taxAmount || 0) : 0;
     if (!product) {
       setError('Select a product');
       return;
     }
     if (!(qty > 0) || !(unitRate >= 0) || !Number.isFinite(unitRate)) {
       setError('Enter a valid quantity and rate');
+      return;
+    }
+    if (taxEnabled && (!(tax >= 0) || !Number.isFinite(tax))) {
+      setError('Enter a valid tax amount');
+      return;
+    }
+    const goodsTotal = Math.round(qty * unitRate * 100) / 100;
+    const taxRounded = Math.round(tax * 100) / 100;
+    if (taxRounded > goodsTotal) {
+      setError('Tax cannot exceed the line amount');
       return;
     }
 
@@ -412,12 +447,15 @@ export function SaleInvoicePage() {
           productName: product.name,
           quantity: qty,
           rate: unitRate,
-          lineTotal: Math.round(qty * unitRate * 100) / 100,
+          taxAmount: taxRounded,
+          lineTotal: goodsTotal,
         },
       ]);
       setProductId('');
       setQuantity('1');
       setRate('');
+      setTaxAmount('');
+      setTaxEnabled(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to check stock');
     } finally {
@@ -460,6 +498,7 @@ export function SaleInvoicePage() {
             productId: row.productId,
             quantity: row.quantity,
             rate: row.rate,
+            ...(row.taxAmount > 0 ? { taxAmount: row.taxAmount } : {}),
           })),
         });
         navigate('/system/approvals');
@@ -475,6 +514,7 @@ export function SaleInvoicePage() {
           productId: row.productId,
           quantity: row.quantity,
           rate: row.rate,
+          ...(row.taxAmount > 0 ? { taxAmount: row.taxAmount } : {}),
         })),
       });
       if (printAfterSave && invoice.reference) {
@@ -529,7 +569,7 @@ export function SaleInvoicePage() {
 
               <InvoiceFormSection label={salePurchaseInvoiceLabel('addExistingProduct')}>
                 <InvoiceFieldGroup>
-                  <InvoiceFieldRow cols={4}>
+                  <InvoiceFieldRow cols={taxEnabled ? 6 : 5}>
                     <InvoiceField wide>
                       <FieldLabel>{salePurchaseInvoiceLabel('category')}</FieldLabel>
                       <SearchSelect
@@ -561,6 +601,27 @@ export function SaleInvoicePage() {
                       <FieldLabel>{salePurchaseInvoiceLabel('rate')}</FieldLabel>
                       <DecimalInput value={rate} onChange={setRate} />
                     </InvoiceField>
+                    <InvoiceField>
+                      <FieldLabel>{salePurchaseInvoiceLabel('applyTax')}</FieldLabel>
+                      <label className="flex h-[2.375rem] cursor-pointer items-center gap-2 text-sm text-textPrimary">
+                        <input
+                          type="checkbox"
+                          checked={taxEnabled}
+                          onChange={(e) => {
+                            setTaxEnabled(e.target.checked);
+                            if (!e.target.checked) setTaxAmount('');
+                          }}
+                          className="h-4 w-4 rounded border-border text-financial"
+                        />
+                        <span className="text-xs font-medium">Enable</span>
+                      </label>
+                    </InvoiceField>
+                    {taxEnabled ? (
+                      <InvoiceField>
+                        <FieldLabel>{salePurchaseInvoiceLabel('tax')}</FieldLabel>
+                        <DecimalInput value={taxAmount} onChange={setTaxAmount} />
+                      </InvoiceField>
+                    ) : null}
                   </InvoiceFieldRow>
                 </InvoiceFieldGroup>
               </InvoiceFormSection>
@@ -695,6 +756,8 @@ export function SaleInvoicePage() {
                             productId,
                             quantity,
                             rate,
+                            taxEnabled,
+                            taxAmount,
                             partyCategoryId,
                             customerAccountId,
                             receiptLines,

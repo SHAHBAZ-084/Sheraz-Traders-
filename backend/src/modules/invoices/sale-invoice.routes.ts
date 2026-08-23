@@ -7,6 +7,7 @@ const lineSchema = z.object({
   productId: z.number().int().positive(),
   quantity: z.number().positive(),
   rate: z.number().min(0),
+  taxAmount: z.number().min(0).optional(),
 });
 
 const embeddedLineSchema = z.object({
