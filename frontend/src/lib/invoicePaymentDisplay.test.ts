@@ -42,7 +42,7 @@ describe('invoicePaymentDisplay', () => {
           },
         },
       ],
-    } as InvoiceDetail;
+    } as unknown as InvoiceDetail;
 
     const lines = embeddedPaymentsFromInvoice(invoice, 'SALE_RECEIPT');
     expect(sumPaymentDisplayAmounts(lines)).toBe(30000);
@@ -53,7 +53,7 @@ describe('invoicePaymentDisplay', () => {
   });
 
   it('returns empty when no payments', () => {
-    const invoice = { total: 1000, vouchers: [] } as InvoiceDetail;
+    const invoice = { total: 1000, vouchers: [] } as unknown as InvoiceDetail;
     expect(embeddedPaymentsFromInvoice(invoice, 'SALE_RECEIPT')).toEqual([]);
     expect(formatPaymentLinesDetail([], (n) => String(n))).toBe('0');
     expect(invoiceRemaining(1000, 0)).toBe(1000);
