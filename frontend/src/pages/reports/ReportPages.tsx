@@ -104,6 +104,13 @@ function formatProfitLossPrice(value: number | null) {
   return value == null ? '—' : formatLedgerAmount(value);
 }
 
+/** Positive = Dr (red), negative = Cr (green), zero = neutral. */
+function accountBalanceAmountClass(balance: number) {
+  if (balance > 0) return ledgerDebitAmountClass(true);
+  if (balance < 0) return ledgerCreditAmountClass(true);
+  return '';
+}
+
 function voucherFromAccount(voucher: Voucher) {
   if (voucher.type === 'KACHI') return 'Multi-leg';
   if (voucher.type === 'JOURNAL') return voucher.debitAccount?.name ?? '—';
@@ -383,7 +390,11 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
                       {formatLedgerAmount(ledger.summary.totalMazduri ?? 0)}
                     </td>
                   ) : null}
-                  <td className={`text-right text-accent ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}>{formatLedgerBalance(ledger.summary.closingBalance)}</td>
+                  <td
+                    className={`text-right ${accountBalanceAmountClass(ledger.summary.closingBalance)} ${REPORT_AMOUNT_CELL} ${REPORT_BALANCE_COL}`}
+                  >
+                    {formatLedgerBalance(ledger.summary.closingBalance)}
+                  </td>
                 </tr>
               </tfoot>
             </ReportTable>
@@ -725,12 +736,6 @@ export function StockReportPage() {
 type BalanceSideFilter = 'both' | 'debit' | 'credit';
 type AccountBalanceFilterMode = 'account' | 'product';
 type VoucherTypeFilter = 'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL' | 'KACHI';
-
-function accountBalanceAmountClass(balance: number) {
-  if (balance > 0) return ledgerDebitAmountClass(true);
-  if (balance < 0) return ledgerCreditAmountClass(true);
-  return '';
-}
 
 function AccountBalanceTableHeader() {
   return (

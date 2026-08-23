@@ -238,6 +238,9 @@ describe('Pending approval workflow', () => {
     expect(row!.description).toContain('6@12500');
     expect(row!.description).toContain('Rush order');
     expect(row!.description).toContain('Received 20000');
+    // Sale party is debited — show under Debit only (red), not Credit.
+    expect(row!.debitAccountName).toBeTruthy();
+    expect(row!.creditAccountName).toBeNull();
   });
 
   it('pending purchase invoice lists product-line description in pending approvals', async () => {
@@ -256,6 +259,9 @@ describe('Pending approval workflow', () => {
     const row = pending.find((p) => p.kind === 'invoice' && p.id === purchase.id);
     expect(row).toBeTruthy();
     expect(row!.description).toMatch(/3@290/);
+    // Purchase supplier is credited — show under Credit only (green), not Debit.
+    expect(row!.creditAccountName).toBeTruthy();
+    expect(row!.debitAccountName).toBeNull();
   });
 
   it('pending stock adjustment stays off ledger/stock until ADMIN approves via stock-adjustment endpoint', async () => {

@@ -156,19 +156,27 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       description: v.description,
       createdBy: mapCreatedBy(v.createdBy),
     })),
-    ...invoices.map((inv) => ({
-      kind: 'invoice' as const,
-      id: inv.id,
-      number: displayNumberFromReference(inv.reference, inv.id),
-      type: inv.type,
-      reference: inv.reference,
-      date: inv.invoiceDate?.toISOString() ?? null,
-      debitAccountName: inv.debitAccount ? inv.debitAccount.name : inv.customer ? inv.customer.name : null,
-      creditAccountName: inv.supplier ? inv.supplier.name : null,
-      amount: Number(inv.total),
-      description: buildPendingInvoiceApprovalDescription(inv),
-      createdBy: mapCreatedBy(inv.createdBy),
-    })),
+    ...invoices.map((inv) => {
+      // Invoice.debitAccountId stores "the party" for all types, but posting side differs:
+      // Sale / Kachi Maal → party is DEBITED; Purchase → party (supplier) is CREDITED.
+      const isPurchase = inv.type === InvoiceType.PURCHASE_INVOICE;
+      const partyName = isPurchase
+        ? (inv.debitAccount?.name ?? inv.supplier?.name ?? null)
+        : (inv.debitAccount?.name ?? inv.customer?.name ?? null);
+      return {
+        kind: 'invoice' as const,
+        id: inv.id,
+        number: displayNumberFromReference(inv.reference, inv.id),
+        type: inv.type,
+        reference: inv.reference,
+        date: inv.invoiceDate?.toISOString() ?? null,
+        debitAccountName: isPurchase ? null : partyName,
+        creditAccountName: isPurchase ? partyName : null,
+        amount: Number(inv.total),
+        description: buildPendingInvoiceApprovalDescription(inv),
+        createdBy: mapCreatedBy(inv.createdBy),
+      };
+    }),
     ...accounts.map((account) => {
       const opening = Math.abs(Number(account.pendingOpeningBalance ?? 0));
       const side = account.pendingOpeningSide === 'CR' ? 'Cr' : 'Dr';

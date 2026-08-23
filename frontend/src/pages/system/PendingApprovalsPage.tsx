@@ -41,6 +41,42 @@ function formatKindLabel(kind: PendingKind) {
   }
 }
 
+/** Product-line portion of invoice description (before notes / payment suffixes). */
+function invoiceProductLineSummary(description: string | null | undefined) {
+  if (!description?.trim()) return null;
+  const first = description.split(' — ')[0]?.trim();
+  return first || null;
+}
+
+function pendingDebitCell(item: PendingItem) {
+  if (item.debitAccountName) {
+    return { text: item.debitAccountName, tone: 'debit' as const };
+  }
+  if (item.kind === 'invoice') {
+    const products = invoiceProductLineSummary(item.description);
+    if (products) return { text: products, tone: 'detail' as const };
+  }
+  return { text: '—', tone: 'empty' as const };
+}
+
+function pendingCreditCell(item: PendingItem) {
+  if (item.creditAccountName) {
+    return { text: item.creditAccountName, tone: 'credit' as const };
+  }
+  if (item.kind === 'invoice') {
+    const products = invoiceProductLineSummary(item.description);
+    if (products) return { text: products, tone: 'detail' as const };
+  }
+  return { text: '—', tone: 'empty' as const };
+}
+
+function pendingCellClass(tone: 'debit' | 'credit' | 'detail' | 'empty') {
+  if (tone === 'debit') return ledgerDebitAmountClass(true);
+  if (tone === 'credit') return ledgerCreditAmountClass(true);
+  if (tone === 'detail') return 'text-textSecondary font-normal';
+  return 'text-textPrimary';
+}
+
 function editPathForPending(item: PendingItem): string | null {
   const q = `pendingId=${item.id}`;
   if (item.kind === 'voucher') {
@@ -200,6 +236,8 @@ export function PendingApprovalsPage() {
                   const isBusy = busyId === keyApprove || busyId === keyReject;
                   const showEdit = canEdit(item) && editPathForPending(item) != null;
                   const showAdminActions = isAdmin;
+                  const creditCell = pendingCreditCell(item);
+                  const debitCell = pendingDebitCell(item);
                   return (
                     <tr key={`${item.kind}-${item.id}`} className="border-b border-border">
                       <td className="py-2 pr-3 font-medium text-textPrimary">
@@ -210,11 +248,11 @@ export function PendingApprovalsPage() {
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {item.date ? formatDate(item.date) : '—'}
                       </td>
-                      <td className={`py-2 pr-3 font-medium ${item.creditAccountName ? ledgerCreditAmountClass(true) : 'text-textPrimary'}`}>
-                        {item.creditAccountName ?? '—'}
+                      <td className={`py-2 pr-3 font-medium ${pendingCellClass(creditCell.tone)}`}>
+                        {creditCell.text}
                       </td>
-                      <td className={`py-2 pr-3 font-medium ${item.debitAccountName ? ledgerDebitAmountClass(true) : 'text-textPrimary'}`}>
-                        {item.debitAccountName ?? '—'}
+                      <td className={`py-2 pr-3 font-medium ${pendingCellClass(debitCell.tone)}`}>
+                        {debitCell.text}
                       </td>
                       <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
