@@ -1161,7 +1161,7 @@ export function VoucherDetailCard({
               disabled={cancelling || editingFields}
               onClick={onCancel}
             >
-              {cancelling ? 'Deleting…' : 'Delete'}
+              {cancelling ? 'Cancelling voucher…' : 'Delete'}
             </DangerButton>
           </div>
         ) : null}

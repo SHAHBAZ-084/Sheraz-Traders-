@@ -25,8 +25,13 @@ import { assertActiveStore } from '../stores/stores.service';
 import { getCurrentStockBalance, postSaleInvoiceStockOut } from '../stock/stock.service';
 import { voucherReferenceFromBillNo, formatInvoiceProductLinesDescription } from './invoice-voucher-descriptions';
 import {
+  appendSaleReceiptLegsInTx,
+  assertLegsBalance,
+  deletePendingEmbeddedVouchersInTx,
+  embeddedReceiptScalarFields,
   parseEmbeddedReceiptLinesInput,
-  syncEmbeddedSaleReceiptsInTx,
+  resolveEmbeddedReceiptLinesForPosting,
+  saveEmbeddedSaleReceiptsInTx,
   type EmbeddedReceiptLineInput,
 } from './invoice-embedded-voucher';
 import { nextInvoiceReferenceInTx } from './invoice-reference';
@@ -192,6 +197,10 @@ async function buildSaleInvoiceLegs(
   resolvedLines: ResolvedSaleLine[],
   invoiceTotal: number,
   taxTotal: number,
+  opts?: {
+    receipts?: EmbeddedReceiptLineInput[];
+    invoiceReference?: string;
+  },
 ): Promise<{ legs: VoucherLeg[]; productDescription: string }> {
   const productDescription = formatInvoiceProductLinesDescription(
     resolvedLines.map((line) => ({
@@ -272,15 +281,15 @@ async function buildSaleInvoiceLegs(
     }
   }
 
-  const totalDebits = roundMoney(
-    legs.filter((l) => l.type === LedgerEntryType.DEBIT).reduce((s, l) => s + l.amount, 0),
-  );
-  const totalCredits = roundMoney(
-    legs.filter((l) => l.type === LedgerEntryType.CREDIT).reduce((s, l) => s + l.amount, 0),
-  );
-  if (Math.abs(totalDebits - totalCredits) > 0.01) {
-    throw new AppError(500, 'Sale Invoice voucher debits and credits do not balance');
+  if (opts?.receipts && opts.receipts.length > 0) {
+    await appendSaleReceiptLegsInTx(tx, legs, {
+      customerAccountId,
+      receipts: opts.receipts,
+      invoiceReference: opts.invoiceReference ?? '',
+    });
   }
+
+  assertLegsBalance(legs, 'Sale Invoice');
   return { legs, productDescription };
 }
 
@@ -295,16 +304,31 @@ async function postSaleInvoiceAccounting(
     debitAccountId: number;
     total: Prisma.Decimal | number;
     createdById: number;
+    embeddedReceiptAmount?: Prisma.Decimal | number | null;
+    embeddedReceiptAccountId?: number | null;
+    embeddedReceiptLines?: unknown;
   },
   resolvedLines: ResolvedSaleLine[],
   taxTotal: number,
 ) {
+  const receipts = await resolveEmbeddedReceiptLinesForPosting(tx, {
+    id: invoice.id,
+    total: invoice.total,
+    embeddedReceiptAmount: invoice.embeddedReceiptAmount ?? null,
+    embeddedReceiptAccountId: invoice.embeddedReceiptAccountId ?? null,
+    embeddedReceiptLines: invoice.embeddedReceiptLines,
+  });
+
+  // Drop any legacy pending SALE_RECEIPT vouchers — legs fold into this SALE_INVOICE voucher.
+  await deletePendingEmbeddedVouchersInTx(tx, invoice.id, VoucherType.SALE_RECEIPT);
+
   const { legs, productDescription } = await buildSaleInvoiceLegs(
     tx,
     invoice.debitAccountId,
     resolvedLines,
     Number(invoice.total),
     taxTotal,
+    { receipts, invoiceReference: invoice.reference },
   );
 
   const voucher = await createMultiLegVoucherInTx(tx, {
@@ -331,17 +355,6 @@ async function postSaleInvoiceAccounting(
       quantity: line.quantity,
     })),
   });
-}
-
-function embeddedReceiptScalarFields(receipts: EmbeddedReceiptLineInput[]) {
-  if (receipts.length === 0) {
-    return { embeddedReceiptAmount: null, embeddedReceiptAccountId: null };
-  }
-  const sum = roundMoney(receipts.reduce((total, line) => total + line.amount, 0));
-  return {
-    embeddedReceiptAmount: sum,
-    embeddedReceiptAccountId: receipts[0].accountId,
-  };
 }
 
 export async function createSaleInvoice(
@@ -387,14 +400,6 @@ export async function createSaleInvoice(
       });
     }
 
-    await buildSaleInvoiceLegs(
-      tx,
-      data.customerAccountId,
-      resolvedLines,
-      totals.invoiceTotal,
-      totals.taxTotal,
-    );
-
     const embeddedReceipts = parseEmbeddedReceiptLinesInput(
       {
         receipts: data.receipts,
@@ -404,6 +409,16 @@ export async function createSaleInvoice(
       totals.invoiceTotal,
     );
     const receiptScalars = embeddedReceiptScalarFields(embeddedReceipts);
+
+    // Validate core + receipt legs balance before persisting.
+    await buildSaleInvoiceLegs(
+      tx,
+      data.customerAccountId,
+      resolvedLines,
+      totals.invoiceTotal,
+      totals.taxTotal,
+      { receipts: embeddedReceipts, invoiceReference: 'PREVIEW' },
+    );
 
     const reference = await nextInvoiceReferenceInTx(tx, InvoiceType.SALE_INVOICE, financialYearId);
 
@@ -447,21 +462,13 @@ export async function createSaleInvoice(
           debitAccountId: data.customerAccountId,
           total: totals.invoiceTotal,
           createdById: data.createdById,
+          embeddedReceiptAmount: invoice.embeddedReceiptAmount,
+          embeddedReceiptAccountId: invoice.embeddedReceiptAccountId,
+          embeddedReceiptLines: invoice.embeddedReceiptLines,
         },
         resolvedLines,
         totals.taxTotal,
       );
-    }
-
-    if (embeddedReceipts.length > 0) {
-      await syncEmbeddedSaleReceiptsInTx(tx, {
-        invoiceId: invoice.id,
-        customerAccountId: data.customerAccountId,
-        receipts: embeddedReceipts,
-        invoiceDate,
-        invoiceReference: reference,
-        createdById: data.createdById,
-      });
     }
 
     return invoice;
@@ -521,34 +528,13 @@ export async function approveSaleInvoice(invoiceId: number) {
         debitAccountId: invoice.debitAccountId,
         total: invoice.total,
         createdById: invoice.createdById,
+        embeddedReceiptAmount: invoice.embeddedReceiptAmount,
+        embeddedReceiptAccountId: invoice.embeddedReceiptAccountId,
+        embeddedReceiptLines: invoice.embeddedReceiptLines,
       },
       resolvedLines,
       taxTotal,
     );
-
-    const existingEmbedded = await tx.invoiceVoucher.count({
-      where: { invoiceId: invoice.id, voucher: { type: VoucherType.SALE_RECEIPT } },
-    });
-    if (existingEmbedded === 0) {
-      const embeddedReceipts = parseEmbeddedReceiptLinesInput(
-        {
-          receiptAmount:
-            invoice.embeddedReceiptAmount != null ? Number(invoice.embeddedReceiptAmount) : undefined,
-          receiptAccountId: invoice.embeddedReceiptAccountId ?? undefined,
-        },
-        Number(invoice.total),
-      );
-      if (embeddedReceipts.length > 0) {
-        await syncEmbeddedSaleReceiptsInTx(tx, {
-          invoiceId: invoice.id,
-          customerAccountId: invoice.debitAccountId,
-          receipts: embeddedReceipts,
-          invoiceDate: invoice.invoiceDate ?? new Date(),
-          invoiceReference: invoice.reference,
-          createdById: invoice.createdById,
-        });
-      }
-    }
 
     return tx.invoice.update({
       where: { id: invoice.id },
@@ -618,14 +604,6 @@ export async function updatePendingSaleInvoice(
       });
     }
 
-    await buildSaleInvoiceLegs(
-      tx,
-      data.customerAccountId,
-      resolvedLines,
-      totals.invoiceTotal,
-      totals.taxTotal,
-    );
-
     const embeddedReceipts = parseEmbeddedReceiptLinesInput(
       {
         receipts: data.receipts,
@@ -635,6 +613,15 @@ export async function updatePendingSaleInvoice(
       totals.invoiceTotal,
     );
     const receiptScalars = embeddedReceiptScalarFields(embeddedReceipts);
+
+    await buildSaleInvoiceLegs(
+      tx,
+      data.customerAccountId,
+      resolvedLines,
+      totals.invoiceTotal,
+      totals.taxTotal,
+      { receipts: embeddedReceipts, invoiceReference: existing.reference },
+    );
 
     await tx.invoiceItem.deleteMany({ where: { invoiceId } });
 
@@ -664,13 +651,10 @@ export async function updatePendingSaleInvoice(
       include: { items: { include: { product: true } } },
     });
 
-    await syncEmbeddedSaleReceiptsInTx(tx, {
+    // Clears any leftover legacy SALE_RECEIPT pending vouchers; lines already on invoice.
+    await saveEmbeddedSaleReceiptsInTx(tx, {
       invoiceId,
-      customerAccountId: data.customerAccountId,
       receipts: embeddedReceipts,
-      invoiceDate,
-      invoiceReference: existing.reference,
-      createdById: existing.createdById,
     });
 
     return updated;

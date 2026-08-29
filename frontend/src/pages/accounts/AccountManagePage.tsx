@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ListPagination } from '../../components/ui/ListPagination';
 import { formatLedgerBalance } from '../../lib/format';
 import { sanitizeDecimalInput } from '../../lib/numericInput';
@@ -41,6 +42,13 @@ function suggestedOpeningSideForCategory(categoryId: number, accounts: Account[]
 }
 
 export function AccountManagePage({ mode }: { mode: Mode }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pendingIdParam = searchParams.get('pendingId');
+  const pendingId = pendingIdParam ? Number(pendingIdParam) : null;
+  const isEditingPending =
+    mode === 'add' && pendingId != null && Number.isFinite(pendingId) && pendingId > 0;
+
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [browseAccounts, setBrowseAccounts] = useState<Account[]>([]);
@@ -78,6 +86,34 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     api.listCategories().then(setCategories).catch(() => setCategories([]));
     api.listAccounts({ forSelectors: false }).then(setAccounts).catch(() => setAccounts([]));
   }, []);
+
+  useEffect(() => {
+    if (!isEditingPending || pendingId == null) return;
+    let cancelled = false;
+    api
+      .getPendingAccount(pendingId)
+      .then((account) => {
+        if (cancelled) return;
+        setCategoryId(account.categoryId);
+        setName(account.name);
+        if (account.pendingOpeningBalance != null && account.pendingOpeningBalance > 0) {
+          setOpeningBalance(String(account.pendingOpeningBalance));
+          setOpeningBalanceSide(account.pendingOpeningSide === 'CR' ? 'CR' : 'DR');
+          openingSideTouched.current = true;
+        } else {
+          setOpeningBalance('');
+          setOpeningBalanceSide('DR');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load pending account');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditingPending, pendingId]);
 
   useEffect(() => {
     if (mode !== 'add') return;
@@ -155,6 +191,17 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
         if (openingBalance.trim() && parsedOpeningAmount < 0) {
           throw new Error('Opening balance must be zero or greater');
         }
+        if (isEditingPending && pendingId != null) {
+          await api.updatePendingAccount(pendingId, {
+            categoryId: Number(categoryId),
+            name,
+            ...(hasOpeningAmount
+              ? { openingBalance: parsedOpeningAmount, openingBalanceSide }
+              : { openingBalance: 0 }),
+          });
+          navigate('/system/approvals');
+          return;
+        }
         const created = await api.createAccount({
           categoryId: Number(categoryId),
           name,
@@ -192,7 +239,9 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
     }
   }
 
-  const { title, subtitle } = copy[mode];
+  const { title, subtitle } = isEditingPending
+    ? { title: 'Edit Pending Account', subtitle: 'Update this pending account (still requires approval)' }
+    : copy[mode];
 
   return (
     <PageShell title={title} subtitle={subtitle}>
@@ -274,8 +323,26 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {message ? <p className="text-sm text-success">{message}</p> : null}
           <div className="flex gap-2">
-            <PrimaryButton type="submit">{mode === 'remove' ? 'Remove' : 'Save'}</PrimaryButton>
-            <SecondaryButton type="button" onClick={() => { setCategoryId(''); setName(''); setOpeningBalance(''); setOpeningBalanceSide('DR'); openingSideTouched.current = false; setSelectedId(''); }}>Clear</SecondaryButton>
+            <PrimaryButton type="submit">
+              {mode === 'remove' ? 'Remove' : isEditingPending ? 'Update pending' : 'Save'}
+            </PrimaryButton>
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                if (isEditingPending) {
+                  navigate('/system/approvals');
+                  return;
+                }
+                setCategoryId('');
+                setName('');
+                setOpeningBalance('');
+                setOpeningBalanceSide('DR');
+                openingSideTouched.current = false;
+                setSelectedId('');
+              }}
+            >
+              {isEditingPending ? 'Back' : 'Clear'}
+            </SecondaryButton>
           </div>
         </form>
       </Panel>

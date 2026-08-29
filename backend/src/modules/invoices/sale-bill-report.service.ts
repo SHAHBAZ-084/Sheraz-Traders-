@@ -54,7 +54,9 @@ export async function getSaleBillSummary(options: {
   toDate: string;
   partyAccountId?: number;
   financialYearId?: number;
-}): Promise<SaleBillSummaryResult> {
+  limit?: number;
+  offset?: number;
+}): Promise<SaleBillSummaryResult & { totalCount: number; pagination?: { total: number; limit: number; offset: number } }> {
   const from = parseDateStart(options.fromDate);
   const to = parseDateEnd(options.toDate);
   if (from > to) throw new AppError(400, 'From date must be on or before to date');
@@ -145,10 +147,20 @@ export async function getSaleBillSummary(options: {
       && Number(invoice.embeddedReceiptAmount) > 0
       && invoice.embeddedReceiptAccount
     ) {
+      // New flow: receipt amount lives on the invoice (folded into SALE_INVOICE at post).
+      // Treat pending invoices as receivedPending; posted invoices as received.
+      receivedAmount = roundMoney(Number(invoice.embeddedReceiptAmount));
+      receivedPending = invoice.status === InvoiceStatus.PENDING_APPROVAL;
       receivedAccountLabel = formatBankCashAccountLabel(
         invoice.embeddedReceiptAccount.category.name,
         invoice.embeddedReceiptAccount.name,
       );
+      const lines = Array.isArray(invoice.embeddedReceiptLines)
+        ? invoice.embeddedReceiptLines
+        : [];
+      if (lines.length > 1) {
+        receivedAccountLabel = `${receivedAccountLabel} (+${lines.length - 1} more)`;
+      }
     }
 
     return {
@@ -172,6 +184,10 @@ export async function getSaleBillSummary(options: {
   const grandTotal = roundMoney(groups.reduce((sum, g) => sum + g.netTotal, 0));
   const receivedTotal = roundMoney(groups.reduce((sum, g) => sum + g.receivedAmount, 0));
   const remainingTotal = roundMoney(grandTotal - receivedTotal);
+  const totalCount = groups.length;
+  const offset = options.offset ?? 0;
+  const pageInvoices =
+    options.limit != null ? groups.slice(offset, offset + options.limit) : groups;
 
   return {
     fromDate: options.fromDate,
@@ -179,6 +195,10 @@ export async function getSaleBillSummary(options: {
     grandTotal,
     receivedTotal,
     remainingTotal,
-    invoices: groups,
+    invoices: pageInvoices,
+    totalCount,
+    ...(options.limit != null
+      ? { pagination: { total: totalCount, limit: options.limit, offset } }
+      : {}),
   };
 }

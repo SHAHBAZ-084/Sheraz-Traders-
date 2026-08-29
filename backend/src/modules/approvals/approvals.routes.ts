@@ -119,11 +119,74 @@ approvalsRouter.post(
   }),
 );
 
+approvalsRouter.get(
+  '/accounts/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.getPendingAccount(Number(req.params.id), {
+        id: req.user!.id,
+        role: req.user!.role,
+      }),
+    );
+  }),
+);
+
+approvalsRouter.patch(
+  '/accounts/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.updatePendingAccount(
+        Number(req.params.id),
+        { id: req.user!.id, role: req.user!.role },
+        {
+          name: String(req.body.name ?? ''),
+          categoryId: Number(req.body.categoryId),
+          openingBalance: req.body.openingBalance != null ? Number(req.body.openingBalance) : undefined,
+          openingBalanceSide: req.body.openingBalanceSide,
+        },
+      ),
+    );
+  }),
+);
+
 approvalsRouter.post(
   '/accounts/:id/reject',
   requireAdmin,
   asyncHandler(async (req, res) => {
     res.json(await approvalsService.rejectPendingAccount(Number(req.params.id)));
+  }),
+);
+
+approvalsRouter.get(
+  '/products/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.getPendingProduct(Number(req.params.id), {
+        id: req.user!.id,
+        role: req.user!.role,
+      }),
+    );
+  }),
+);
+
+approvalsRouter.patch(
+  '/products/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.updatePendingProduct(
+        Number(req.params.id),
+        { id: req.user!.id, role: req.user!.role },
+        req.body as {
+          name: string;
+          unit?: string | null;
+          categoryId?: number | null;
+          openingStock?: number;
+          openingStockRate?: number;
+          openingStoreId?: number | null;
+          kachiOpening?: Record<string, unknown> | null;
+        },
+      ),
+    );
   }),
 );
 
@@ -144,6 +207,37 @@ approvalsRouter.post(
   }),
 );
 
+approvalsRouter.get(
+  '/account-adjustments/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.getPendingAccountAdjustment(Number(req.params.id), {
+        id: req.user!.id,
+        role: req.user!.role,
+      }),
+    );
+  }),
+);
+
+approvalsRouter.patch(
+  '/account-adjustments/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.updatePendingAccountAdjustment(
+        Number(req.params.id),
+        { id: req.user!.id, role: req.user!.role },
+        {
+          adjustmentDate: String(req.body.adjustmentDate),
+          accountId: Number(req.body.accountId),
+          amount: Number(req.body.amount),
+          side: req.body.side,
+          description: req.body.description ?? null,
+        },
+      ),
+    );
+  }),
+);
+
 approvalsRouter.post(
   '/account-adjustments/:id/approve',
   requireAdmin,
@@ -158,6 +252,39 @@ approvalsRouter.post(
   requireAdmin,
   asyncHandler(async (req, res) => {
     res.json(await approvalsService.rejectPendingAccountAdjustment(Number(req.params.id)));
+  }),
+);
+
+approvalsRouter.get(
+  '/stock-adjustments/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.getPendingStockAdjustment(Number(req.params.id), {
+        id: req.user!.id,
+        role: req.user!.role,
+      }),
+    );
+  }),
+);
+
+approvalsRouter.patch(
+  '/stock-adjustments/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await approvalsService.updatePendingStockAdjustment(
+        Number(req.params.id),
+        { id: req.user!.id, role: req.user!.role },
+        {
+          adjustmentDate: String(req.body.adjustmentDate),
+          productId: Number(req.body.productId),
+          storeId: Number(req.body.storeId),
+          quantity: req.body.quantity != null ? Number(req.body.quantity) : undefined,
+          rate: req.body.rate != null ? Number(req.body.rate) : undefined,
+          kachiOpening: req.body.kachiOpening ?? null,
+          description: req.body.description ?? null,
+        },
+      ),
+    );
   }),
 );
 

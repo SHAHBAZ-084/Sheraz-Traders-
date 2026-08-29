@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
-import { TOP_NAV, NavItem, filterNavItemsForRole } from '../../config/navigation';
+import { TOP_NAV, NavItem, filterNavItemsForRole, filterReportNavItemsForUser } from '../../config/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { voucherTypeColorClass } from '../../lib/format';
@@ -185,7 +185,9 @@ export function TopBar() {
         <nav className="app-topnav-nav">
           {TOP_NAV.map((entry) => {
             if (isUserRole && entry.kind === 'dropdown' && entry.label === 'Reports') {
-              return null;
+              const userReports = filterReportNavItemsForUser(entry.children);
+              if (userReports.length === 0) return null;
+              return <NavDropdown key={entry.label} label={entry.label} children={userReports} />;
             }
             if (isUserRole && entry.kind === 'link' && entry.id === 'ledger') {
               return null;

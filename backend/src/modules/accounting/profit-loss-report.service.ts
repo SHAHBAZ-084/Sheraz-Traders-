@@ -6,6 +6,7 @@ import {
   computeKachiMaalRow,
   roundMoney,
 } from '../invoices/kachi-maal.calculations';
+import { resolveProductAverageCost } from '../products/backfill-product-average-cost';
 import { getSystemPreferences } from '../preferences/preferences.service';
 import { endOfDay, startOfDay } from './ledger-utils';
 
@@ -14,9 +15,14 @@ export type ProfitLossRow = {
   sourceType: 'SALE_INVOICE' | 'KACHI_MAAL';
   reference: string;
   productName: string;
+  /** Unit cost (WAC / averageCost). Null when cost is unavailable or for Daami rows. */
   purchasePrice: number | null;
   salePrice: number | null;
+  /** Zero when costUnavailable — excluded from netProfit / totals. */
   profit: number;
+  /** True when no cost basis exists; profit was not calculated (never treated as cost=0). */
+  costUnavailable: boolean;
+  note: string | null;
 };
 
 export type ProfitLossReport = {
@@ -28,6 +34,8 @@ export type ProfitLossReport = {
   totalPurchase: number;
   totalSale: number;
   netProfit: number;
+  /** Count of sale lines excluded from profit because cost could not be determined. */
+  costUnavailableCount: number;
 };
 
 function parseDateStart(value: string) {
@@ -43,18 +51,6 @@ function dateInputValue(date: Date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-type PurchaseSlice = { date: Date; quantity: number; unitPrice: number };
-
-function averagePurchaseRate(items: PurchaseSlice[]): number | null {
-  let totalQty = 0;
-  let totalValue = 0;
-  for (const item of items) {
-    totalQty += item.quantity;
-    totalValue += item.quantity * item.unitPrice;
-  }
-  return totalQty > 0 ? totalValue / totalQty : null;
 }
 
 function resolveProductName(item: {
@@ -73,7 +69,9 @@ export async function getProfitLossReport(params: {
   toDate?: string;
   productId?: number;
   categoryId?: number;
-}): Promise<ProfitLossReport> {
+  limit?: number;
+  offset?: number;
+}): Promise<ProfitLossReport & { totalCount: number; pagination?: { total: number; limit: number; offset: number } }> {
   const year = await prisma.financialYear.findFirst({
     where: { id: params.financialYearId },
     select: { id: true, label: true, startDate: true, endDate: true },
@@ -131,7 +129,17 @@ export async function getProfitLossReport(params: {
     include: {
       items: {
         where: saleItemFilter,
-        include: { product: { select: { name: true } } },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              kind: true,
+              accountId: true,
+              averageCost: true,
+            },
+          },
+        },
       },
     },
     orderBy: [{ invoiceDate: 'asc' }, { reference: 'asc' }],
@@ -145,39 +153,23 @@ export async function getProfitLossReport(params: {
     ),
   ];
 
-  const purchaseItemsByProduct = new Map<number, PurchaseSlice[]>();
+  /** Cache resolved unit cost per product for this report run. */
+  const unitCostByProductId = new Map<number, number | null>();
   if (productIds.length > 0) {
-    const purchaseItems = await prisma.invoiceItem.findMany({
-      where: {
-        productId: { in: productIds },
-        invoice: {
-          type: InvoiceType.PURCHASE_INVOICE,
-          status: InvoiceStatus.POSTED,
-        },
-      },
-      select: {
-        productId: true,
-        quantity: true,
-        unitPrice: true,
-        invoice: { select: { invoiceDate: true } },
-      },
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, kind: true, accountId: true, averageCost: true, name: true },
     });
-
-    for (const item of purchaseItems) {
-      if (item.productId == null || item.invoice.invoiceDate == null) continue;
-      const list = purchaseItemsByProduct.get(item.productId) ?? [];
-      list.push({
-        date: item.invoice.invoiceDate,
-        quantity: Number(item.quantity),
-        unitPrice: Number(item.unitPrice),
-      });
-      purchaseItemsByProduct.set(item.productId, list);
+    for (const product of products) {
+      const resolved = await resolveProductAverageCost(prisma, product);
+      unitCostByProductId.set(product.id, resolved?.averageCost ?? null);
     }
   }
 
   const rows: ProfitLossRow[] = [];
   let totalPurchase = 0;
   let totalSale = 0;
+  let costUnavailableCount = 0;
 
   for (const invoice of saleInvoices) {
     if (!invoice.invoiceDate) continue;
@@ -187,10 +179,31 @@ export async function getProfitLossReport(params: {
       if (item.productId == null) continue;
       const quantity = Number(item.quantity);
       const salePrice = Number(item.unitPrice);
-      const purchaseHistory = purchaseItemsByProduct.get(item.productId) ?? [];
-      const purchasePrice = averagePurchaseRate(purchaseHistory);
-      const purchaseAmount = roundMoney((purchasePrice ?? 0) * quantity);
       const saleAmount = roundMoney(salePrice * quantity);
+      const productName = resolveProductName(item);
+
+      const unitCost = unitCostByProductId.has(item.productId)
+        ? unitCostByProductId.get(item.productId)!
+        : null;
+
+      // Critical: never treat missing cost as zero (that showed full sale as "profit").
+      if (unitCost == null || !Number.isFinite(unitCost)) {
+        costUnavailableCount += 1;
+        rows.push({
+          date: saleDate.toISOString(),
+          sourceType: 'SALE_INVOICE',
+          reference: invoice.reference,
+          productName,
+          purchasePrice: null,
+          salePrice,
+          profit: 0,
+          costUnavailable: true,
+          note: `Cost unavailable for ${productName} — profit not calculated`,
+        });
+        continue;
+      }
+
+      const purchaseAmount = roundMoney(unitCost * quantity);
       const profit = roundMoney(saleAmount - purchaseAmount);
 
       totalPurchase = roundMoney(totalPurchase + purchaseAmount);
@@ -200,10 +213,12 @@ export async function getProfitLossReport(params: {
         date: saleDate.toISOString(),
         sourceType: 'SALE_INVOICE',
         reference: invoice.reference,
-        productName: resolveProductName(item),
-        purchasePrice,
+        productName,
+        purchasePrice: unitCost,
         salePrice,
         profit,
+        costUnavailable: false,
+        note: null,
       });
     }
   }
@@ -251,6 +266,8 @@ export async function getProfitLossReport(params: {
         purchasePrice: null,
         salePrice: null,
         profit: totals.profitAmount,
+        costUnavailable: false,
+        note: null,
       });
     }
   }
@@ -265,17 +282,27 @@ export async function getProfitLossReport(params: {
     return a.productName.localeCompare(b.productName, undefined, { sensitivity: 'base' });
   });
 
+  // netProfit = sale-line profits with known cost + Daami; cost-unavailable rows contribute 0.
   const netProfit = roundMoney(rows.reduce((sum, row) => sum + row.profit, 0));
+  const totalCount = rows.length;
+  const offset = params.offset ?? 0;
+  const limit = params.limit;
+  const pageRows = limit != null ? rows.slice(offset, offset + limit) : rows;
 
   return {
     financialYearId: year.id,
     financialYearLabel: year.label,
     fromDate: params.fromDate ?? null,
     toDate: params.toDate ?? null,
-    rows,
+    rows: pageRows,
     totalPurchase,
     totalSale,
     netProfit,
+    costUnavailableCount,
+    totalCount,
+    ...(limit != null
+      ? { pagination: { total: totalCount, limit, offset } }
+      : {}),
   };
 }
 

@@ -54,7 +54,7 @@ export function registerKachiMaalRoutes(router: Router) {
       const invoice = await kachiMaalService.createKachiMaalInvoice({
         ...req.body,
         createdById: req.session.userId!,
-      }, { postImmediately: req.user?.role === 'ADMIN' });
+      }, { postImmediately: false });
       res.status(201).json(invoice);
     }),
   );

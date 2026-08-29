@@ -31,11 +31,12 @@ import {
   rejectStockAdjustment,
 } from '../products/products.service';
 import {
+  formatBankCashAccountLabel,
   recomputeEmbeddedPaymentScalarsInTx,
   recomputeEmbeddedReceiptScalarsInTx,
 } from '../invoices/invoice-embedded-voucher';
 import { buildPendingInvoiceApprovalDescription } from '../invoices/invoice-voucher-descriptions';
-import { assertCanEditPendingInvoice, assertCanEditPendingVoucher, type PendingEditor } from './pending-edit-auth';
+import { assertCanEditPendingInvoice, assertCanEditPendingRecord, assertCanEditPendingVoucher, type PendingEditor } from './pending-edit-auth';
 
 export type PendingApprovalKind =
   | 'voucher'
@@ -54,7 +55,12 @@ export type PendingApprovalItem = {
   date: string | null;
   debitAccountName?: string | null;
   creditAccountName?: string | null;
+  /** Primary account for “View Ledger” (party / maal khata / new account / adjusted account). */
+  ledgerAccountId?: number | null;
   amount: number;
+  /** When set (e.g. Kachi Maal), Pending Approval shows separate Credit/Debit amount columns. */
+  creditAmount?: number | null;
+  debitAmount?: number | null;
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
 };
@@ -65,6 +71,14 @@ function displayNumberFromReference(reference: string | null | undefined, fallba
     if (match) return parseInt(match[1], 10);
   }
   return fallbackId;
+}
+
+function formatKachiUpperPartyLabel(names: string[]): string | null {
+  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return unique[0];
+  if (unique.length <= 3) return unique.join(', ');
+  return `${unique[0]} and ${unique.length - 1} others`;
 }
 
 function mapCreatedBy(user: { id: number; displayName: string | null; username: string } | null) {
@@ -82,8 +96,8 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       where: { status: VoucherStatus.PENDING_APPROVAL },
       include: {
         createdBy: { select: { id: true, displayName: true, username: true } },
-        debitAccount: { select: { name: true, code: true } },
-        creditAccount: { select: { name: true, code: true } },
+        debitAccount: { select: { id: true, name: true, code: true } },
+        creditAccount: { select: { id: true, name: true, code: true } },
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -91,14 +105,17 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       where: { status: InvoiceStatus.PENDING_APPROVAL },
       include: {
         createdBy: { select: { id: true, displayName: true, username: true } },
-        debitAccount: { select: { name: true, code: true } },
+        debitAccount: { select: { id: true, name: true, code: true } },
         customer: { select: { name: true } },
         supplier: { select: { name: true } },
         items: {
           orderBy: { id: 'asc' },
           include: { product: { select: { name: true } } },
         },
-        kachiMaalLines: { orderBy: { sortOrder: 'asc' } },
+        kachiMaalLines: {
+          orderBy: { sortOrder: 'asc' },
+          include: { partyAccount: { select: { id: true, name: true, code: true } } },
+        },
         embeddedReceiptAccount: { include: { category: { select: { name: true } } } },
         embeddedPaymentAccount: { include: { category: { select: { name: true } } } },
         vouchers: {
@@ -127,6 +144,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       include: {
         createdBy: { select: { id: true, displayName: true, username: true } },
         category: { select: { name: true } },
+        account: { select: { id: true } },
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -134,13 +152,39 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       where: { status: RecordStatus.PENDING_APPROVAL },
       include: {
         createdBy: { select: { id: true, displayName: true, username: true } },
-        account: { select: { name: true, code: true } },
-        product: { select: { name: true, code: true, unit: true } },
+        account: { select: { id: true, name: true, code: true, categoryId: true } },
+        product: { select: { name: true, code: true, unit: true, accountId: true } },
         store: { select: { name: true } },
       },
       orderBy: { createdAt: 'asc' },
     }),
   ]);
+
+  const embeddedLineAccountIds = new Set<number>();
+  for (const inv of invoices) {
+    for (const raw of [inv.embeddedReceiptLines, inv.embeddedPaymentLines]) {
+      if (!Array.isArray(raw)) continue;
+      for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        const id = Number((item as { accountId?: unknown }).accountId);
+        if (id > 0) embeddedLineAccountIds.add(id);
+      }
+    }
+  }
+  const embeddedLineAccounts =
+    embeddedLineAccountIds.size > 0
+      ? await prisma.account.findMany({
+          where: { id: { in: [...embeddedLineAccountIds] } },
+          include: { category: { select: { name: true } } },
+        })
+      : [];
+  const embeddedLineAccountLabelsGlobal: Record<number, string> = {};
+  for (const account of embeddedLineAccounts) {
+    embeddedLineAccountLabelsGlobal[account.id] = formatBankCashAccountLabel(
+      account.category?.name ?? '',
+      account.name,
+    );
+  }
 
   const items: PendingApprovalItem[] = [
     ...vouchers.map((v) => ({
@@ -152,17 +196,60 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
       date: v.date?.toISOString() ?? null,
       debitAccountName: v.debitAccount ? `${v.debitAccount.name} (${v.debitAccount.code})` : null,
       creditAccountName: v.creditAccount ? `${v.creditAccount.name} (${v.creditAccount.code})` : null,
+      ledgerAccountId: v.debitAccount?.id ?? v.creditAccount?.id ?? null,
       amount: Number(v.amount),
       description: v.description,
       createdBy: mapCreatedBy(v.createdBy),
     })),
     ...invoices.map((inv) => {
-      // Invoice.debitAccountId stores "the party" for all types, but posting side differs:
-      // Sale / Kachi Maal → party is DEBITED; Purchase → party (supplier) is CREDITED.
+      // Invoice.debitAccountId stores "the party" for Sale/Purchase, but Kachi Maal is special:
+      // debit = settlement/"lower party"; credits = upper-party sellers (net of Pale Dari/Brokery).
       const isPurchase = inv.type === InvoiceType.PURCHASE_INVOICE;
-      const partyName = isPurchase
-        ? (inv.debitAccount?.name ?? inv.supplier?.name ?? null)
-        : (inv.debitAccount?.name ?? inv.customer?.name ?? null);
+      const isKachi = inv.type === InvoiceType.KACHI_MAAL;
+
+      let debitAccountName: string | null;
+      let creditAccountName: string | null;
+      let creditAmount: number | null = null;
+      let debitAmount: number | null = null;
+      let ledgerAccountId: number | null = inv.debitAccount?.id ?? inv.debitAccountId ?? null;
+      const amount = Number(inv.total);
+
+      if (isKachi) {
+        const lowerPartyName = inv.debitAccount?.name ?? null;
+        const upperPartyNames = (inv.kachiMaalLines ?? []).map(
+          (line) => line.partyAccount?.name ?? '',
+        );
+        debitAccountName = lowerPartyName;
+        creditAccountName = formatKachiUpperPartyLabel(upperPartyNames);
+        debitAmount = amount;
+        creditAmount = (inv.kachiMaalLines ?? []).reduce(
+          (sum, line) => sum + Number(line.netCreditToParty ?? 0),
+          0,
+        );
+        creditAmount = Math.round(creditAmount * 100) / 100;
+        ledgerAccountId = inv.debitAccount?.id ?? inv.debitAccountId ?? null;
+      } else {
+        const partyName = isPurchase
+          ? (inv.debitAccount?.name ?? inv.supplier?.name ?? null)
+          : (inv.debitAccount?.name ?? inv.customer?.name ?? null);
+        debitAccountName = isPurchase ? null : partyName;
+        creditAccountName = isPurchase ? partyName : null;
+      }
+
+      const embeddedLineAccountLabels: Record<number, string> = { ...embeddedLineAccountLabelsGlobal };
+      if (inv.embeddedReceiptAccount && inv.embeddedReceiptAccountId != null) {
+        embeddedLineAccountLabels[inv.embeddedReceiptAccountId] = formatBankCashAccountLabel(
+          inv.embeddedReceiptAccount.category?.name ?? '',
+          inv.embeddedReceiptAccount.name,
+        );
+      }
+      if (inv.embeddedPaymentAccount && inv.embeddedPaymentAccountId != null) {
+        embeddedLineAccountLabels[inv.embeddedPaymentAccountId] = formatBankCashAccountLabel(
+          inv.embeddedPaymentAccount.category?.name ?? '',
+          inv.embeddedPaymentAccount.name,
+        );
+      }
+
       return {
         kind: 'invoice' as const,
         id: inv.id,
@@ -170,10 +257,32 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         type: inv.type,
         reference: inv.reference,
         date: inv.invoiceDate?.toISOString() ?? null,
-        debitAccountName: isPurchase ? null : partyName,
-        creditAccountName: isPurchase ? partyName : null,
-        amount: Number(inv.total),
-        description: buildPendingInvoiceApprovalDescription(inv),
+        debitAccountName,
+        creditAccountName,
+        ledgerAccountId,
+        amount,
+        creditAmount,
+        debitAmount,
+        description: buildPendingInvoiceApprovalDescription({
+          type: inv.type,
+          notes: inv.notes,
+          billNo: inv.billNo,
+          jins: inv.jins,
+          tafseel: inv.tafseel,
+          gariNo: inv.gariNo,
+          items: inv.items,
+          kachiMaalLines: inv.kachiMaalLines,
+          embeddedReceiptAmount:
+            inv.embeddedReceiptAmount != null ? Number(inv.embeddedReceiptAmount) : null,
+          embeddedPaymentAmount:
+            inv.embeddedPaymentAmount != null ? Number(inv.embeddedPaymentAmount) : null,
+          embeddedReceiptAccount: inv.embeddedReceiptAccount,
+          embeddedPaymentAccount: inv.embeddedPaymentAccount,
+          embeddedReceiptLines: inv.embeddedReceiptLines,
+          embeddedPaymentLines: inv.embeddedPaymentLines,
+          embeddedLineAccountLabels,
+          vouchers: inv.vouchers,
+        }),
         createdBy: mapCreatedBy(inv.createdBy),
       };
     }),
@@ -189,6 +298,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         date: account.createdAt.toISOString(),
         debitAccountName: account.name,
         creditAccountName: account.category?.name ?? null,
+        ledgerAccountId: account.id,
         amount: opening,
         description: opening > 0 ? `Opening ${opening.toFixed(2)} ${side}` : 'No opening balance',
         createdBy: mapCreatedBy(account.createdBy),
@@ -216,6 +326,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         date: product.createdAt.toISOString(),
         debitAccountName: product.name,
         creditAccountName: product.category?.name ?? null,
+        ledgerAccountId: product.account?.id ?? product.accountId ?? null,
         amount: openingValue,
         description: [openingHint, product.unit ? `Unit ${product.unit}` : null].filter(Boolean).join(' · ') || null,
         createdBy: mapCreatedBy(product.createdBy),
@@ -233,6 +344,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
           date: row.adjustmentDate.toISOString(),
           debitAccountName: row.side === 'DR' ? row.account?.name ?? null : 'Opening Balance Equity',
           creditAccountName: row.side === 'CR' ? row.account?.name ?? null : 'Opening Balance Equity',
+          ledgerAccountId: row.account?.id ?? row.accountId ?? null,
           amount: Number(row.amount ?? 0),
           description: `Account adjustment ${side}`,
           createdBy: mapCreatedBy(row.createdBy),
@@ -249,6 +361,7 @@ export async function listPendingApprovals(): Promise<PendingApprovalItem[]> {
         date: row.adjustmentDate.toISOString(),
         debitAccountName: row.product?.name ?? null,
         creditAccountName: row.store?.name ?? null,
+        ledgerAccountId: row.product?.accountId ?? null,
         amount: qty > 0 && rate > 0 ? qty * rate : Number(row.amount ?? 0),
         description:
           qty > 0
@@ -551,4 +664,345 @@ export async function updatePendingInvoice(
     default:
       throw new AppError(400, `Cannot edit invoice type ${invoice.type}`);
   }
+}
+
+export async function getPendingAccount(accountId: number, editor: PendingEditor) {
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, status: RecordStatus.PENDING_APPROVAL, product: null },
+    include: {
+      category: { select: { id: true, name: true } },
+      createdBy: { select: { id: true, displayName: true, username: true } },
+    },
+  });
+  if (!account) throw new AppError(404, 'Pending account not found');
+  assertCanEditPendingRecord(editor, account.createdById, 'pending accounts');
+  return {
+    id: account.id,
+    name: account.name,
+    code: account.code,
+    categoryId: account.categoryId,
+    category: account.category,
+    pendingOpeningBalance:
+      account.pendingOpeningBalance != null ? Number(account.pendingOpeningBalance) : null,
+    pendingOpeningSide: account.pendingOpeningSide === 'CR' ? ('CR' as const) : account.pendingOpeningSide === 'DR' ? ('DR' as const) : null,
+    status: account.status,
+    createdById: account.createdById,
+  };
+}
+
+export async function updatePendingAccount(
+  accountId: number,
+  editor: PendingEditor,
+  data: {
+    name: string;
+    categoryId: number;
+    openingBalance?: number;
+    openingBalanceSide?: 'DR' | 'CR';
+  },
+) {
+  const existing = await prisma.account.findFirst({
+    where: { id: accountId, status: RecordStatus.PENDING_APPROVAL, product: null },
+  });
+  if (!existing) throw new AppError(404, 'Pending account not found');
+  assertCanEditPendingRecord(editor, existing.createdById, 'pending accounts');
+
+  const name = data.name.trim();
+  if (!name) throw new AppError(400, 'Account name is required');
+
+  const category = await prisma.accountCategory.findFirst({
+    where: { id: data.categoryId, isActive: true },
+  });
+  if (!category) throw new AppError(400, 'Invalid category');
+
+  const amount = Math.abs(data.openingBalance ?? 0);
+  const side = data.openingBalanceSide ?? 'DR';
+
+  return prisma.account.update({
+    where: { id: accountId },
+    data: {
+      name,
+      categoryId: data.categoryId,
+      pendingOpeningBalance: amount > 0 ? amount : null,
+      pendingOpeningSide: amount > 0 ? side : null,
+      status: RecordStatus.PENDING_APPROVAL,
+    },
+    include: { category: true, ledger: true },
+  });
+}
+
+export async function getPendingProduct(productId: number, editor: PendingEditor) {
+  const product = await prisma.product.findFirst({
+    where: { id: productId, status: RecordStatus.PENDING_APPROVAL },
+    include: {
+      category: { select: { id: true, name: true } },
+      account: { select: { id: true, name: true, code: true } },
+      createdBy: { select: { id: true, displayName: true, username: true } },
+    },
+  });
+  if (!product) throw new AppError(404, 'Pending product not found');
+  assertCanEditPendingRecord(editor, product.createdById, 'pending products');
+  return {
+    id: product.id,
+    name: product.name,
+    code: product.code,
+    unit: product.unit,
+    kind: product.kind,
+    categoryId: product.categoryId,
+    category: product.category,
+    accountId: product.accountId,
+    account: product.account,
+    pendingOpeningStoreId: product.pendingOpeningStoreId,
+    pendingOpeningQty:
+      product.pendingOpeningQty != null ? Number(product.pendingOpeningQty) : null,
+    pendingOpeningRate:
+      product.pendingOpeningRate != null ? Number(product.pendingOpeningRate) : null,
+    pendingKachiOpening: product.pendingKachiOpening,
+    status: product.status,
+    createdById: product.createdById,
+  };
+}
+
+export async function updatePendingProduct(
+  productId: number,
+  editor: PendingEditor,
+  data: {
+    name: string;
+    unit?: string | null;
+    categoryId?: number | null;
+    openingStock?: number;
+    openingStockRate?: number;
+    openingStoreId?: number | null;
+    kachiOpening?: Record<string, unknown> | null;
+  },
+) {
+  const existing = await prisma.product.findFirst({
+    where: { id: productId, status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!existing) throw new AppError(404, 'Pending product not found');
+  assertCanEditPendingRecord(editor, existing.createdById, 'pending products');
+
+  const name = data.name.trim();
+  if (!name) throw new AppError(400, 'Product name is required');
+
+  if (data.categoryId != null) {
+    const cat = await prisma.productCategory.findFirst({ where: { id: data.categoryId } });
+    if (!cat) throw new AppError(400, 'Invalid product category');
+  }
+
+  const isKachi = existing.kind === 'KACHI';
+  let pendingOpeningStoreId: number | null = null;
+  let pendingOpeningQty: number | null = null;
+  let pendingOpeningRate: number | null = null;
+  let pendingKachiOpening: object | null = null;
+
+  if (isKachi) {
+    pendingKachiOpening =
+      data.kachiOpening && typeof data.kachiOpening === 'object' ? data.kachiOpening : null;
+    pendingOpeningStoreId = data.openingStoreId ?? null;
+  } else {
+    const qty = data.openingStock != null ? Number(data.openingStock) : 0;
+    const rate = data.openingStockRate != null ? Number(data.openingStockRate) : 0;
+    if (qty > 0) {
+      if (!(rate > 0)) throw new AppError(400, 'Opening stock rate is required when quantity is set');
+      if (data.openingStoreId == null) throw new AppError(400, 'Opening store is required when quantity is set');
+      pendingOpeningQty = qty;
+      pendingOpeningRate = rate;
+      pendingOpeningStoreId = data.openingStoreId;
+    }
+  }
+
+  return prisma.product.update({
+    where: { id: productId },
+    data: {
+      name,
+      unit: data.unit?.trim() || null,
+      categoryId: data.categoryId ?? null,
+      pendingOpeningStoreId,
+      pendingOpeningQty,
+      pendingOpeningRate,
+      pendingKachiOpening: pendingKachiOpening as object | undefined,
+      status: RecordStatus.PENDING_APPROVAL,
+    },
+    include: { category: true, account: true },
+  });
+}
+
+export async function getPendingAccountAdjustment(id: number, editor: PendingEditor) {
+  const row = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'ACCOUNT', status: RecordStatus.PENDING_APPROVAL },
+    include: {
+      account: { select: { id: true, name: true, code: true, categoryId: true } },
+      createdBy: { select: { id: true, displayName: true, username: true } },
+    },
+  });
+  if (!row) throw new AppError(404, 'Pending account adjustment not found');
+  assertCanEditPendingRecord(editor, row.createdById, 'pending adjustments');
+  return {
+    id: row.id,
+    kind: row.kind,
+    adjustmentDate: row.adjustmentDate.toISOString(),
+    accountId: row.accountId,
+    account: row.account,
+    amount: Number(row.amount ?? 0),
+    side: row.side === 'CR' ? ('CR' as const) : ('DR' as const),
+    description: row.description,
+    status: row.status,
+    createdById: row.createdById,
+  };
+}
+
+export async function updatePendingAccountAdjustment(
+  id: number,
+  editor: PendingEditor,
+  data: {
+    adjustmentDate: string;
+    accountId: number;
+    amount: number;
+    side: 'DR' | 'CR';
+    description?: string | null;
+  },
+) {
+  const existing = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'ACCOUNT', status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!existing) throw new AppError(404, 'Pending account adjustment not found');
+  assertCanEditPendingRecord(editor, existing.createdById, 'pending adjustments');
+
+  let adjustmentDate: Date;
+  try {
+    adjustmentDate = parseVoucherDateInput(data.adjustmentDate);
+  } catch {
+    throw new AppError(400, 'Invalid adjustment date');
+  }
+  await assertVoucherDateInActiveFinancialYear(prisma, adjustmentDate, 'Invoice');
+
+  const account = await prisma.account.findFirst({
+    where: { id: data.accountId, status: RecordStatus.ACTIVE, isActive: true },
+    include: { category: true },
+  });
+  if (!account) throw new AppError(404, 'Account not found');
+
+  const amount = Math.abs(Number(data.amount));
+  if (!(amount > 0)) throw new AppError(400, 'Amount must be greater than zero');
+  if (data.side !== 'DR' && data.side !== 'CR') throw new AppError(400, 'Side must be DR or CR');
+
+  return prisma.pendingAdjustment.update({
+    where: { id },
+    data: {
+      adjustmentDate,
+      accountId: data.accountId,
+      amount,
+      side: data.side,
+      description: data.description?.trim() || null,
+      status: RecordStatus.PENDING_APPROVAL,
+    },
+    include: { account: true },
+  });
+}
+
+export async function getPendingStockAdjustment(id: number, editor: PendingEditor) {
+  const row = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'STOCK', status: RecordStatus.PENDING_APPROVAL },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          unit: true,
+          kind: true,
+          categoryId: true,
+          accountId: true,
+        },
+      },
+      store: { select: { id: true, name: true } },
+      createdBy: { select: { id: true, displayName: true, username: true } },
+    },
+  });
+  if (!row) throw new AppError(404, 'Pending stock adjustment not found');
+  assertCanEditPendingRecord(editor, row.createdById, 'pending adjustments');
+  return {
+    id: row.id,
+    kind: row.kind,
+    adjustmentDate: row.adjustmentDate.toISOString(),
+    productId: row.productId,
+    product: row.product,
+    storeId: row.storeId,
+    store: row.store,
+    quantity: row.quantity != null ? Number(row.quantity) : null,
+    rate: row.rate != null ? Number(row.rate) : null,
+    kachiOpening: row.kachiOpening,
+    description: row.description,
+    status: row.status,
+    createdById: row.createdById,
+  };
+}
+
+export async function updatePendingStockAdjustment(
+  id: number,
+  editor: PendingEditor,
+  data: {
+    adjustmentDate: string;
+    productId: number;
+    storeId: number;
+    quantity?: number;
+    rate?: number;
+    kachiOpening?: Record<string, unknown> | null;
+    description?: string | null;
+  },
+) {
+  const existing = await prisma.pendingAdjustment.findFirst({
+    where: { id, kind: 'STOCK', status: RecordStatus.PENDING_APPROVAL },
+  });
+  if (!existing) throw new AppError(404, 'Pending stock adjustment not found');
+  assertCanEditPendingRecord(editor, existing.createdById, 'pending adjustments');
+
+  let adjustmentDate: Date;
+  try {
+    adjustmentDate = parseVoucherDateInput(data.adjustmentDate);
+  } catch {
+    throw new AppError(400, 'Invalid adjustment date');
+  }
+  await assertVoucherDateInActiveFinancialYear(prisma, adjustmentDate, 'Invoice');
+
+  const product = await prisma.product.findFirst({
+    where: { id: data.productId, status: RecordStatus.ACTIVE, isActive: true },
+  });
+  if (!product) throw new AppError(404, 'Product not found');
+
+  const store = await prisma.store.findFirst({ where: { id: data.storeId, isActive: true } });
+  if (!store) throw new AppError(404, 'Store not found');
+
+  let quantity: number | null = null;
+  let rate: number | null = null;
+  let kachiOpening: object | null = null;
+
+  if (product.kind === 'KACHI') {
+    if (!data.kachiOpening || typeof data.kachiOpening !== 'object') {
+      throw new AppError(400, 'Kachi opening fields are required');
+    }
+    kachiOpening = data.kachiOpening;
+  } else {
+    const qty = Number(data.quantity);
+    const unitRate = Number(data.rate);
+    if (!(qty > 0)) throw new AppError(400, 'Quantity must be greater than zero');
+    if (!(unitRate > 0)) throw new AppError(400, 'Rate must be greater than zero');
+    quantity = qty;
+    rate = unitRate;
+  }
+
+  return prisma.pendingAdjustment.update({
+    where: { id },
+    data: {
+      adjustmentDate,
+      productId: data.productId,
+      storeId: data.storeId,
+      quantity,
+      rate,
+      kachiOpening: kachiOpening as object | undefined,
+      description: data.description?.trim() || null,
+      status: RecordStatus.PENDING_APPROVAL,
+    },
+    include: { product: true, store: true },
+  });
 }

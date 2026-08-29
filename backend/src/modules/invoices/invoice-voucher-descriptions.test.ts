@@ -4,6 +4,7 @@ import {
   blendedLegDescription,
   buildPendingInvoiceApprovalDescription,
   formatInvoiceProductLinesDescription,
+  formatKachiMaalProductLinesDescription,
   invoiceVoucherHeaderSuffix,
   rowLegDescription,
   voucherReferenceFromBillNo,
@@ -22,10 +23,10 @@ describe('invoice-voucher-descriptions', () => {
         { totalWeightKg: 420, ratePerMaund: 4000, jins: 'Cotton' },
         { tafseel: 'Grade A', gariNo: 'G-99' },
       ),
-    ).toBe('Cotton 10 Maund 20 Kg @ Rs 4,000/maund — Tafseel: Grade A, Gari#: G-99');
+    ).toBe('Cotton 10 Maund 20 Kg @4000 — Tafseel: Grade A, Gari#: G-99');
   });
 
-  it('builds blended leg description with jins on lines', () => {
+  it('builds blended leg description listing each line with + join', () => {
     const description = blendedLegDescription(
       [
         { totalWeightKg: 1000, ratePerMaund: 2000, jins: 'Wheat' },
@@ -33,9 +34,9 @@ describe('invoice-voucher-descriptions', () => {
       ],
       { tafseel: 'Mixed', gariNo: '12' },
     );
-    expect(description).toContain('Wheat 40 Maund 25 Kg @ Rs');
-    expect(description).toContain('Tafseel: Mixed, Gari#: 12');
-    expect(description).not.toContain('Bill#');
+    expect(description).toBe(
+      'Wheat 25 Maund @2000+Wheat 15 Maund 25 Kg @1600 — Tafseel: Mixed, Gari#: 12',
+    );
   });
 
   it('lists each jins separately when lines have different products', () => {
@@ -46,20 +47,20 @@ describe('invoice-voucher-descriptions', () => {
       ],
       {},
     );
-    expect(description).toContain('Cotton 20 Maund + Wheat 11 Maund 10 Kg @ Rs');
+    expect(description).toBe('Cotton 20 Maund @2000+Wheat 11 Maund 10 Kg @1600');
   });
 
   it('falls back to invoice-level jins when line jins is empty', () => {
     expect(
       blendedLegDescription([{ totalWeightKg: 1250, ratePerMaund: 4000 }], {}, 'Cotton'),
-    ).toBe('Cotton 31 Maund 10 Kg @ Rs 4,000/maund');
+    ).toBe('Cotton 31 Maund 10 Kg @4000');
   });
 
   it('omits header suffix when tafseel and gari are empty', () => {
     expect(invoiceVoucherHeaderSuffix({})).toBe('');
     expect(
       rowLegDescription({ totalWeightKg: 100, ratePerMaund: 500, jins: 'Wheat' }, {}),
-    ).toBe('Wheat 2 Maund 20 Kg @ Rs 500/maund');
+    ).toBe('Wheat 2 Maund 20 Kg @500');
   });
 
   it('formats sale/purchase invoice product lines for ledger descriptions', () => {
@@ -69,6 +70,15 @@ describe('invoice-voucher-descriptions', () => {
         { productName: 'Dap', quantity: 6, rate: 12500 },
       ]),
     ).toBe('Urea 5@4550+Dap 6@12500');
+  });
+
+  it('formats kachi maal product lines as ProductName Maund Kg @Rate', () => {
+    expect(
+      formatKachiMaalProductLinesDescription([
+        { productName: 'Cotton', totalWeightKg: 1250, ratePerMaund: 8500 },
+        { productName: 'Wheat', totalWeightKg: 605, ratePerMaund: 3200 },
+      ]),
+    ).toBe('Cotton 31 Maund 10 Kg @8500+Wheat 15 Maund 5 Kg @3200');
   });
 
   it('builds pending approval description from product lines, notes, and receipts', () => {
@@ -106,15 +116,12 @@ describe('invoice-voucher-descriptions', () => {
     );
   });
 
-  it('builds pending kachi maal description from blended lines', () => {
+  it('builds pending kachi maal description as ProductName Maund Kg @Rate', () => {
     const description = buildPendingInvoiceApprovalDescription({
       type: InvoiceType.KACHI_MAAL,
       jins: 'Cotton',
-      tafseel: 'Grade A',
-      kachiMaalLines: [{ totalWeightKg: 420, ratePerMaund: 4000, jins: 'Cotton' }],
+      kachiMaalLines: [{ totalWeightKg: 1250, ratePerMaund: 8500, jins: 'Cotton' }],
     });
-    expect(description).toContain('Cotton');
-    expect(description).toContain('@ Rs');
-    expect(description).toContain('Tafseel: Grade A');
+    expect(description).toBe('Cotton 31 Maund 10 Kg @8500');
   });
 });

@@ -35,6 +35,7 @@ import { bankCashAccountOptions, bankCashCategoryOptions } from '../../lib/bankC
 import {
   embeddedLinesFromInvoiceVouchers,
   embeddedLinesFromLegacyScalar,
+  embeddedLinesFromStoredJson,
   newEmbeddedPaymentLineDraft,
   parseEmbeddedPaymentLinesPayload,
   sumEmbeddedLineAmounts,
@@ -294,17 +295,25 @@ export function PurchaseInvoicePage() {
         setBillNo(inv.billNo ?? '');
         if (inv.storeId != null) setStoreId(String(inv.storeId));
         if (inv.debitAccountId != null) setSupplierAccountId(String(inv.debitAccountId));
-        const fromVouchers = embeddedLinesFromInvoiceVouchers(
+        const fromStored = embeddedLinesFromStoredJson(
           accounts,
-          (inv as { vouchers?: Array<{ voucher?: { id: number; type: string; status: string; amount: number | string; debitAccountId?: number | null; creditAccountId?: number | null } | null }> }).vouchers ?? [],
-          'PURCHASE_PAYMENT',
+          (inv as { embeddedPaymentLines?: unknown }).embeddedPaymentLines,
         );
-        if (fromVouchers.length > 0) {
-          setPaymentLines(fromVouchers);
+        if (fromStored.length > 0) {
+          setPaymentLines(fromStored);
         } else {
-          const paymentAmt = (inv as { embeddedPaymentAmount?: number | null }).embeddedPaymentAmount;
-          const paymentAcct = (inv as { embeddedPaymentAccountId?: number | null }).embeddedPaymentAccountId;
-          setPaymentLines(embeddedLinesFromLegacyScalar(accounts, paymentAcct, paymentAmt));
+          const fromVouchers = embeddedLinesFromInvoiceVouchers(
+            accounts,
+            (inv as { vouchers?: Array<{ voucher?: { id: number; type: string; status: string; amount: number | string; debitAccountId?: number | null; creditAccountId?: number | null } | null }> }).vouchers ?? [],
+            'PURCHASE_PAYMENT',
+          );
+          if (fromVouchers.length > 0) {
+            setPaymentLines(fromVouchers);
+          } else {
+            const paymentAmt = (inv as { embeddedPaymentAmount?: number | null }).embeddedPaymentAmount;
+            const paymentAcct = (inv as { embeddedPaymentAccountId?: number | null }).embeddedPaymentAccountId;
+            setPaymentLines(embeddedLinesFromLegacyScalar(accounts, paymentAcct, paymentAmt));
+          }
         }
         setGridRows(
           (inv.items ?? []).map((item, index) => {

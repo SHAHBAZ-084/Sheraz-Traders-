@@ -17,7 +17,10 @@ type PendingItem = {
   date: string | null;
   debitAccountName?: string | null;
   creditAccountName?: string | null;
+  ledgerAccountId?: number | null;
   amount: number;
+  creditAmount?: number | null;
+  debitAmount?: number | null;
   description: string | null;
   createdBy: { id: number; displayName: string; username: string } | null;
 };
@@ -52,8 +55,8 @@ function isPurchaseInvoice(item: PendingItem) {
   return item.type === 'PURCHASE_INVOICE';
 }
 
-function isSaleLikeInvoice(item: PendingItem) {
-  return item.type === 'SALE_INVOICE' || item.type === 'KACHI_MAAL';
+function isSaleInvoice(item: PendingItem) {
+  return item.type === 'SALE_INVOICE';
 }
 
 function pendingDebitCell(item: PendingItem) {
@@ -71,7 +74,7 @@ function pendingCreditCell(item: PendingItem) {
   if (item.creditAccountName) {
     return { text: item.creditAccountName, tone: 'credit' as const };
   }
-  if (item.kind === 'invoice' && isSaleLikeInvoice(item)) {
+  if (item.kind === 'invoice' && isSaleInvoice(item)) {
     const products = invoiceProductLineSummary(item.description);
     if (products) return { text: products, tone: 'credit' as const };
   }
@@ -84,6 +87,24 @@ function pendingCellClass(tone: 'debit' | 'credit' | 'empty') {
   return 'text-textPrimary';
 }
 
+function pendingCreditAmount(item: PendingItem): number | null {
+  if (item.creditAmount != null && Number.isFinite(item.creditAmount)) return item.creditAmount;
+  if (item.kind === 'invoice' && isPurchaseInvoice(item)) return item.amount;
+  if (item.kind === 'voucher') return item.amount;
+  return null;
+}
+
+function pendingDebitAmount(item: PendingItem): number | null {
+  if (item.debitAmount != null && Number.isFinite(item.debitAmount)) return item.debitAmount;
+  if (item.kind === 'invoice' && isSaleInvoice(item)) return item.amount;
+  if (item.kind === 'invoice' && item.type === 'KACHI_MAAL') return item.amount;
+  if (item.kind === 'voucher') return item.amount;
+  if (item.kind === 'account' || item.kind === 'product' || item.kind === 'account_adjustment' || item.kind === 'stock_adjustment') {
+    return item.amount;
+  }
+  return null;
+}
+
 function editPathForPending(item: PendingItem): string | null {
   const q = `pendingId=${item.id}`;
   if (item.kind === 'voucher') {
@@ -94,11 +115,22 @@ function editPathForPending(item: PendingItem): string | null {
     if (item.type === 'JOURNAL') return `/vouchers/journal?${q}`;
     return null;
   }
-  if (item.kind !== 'invoice') return null;
-  if (item.type === 'SALE_INVOICE') return `/invoices/sale-invoice?${q}`;
-  if (item.type === 'PURCHASE_INVOICE') return `/invoices/purchase-invoice?${q}`;
-  if (item.type === 'KACHI_MAAL') return `/invoices/kachi-maal?${q}`;
+  if (item.kind === 'invoice') {
+    if (item.type === 'SALE_INVOICE') return `/invoices/sale-invoice?${q}`;
+    if (item.type === 'PURCHASE_INVOICE') return `/invoices/purchase-invoice?${q}`;
+    if (item.type === 'KACHI_MAAL') return `/invoices/kachi-maal?${q}`;
+    return null;
+  }
+  if (item.kind === 'account') return `/accounts/manage/add?${q}`;
+  if (item.kind === 'product') return `/products/add?${q}`;
+  if (item.kind === 'account_adjustment') return `/inventory/stock-adjustment?${q}&tab=account`;
+  if (item.kind === 'stock_adjustment') return `/inventory/stock-adjustment?${q}&tab=stock`;
   return null;
+}
+
+function ledgerPathForPending(item: PendingItem): string | null {
+  if (item.ledgerAccountId == null || !(item.ledgerAccountId > 0)) return null;
+  return `/reports/accounts?accountId=${item.ledgerAccountId}`;
 }
 
 async function approvePendingItem(item: PendingItem) {
@@ -204,7 +236,8 @@ export function PendingApprovalsPage() {
       <Panel>
         {!isAdmin ? (
           <p className="mb-3 rounded bg-surface2 px-3 py-2 text-xs text-textSecondary font-medium">
-            Viewing pending submissions. Voucher Edit / Approve / Cancel are Admin only. You can edit your own pending invoices.
+            Viewing pending submissions. Voucher Edit / Approve / Cancel are Admin only. You can edit your own
+            pending invoices, accounts, products, and adjustments.
           </p>
         ) : null}
         {(items ?? []).some((item) => item.kind === 'stock_adjustment') ? (
@@ -230,8 +263,9 @@ export function PendingApprovalsPage() {
                   <th className="py-2 pr-3">Date</th>
                   <th className="py-2 pr-3">Credit Account</th>
                   <th className="py-2 pr-3">Debit Account</th>
+                  <th className="py-2 pr-3 text-right">Credit Amount</th>
+                  <th className="py-2 pr-3 text-right">Debit Amount</th>
                   <th className="py-2 pr-3">Creator</th>
-                  <th className="py-2 pr-3 text-right">Amount</th>
                   <th className="py-2 pr-3">Description</th>
                   <th className="py-2" />
                 </tr>
@@ -242,9 +276,12 @@ export function PendingApprovalsPage() {
                   const keyReject = `reject-${item.kind}-${item.id}`;
                   const isBusy = busyId === keyApprove || busyId === keyReject;
                   const showEdit = canEdit(item) && editPathForPending(item) != null;
+                  const ledgerPath = ledgerPathForPending(item);
                   const showAdminActions = isAdmin;
                   const creditCell = pendingCreditCell(item);
                   const debitCell = pendingDebitCell(item);
+                  const creditAmt = pendingCreditAmount(item);
+                  const debitAmt = pendingDebitAmount(item);
                   return (
                     <tr key={`${item.kind}-${item.id}`} className="border-b border-border">
                       <td className="py-2 pr-3 font-medium text-textPrimary">
@@ -261,10 +298,13 @@ export function PendingApprovalsPage() {
                       <td className={`py-2 pr-3 font-medium ${pendingCellClass(debitCell.tone)}`}>
                         {debitCell.text}
                       </td>
-                      <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
-                        {formatLedgerAmount(item.amount)}
+                      <td className={`py-2 pr-3 text-right tabular-nums ${creditAmt != null ? ledgerCreditAmountClass(true) : 'text-textSecondary'}`}>
+                        {creditAmt != null ? formatLedgerAmount(creditAmt) : '—'}
                       </td>
+                      <td className={`py-2 pr-3 text-right tabular-nums ${debitAmt != null ? ledgerDebitAmountClass(true) : 'text-textSecondary'}`}>
+                        {debitAmt != null ? formatLedgerAmount(debitAmt) : '—'}
+                      </td>
+                      <td className="py-2 pr-3">{item.createdBy?.displayName ?? '—'}</td>
                       <td className="py-2 pr-3 text-textSecondary">{item.description ?? '—'}</td>
                       <td className="py-2 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
@@ -285,6 +325,16 @@ export function PendingApprovalsPage() {
                               className="px-3 py-1.5 text-xs font-semibold rounded bg-surface2 text-textPrimary hover:bg-border/60 disabled:opacity-50 transition-colors"
                             >
                               Edit
+                            </button>
+                          ) : null}
+                          {ledgerPath ? (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => navigate(ledgerPath)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded bg-surface2 text-financial hover:bg-border/60 disabled:opacity-50 transition-colors"
+                            >
+                              View Ledger
                             </button>
                           ) : null}
                           {showAdminActions ? (

@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
 import { asyncHandler, param } from '../../utils/helpers';
 import * as stockService from './stock.service';
+import { parsePagination, paginateArray, STANDARD_PAGINATION } from '../../utils/pagination';
 import { createStockAdjustment } from '../products/products.service';
-
-import { parsePagination, paginateArray } from '../../utils/pagination';
 
 export const stockRouter = Router();
 stockRouter.use(requireAuth);
@@ -24,7 +23,7 @@ stockRouter.get(
       res.status(400).json({ error: 'storeId must be a positive integer' });
       return;
     }
-    const { limit, offset } = parsePagination(req.query, { limit: 200, max: 1000 });
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
     const report = await stockService.getStockReport({ productId, storeId, limit, offset });
     res.json({
       ...report,
@@ -64,7 +63,8 @@ stockRouter.get(
       res.status(400).json({ error: 'categoryId must be a positive integer' });
       return;
     }
-    res.json(await stockService.getStockValueReport({ date, storeId, categoryId }));
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
+    res.json(await stockService.getStockValueReport({ date, storeId, categoryId, limit, offset }));
   }),
 );
 
@@ -90,7 +90,8 @@ stockRouter.get(
       res.status(400).json({ error: 'categoryId must be a positive integer' });
       return;
     }
-    res.json(await stockService.getStockQuantityReport({ storeId, categoryId }));
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
+    res.json(await stockService.getStockQuantityReport({ storeId, categoryId, limit, offset }));
   }),
 );
 

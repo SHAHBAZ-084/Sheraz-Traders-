@@ -6,14 +6,23 @@ export type PendingEditor = {
   role: Role;
 };
 
+/** Admin may edit any pending record; users may edit only their own. */
+export function assertCanEditPendingRecord(
+  editor: PendingEditor,
+  createdById: number | null | undefined,
+  label = 'pending item',
+) {
+  if (editor.role === Role.ADMIN) return;
+  if (createdById != null && createdById === editor.id) return;
+  throw new AppError(403, `You can only edit your own ${label}`);
+}
+
 /** Admin may edit any pending invoice; users may edit only their own invoices. */
 export function assertCanEditPendingInvoice(
   editor: PendingEditor,
   createdById: number | null | undefined,
 ) {
-  if (editor.role === Role.ADMIN) return;
-  if (createdById != null && createdById === editor.id) return;
-  throw new AppError(403, 'You can only edit your own pending invoices');
+  assertCanEditPendingRecord(editor, createdById, 'pending invoices');
 }
 
 /** Pending voucher edit is Admin-only. */

@@ -38,15 +38,25 @@ export function formatInvoiceProductLinesDescription(lines: InvoiceProductLineDe
     .join('+');
 }
 
-export function voucherReferenceFromBillNo(billNo?: string | null): string {
-  return billNo?.trim() ?? '';
+export type KachiMaalProductLineDescription = {
+  productName: string;
+  totalWeightKg: number;
+  ratePerMaund: number;
+};
+
+/** Kachi Maal pending/ledger line style — e.g. `Cotton 31 Maund 10 Kg @8500`. */
+export function formatKachiMaalProductLinesDescription(lines: KachiMaalProductLineDescription[]): string {
+  return lines
+    .map((line) => {
+      const name = line.productName.trim() || 'Item';
+      const weight = formatWeightMaundKg(line.totalWeightKg);
+      return `${name} ${weight} @${formatInvoiceLineNumber(line.ratePerMaund)}`;
+    })
+    .join('+');
 }
 
-function formatRate(rate: number) {
-  return Number(rate).toLocaleString('en-PK', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+export function voucherReferenceFromBillNo(billNo?: string | null): string {
+  return billNo?.trim() ?? '';
 }
 
 export function invoiceVoucherHeaderSuffix(header: InvoiceVoucherHeader): string {
@@ -64,18 +74,13 @@ function resolveLineJins(line: InvoiceVoucherLine, invoiceJins?: string | null):
   return fromInvoice || null;
 }
 
-function formatLineWeightWithJins(line: InvoiceVoucherLine, invoiceJins?: string | null): string {
-  const weight = formatWeightMaundKg(line.totalWeightKg);
-  const jins = resolveLineJins(line, invoiceJins);
-  return jins ? `${jins} ${weight}` : weight;
-}
-
 export function rowLegDescription(
   line: InvoiceVoucherLine,
   header: InvoiceVoucherHeader,
   invoiceJins?: string | null,
 ): string {
-  const core = `${formatLineWeightWithJins(line, invoiceJins)} @ Rs ${formatRate(line.ratePerMaund)}/maund`;
+  const name = resolveLineJins(line, invoiceJins) || 'Item';
+  const core = `${name} ${formatWeightMaundKg(line.totalWeightKg)} @${formatInvoiceLineNumber(line.ratePerMaund)}`;
   return core + invoiceVoucherHeaderSuffix(header);
 }
 
@@ -84,29 +89,18 @@ export function blendedLegDescription(
   header: InvoiceVoucherHeader,
   invoiceJins?: string | null,
 ): string {
-  const totalWeightKg = lines.reduce((sum, line) => sum + Number(line.totalWeightKg), 0);
-  if (totalWeightKg <= 0) {
+  if (lines.length === 0) {
     const suffix = invoiceVoucherHeaderSuffix(header);
     return suffix ? suffix.replace(/^ — /, '') : '—';
   }
 
-  const resolvedJins = lines.map((line) => resolveLineJins(line, invoiceJins));
-  const uniqueJins = [...new Set(resolvedJins.filter((j): j is string => Boolean(j)))];
-
-  let weightPart: string;
-  if (uniqueJins.length <= 1) {
-    const weight = formatWeightMaundKg(totalWeightKg);
-    weightPart = uniqueJins[0] ? `${uniqueJins[0]} ${weight}` : weight;
-  } else {
-    weightPart = lines.map((line) => formatLineWeightWithJins(line, invoiceJins)).join(' + ');
-  }
-
-  let weightedRateSum = 0;
-  for (const line of lines) {
-    weightedRateSum += Number(line.totalWeightKg) * Number(line.ratePerMaund);
-  }
-  const blendedRate = weightedRateSum / totalWeightKg;
-  const core = `${weightPart} @ Rs ${formatRate(blendedRate)}/maund`;
+  const core = formatKachiMaalProductLinesDescription(
+    lines.map((line) => ({
+      productName: resolveLineJins(line, invoiceJins) || 'Item',
+      totalWeightKg: Number(line.totalWeightKg),
+      ratePerMaund: Number(line.ratePerMaund),
+    })),
+  );
   return core + invoiceVoucherHeaderSuffix(header);
 }
 
@@ -150,6 +144,12 @@ export type PendingInvoiceDescriptionInput = {
   embeddedPaymentAmount?: number | string | null;
   embeddedReceiptAccount?: { name: string; category?: { name: string } | null } | null;
   embeddedPaymentAccount?: { name: string; category?: { name: string } | null } | null;
+  /** Multi-line Cash/Bank receipts stored on the invoice until post. */
+  embeddedReceiptLines?: unknown;
+  /** Multi-line Cash/Bank payments stored on the invoice until post. */
+  embeddedPaymentLines?: unknown;
+  /** Optional account lookup for JSON line accountIds (id → label). */
+  embeddedLineAccountLabels?: Record<number, string>;
   vouchers?: Array<{ voucher: PendingInvoiceEmbeddedVoucher }>;
 };
 
@@ -157,6 +157,20 @@ function formatPendingPaymentAmount(amount: number) {
   const n = roundMoney(amount);
   if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
   return String(n);
+}
+
+function parseEmbeddedLineRows(raw: unknown): Array<{ amount: number; accountId: number }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ amount: number; accountId: number }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { amount?: unknown; accountId?: unknown };
+    const amount = Number(row.amount);
+    const accountId = Number(row.accountId);
+    if (!(amount > 0) || !(accountId > 0)) continue;
+    out.push({ amount: roundMoney(amount), accountId });
+  }
+  return out;
 }
 
 function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string | null {
@@ -170,6 +184,8 @@ function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string
           && link.voucher.status === VoucherStatus.PENDING_APPROVAL,
       ) ?? [];
 
+    const storedLines = parseEmbeddedLineRows(inv.embeddedReceiptLines);
+
     if (pendingReceipts.length > 0) {
       const total = roundMoney(
         pendingReceipts.reduce((sum, link) => sum + Number(link.voucher.amount), 0),
@@ -179,6 +195,18 @@ function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string
         return acct
           ? formatBankCashAccountLabel(acct.category?.name ?? '', acct.name)
           : 'Cash/Bank';
+      });
+      appendParts.push(`Received ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
+    } else if (storedLines.length > 0) {
+      const total = roundMoney(storedLines.reduce((sum, line) => sum + line.amount, 0));
+      const labels = storedLines.map((line) => {
+        return inv.embeddedLineAccountLabels?.[line.accountId]
+          ?? (storedLines.length === 1 && inv.embeddedReceiptAccount
+            ? formatBankCashAccountLabel(
+              inv.embeddedReceiptAccount.category?.name ?? '',
+              inv.embeddedReceiptAccount.name,
+            )
+            : 'Cash/Bank');
       });
       appendParts.push(`Received ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
     } else if (
@@ -201,6 +229,8 @@ function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string
           && link.voucher.status === VoucherStatus.PENDING_APPROVAL,
       ) ?? [];
 
+    const storedLines = parseEmbeddedLineRows(inv.embeddedPaymentLines);
+
     if (pendingPayments.length > 0) {
       const total = roundMoney(
         pendingPayments.reduce((sum, link) => sum + Number(link.voucher.amount), 0),
@@ -210,6 +240,18 @@ function embeddedReceiptPaymentNote(inv: PendingInvoiceDescriptionInput): string
         return acct
           ? formatBankCashAccountLabel(acct.category?.name ?? '', acct.name)
           : 'Cash/Bank';
+      });
+      appendParts.push(`Paid ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
+    } else if (storedLines.length > 0) {
+      const total = roundMoney(storedLines.reduce((sum, line) => sum + line.amount, 0));
+      const labels = storedLines.map((line) => {
+        return inv.embeddedLineAccountLabels?.[line.accountId]
+          ?? (storedLines.length === 1 && inv.embeddedPaymentAccount
+            ? formatBankCashAccountLabel(
+              inv.embeddedPaymentAccount.category?.name ?? '',
+              inv.embeddedPaymentAccount.name,
+            )
+            : 'Cash/Bank');
       });
       appendParts.push(`Paid ${formatPendingPaymentAmount(total)} (${labels.join(' + ')})`);
     } else if (
@@ -236,16 +278,13 @@ export function buildPendingInvoiceApprovalDescription(inv: PendingInvoiceDescri
   if (inv.type === InvoiceType.KACHI_MAAL) {
     const lines = inv.kachiMaalLines ?? [];
     if (lines.length > 0) {
-      core = blendedLegDescription(
+      core = formatKachiMaalProductLinesDescription(
         lines.map((line) => ({
+          productName: line.jins?.trim() || inv.jins?.trim() || 'Item',
           totalWeightKg: Number(line.totalWeightKg),
           ratePerMaund: Number(line.ratePerMaund),
-          jins: line.jins,
         })),
-        { tafseel: inv.tafseel, gariNo: inv.gariNo },
-        inv.jins,
       );
-      if (core === '—') core = null;
     }
   } else {
     const items = inv.items ?? [];

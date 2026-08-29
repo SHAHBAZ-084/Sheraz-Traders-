@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FieldLabel, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { DecimalInput } from '../../components/ui/DecimalInput';
 import { AmountInput } from '../../components/ui/AmountInput';
@@ -79,7 +80,16 @@ type ProductOpeningStockSearchRow = {
 };
 
 export function StockAdjustmentPage() {
-  const [tab, setTab] = useState<AdjustmentTab>('stock');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pendingIdParam = searchParams.get('pendingId');
+  const pendingId = pendingIdParam ? Number(pendingIdParam) : null;
+  const isEditingPending = pendingId != null && Number.isFinite(pendingId) && pendingId > 0;
+  const tabParam = searchParams.get('tab');
+  const initialTab: AdjustmentTab =
+    tabParam === 'account' ? 'account' : tabParam === 'stock' ? 'stock' : 'stock';
+
+  const [tab, setTab] = useState<AdjustmentTab>(initialTab);
 
   const [adjustmentDate, setAdjustmentDate] = useState(todayInputValue);
   const [productKind, setProductKind] = useState<ProductKindFilter>('OTHER');
@@ -175,6 +185,67 @@ export function StockAdjustmentPage() {
       })
       .catch(() => setAccountError('Failed to load account form data'));
   }, []);
+
+  useEffect(() => {
+    if (!isEditingPending || pendingId == null) return;
+    let cancelled = false;
+    const loadPending = async () => {
+      try {
+        if (tabParam === 'account' || initialTab === 'account') {
+          setTab('account');
+          const row = await api.getPendingAccountAdjustment(pendingId);
+          if (cancelled) return;
+          setAccountAdjustmentDate(dateToInputValue(row.adjustmentDate));
+          setAccountDescription(row.description ?? '');
+          setAdjustmentAmount(row.amount > 0 ? String(row.amount) : '');
+          setAdjustmentSide(row.side === 'CR' ? 'CR' : 'DR');
+          if (row.account) {
+            setAccountCategoryId(String(row.account.categoryId));
+            setAccountId(String(row.account.id));
+          } else if (row.accountId != null) {
+            setAccountId(String(row.accountId));
+          }
+        } else {
+          setTab('stock');
+          const row = await api.getPendingStockAdjustment(pendingId);
+          if (cancelled) return;
+          setAdjustmentDate(dateToInputValue(row.adjustmentDate));
+          setStockDescription(row.description ?? '');
+          if (row.storeId != null) setStoreId(row.storeId);
+          if (row.product) {
+            const isKachi = row.product.kind === 'KACHI';
+            setProductKind(isKachi ? 'KACHI' : 'OTHER');
+            setCategoryId(row.product.categoryId != null ? String(row.product.categoryId) : '');
+            setProductId(String(row.product.id));
+            if (isKachi && row.kachiOpening && typeof row.kachiOpening === 'object') {
+              const k = row.kachiOpening as Record<string, unknown>;
+              setKachiBagMode(k.bagMode === 'BORI' ? 'BORI' : 'THELA');
+              setKachiBagCount(k.bagCount != null ? String(k.bagCount) : '');
+              setKachiDharan(k.dharanCount != null ? String(k.dharanCount) : '');
+              setKachiLooseKg(k.looseKg != null ? String(k.looseKg) : '');
+              setKachiBhartii(k.bhartii != null ? String(k.bhartii) : '');
+              setKachiRatePerMaund(k.ratePerMaund != null ? String(k.ratePerMaund) : '');
+            } else {
+              setQuantity(row.quantity != null ? String(row.quantity) : '');
+              setRate(row.rate != null ? String(row.rate) : '');
+            }
+          } else if (row.productId != null) {
+            setProductId(String(row.productId));
+          }
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load pending adjustment';
+        if (tabParam === 'account' || initialTab === 'account') setAccountError(msg);
+        else setStockError(msg);
+      }
+    };
+    void loadPending();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per pendingId
+  }, [isEditingPending, pendingId]);
 
   useEffect(() => {
     setCurrentStockBalance(null);
@@ -322,19 +393,33 @@ export function StockAdjustmentPage() {
           return;
         }
 
+        const kachiOpening = {
+          bagMode: kachiBagMode,
+          bagCount,
+          dharanCount,
+          looseKg,
+          bhartii,
+          ratePerMaund,
+        };
+
+        if (isEditingPending && pendingId != null) {
+          await api.updatePendingStockAdjustment(pendingId, {
+            adjustmentDate,
+            productId: Number(productId),
+            storeId: Number(storeId),
+            description: stockDescription.trim() || null,
+            kachiOpening,
+          });
+          navigate('/system/approvals');
+          return;
+        }
+
         const result = await api.createStockAdjustment({
           adjustmentDate,
           productId: Number(productId),
           storeId: Number(storeId),
           description: stockDescription.trim() || undefined,
-          kachiOpening: {
-            bagMode: kachiBagMode,
-            bagCount,
-            dharanCount,
-            looseKg,
-            bhartii,
-            ratePerMaund,
-          },
+          kachiOpening,
         });
         setStockMessage(
           result.pendingApproval
@@ -353,6 +438,19 @@ export function StockAdjustmentPage() {
         }
         if (!hasQty) {
           setStockError('Enter quantity and rate for the adjustment');
+          return;
+        }
+
+        if (isEditingPending && pendingId != null) {
+          await api.updatePendingStockAdjustment(pendingId, {
+            adjustmentDate,
+            productId: Number(productId),
+            storeId: Number(storeId),
+            quantity: qty,
+            rate: unitRate,
+            description: stockDescription.trim() || null,
+          });
+          navigate('/system/approvals');
           return;
         }
 
@@ -409,6 +507,18 @@ export function StockAdjustmentPage() {
 
     setAccountSaving(true);
     try {
+      if (isEditingPending && pendingId != null) {
+        await api.updatePendingAccountAdjustment(pendingId, {
+          adjustmentDate: accountAdjustmentDate,
+          accountId: Number(accountId),
+          amount,
+          side: adjustmentSide,
+          description: accountDescription.trim() || null,
+        });
+        navigate('/system/approvals');
+        return;
+      }
+
       const result = await api.createAccountAdjustment({
         adjustmentDate: accountAdjustmentDate,
         accountId: Number(accountId),
@@ -629,8 +739,18 @@ export function StockAdjustmentPage() {
 
   return (
       <PageShell
-      title="Stock Adjustment"
-      subtitle="Post stock or account adjustments against Opening Balance Equity"
+      title={
+        isEditingPending
+          ? tab === 'account'
+            ? 'Edit Pending Account Adjustment'
+            : 'Edit Pending Stock Adjustment'
+          : 'Stock Adjustment'
+      }
+      subtitle={
+        isEditingPending
+          ? 'Update this pending adjustment. It stays awaiting Admin approval after save.'
+          : 'Post stock or account adjustments against Opening Balance Equity'
+      }
     >
       <p className="mb-4 max-w-2xl rounded border border-amber-600/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
         Stock adjustments require Admin approval. Until approved in Pending Approvals, they do not
@@ -641,7 +761,10 @@ export function StockAdjustmentPage() {
         <SegmentedControl
           ariaLabel="Adjustment type"
           value={tab}
-          onChange={setTab}
+          onChange={(next) => {
+            if (isEditingPending) return;
+            setTab(next);
+          }}
           options={[
             { value: 'stock', label: 'Stock Adjustment' },
             { value: 'account', label: 'Account Adjustment' },
@@ -671,6 +794,7 @@ export function StockAdjustmentPage() {
                     name="productKind"
                     checked={productKind === 'OTHER'}
                     onChange={() => onProductKindChange('OTHER')}
+                    disabled={isEditingPending}
                   />
                   Other
                 </label>
@@ -680,6 +804,7 @@ export function StockAdjustmentPage() {
                     name="productKind"
                     checked={productKind === 'KACHI'}
                     onChange={() => onProductKindChange('KACHI')}
+                    disabled={isEditingPending}
                   />
                   Kachi Product
                 </label>
@@ -826,11 +951,26 @@ export function StockAdjustmentPage() {
             {stockError ? <p className="text-sm text-danger">{stockError}</p> : null}
             {stockMessage ? <p className="text-sm text-accent">{stockMessage}</p> : null}
 
-            <PrimaryButton type="submit" disabled={stockSaving}>
-              {stockSaving ? 'Posting…' : 'Post Stock Adjustment'}
-            </PrimaryButton>
+            <div className="flex flex-wrap gap-2">
+              <PrimaryButton type="submit" disabled={stockSaving}>
+                {stockSaving
+                  ? isEditingPending
+                    ? 'Updating…'
+                    : 'Posting…'
+                  : isEditingPending
+                    ? 'Update pending'
+                    : 'Post Stock Adjustment'}
+              </PrimaryButton>
+              {isEditingPending ? (
+                <SecondaryButton type="button" onClick={() => navigate('/system/approvals')}>
+                  Back to approvals
+                </SecondaryButton>
+              ) : null}
+            </div>
           </form>
 
+          {!isEditingPending ? (
+          <>
           <div className="mt-8 border-t border-border pt-6">
             <h3 className="text-sm font-semibold text-textPrimary">Find previous stock adjustment</h3>
             <p className="mt-1 text-xs text-textMuted">
@@ -954,6 +1094,8 @@ export function StockAdjustmentPage() {
               </form>
             ) : null}
           </div>
+          </>
+          ) : null}
         </Panel>
       ) : (
         <Panel className="max-w-lg">
@@ -1027,11 +1169,26 @@ export function StockAdjustmentPage() {
             {accountError ? <p className="text-sm text-danger">{accountError}</p> : null}
             {accountMessage ? <p className="text-sm text-accent">{accountMessage}</p> : null}
 
-            <PrimaryButton type="submit" disabled={accountSaving}>
-              {accountSaving ? 'Posting…' : 'Post Account Adjustment'}
-            </PrimaryButton>
+            <div className="flex flex-wrap gap-2">
+              <PrimaryButton type="submit" disabled={accountSaving}>
+                {accountSaving
+                  ? isEditingPending
+                    ? 'Updating…'
+                    : 'Posting…'
+                  : isEditingPending
+                    ? 'Update pending'
+                    : 'Post Account Adjustment'}
+              </PrimaryButton>
+              {isEditingPending ? (
+                <SecondaryButton type="button" onClick={() => navigate('/system/approvals')}>
+                  Back to approvals
+                </SecondaryButton>
+              ) : null}
+            </div>
           </form>
 
+          {!isEditingPending ? (
+          <>
           <div className="mt-8 border-t border-border pt-6">
             <h3 className="text-sm font-semibold text-textPrimary">Find previous account adjustment</h3>
             <p className="mt-1 text-xs text-textMuted">
@@ -1155,6 +1312,8 @@ export function StockAdjustmentPage() {
               </form>
             ) : null}
           </div>
+          </>
+          ) : null}
         </Panel>
       )}
 

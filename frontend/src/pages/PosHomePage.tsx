@@ -7,6 +7,7 @@ import {
   ArrowUpCircle,
   BarChart3,
   BookOpen,
+  CalendarDays,
   Eye,
   Layers,
   Package,
@@ -45,6 +46,7 @@ const QUICK_LINK_META: Record<string, { variant: QuickLinkVariant; icon: LucideI
   '/invoices/kachi-maal': { variant: 'kachi-maal', icon: Wheat },
   '/invoices/view-invoice': { variant: 'view', icon: Eye },
   '/jama-naam': { variant: 'view', icon: ArrowLeftRight },
+  '/reports/daily-activity': { variant: 'report', icon: CalendarDays },
   '/reports/accounts': { variant: 'report', icon: ScrollText },
   '/reports/account-balance': { variant: 'report', icon: Wallet },
   '/reports/vouchers': { variant: 'report', icon: Receipt },
@@ -117,6 +119,23 @@ export function PosHomePage() {
   return (
     <PageShell subtitle="Today at a glance">
       {loadError ? <p className="text-sm text-danger">{loadError}</p> : null}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          to="/reports/daily-activity"
+          className="quick-link-card quick-link-card--report sm:col-span-2 lg:col-span-1"
+        >
+          <div className="quick-link-card-inner">
+            <CalendarDays className="quick-link-icon h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-financial">Daily Report</h3>
+              <p className="mt-0.5 text-xs text-textSecondary">
+                Today&apos;s posted vouchers and invoices
+              </p>
+            </div>
+          </div>
+        </Link>
+      </div>
 
       {!isUserRole ? (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

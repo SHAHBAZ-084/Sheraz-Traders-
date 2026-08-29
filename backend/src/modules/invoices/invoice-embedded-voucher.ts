@@ -1,6 +1,6 @@
-import { Prisma, VoucherStatus, VoucherType } from '@prisma/client';
+import { LedgerEntryType, Prisma, VoucherStatus, VoucherType } from '@prisma/client';
 import { AppError } from '../../utils/helpers';
-import { createVoucherInTx } from '../accounting/accounting.service';
+import { createVoucherInTx, type VoucherLeg } from '../accounting/accounting.service';
 import { roundMoney } from './sale-invoice.calculations';
 
 function isBankOrCashCategory(name: string) {
@@ -144,6 +144,61 @@ export function parseEmbeddedPaymentInput(
   return lines[0];
 }
 
+export function parseStoredEmbeddedLines(raw: unknown): Array<{ amount: number; accountId: number }> {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ amount: number; accountId: number }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { amount?: unknown; accountId?: unknown };
+    const amount = Number(row.amount);
+    const accountId = Number(row.accountId);
+    if (!(amount > 0) || !Number.isFinite(amount) || !(accountId > 0) || !Number.isFinite(accountId)) {
+      continue;
+    }
+    out.push({ amount: roundMoney(amount), accountId });
+  }
+  return out;
+}
+
+export function embeddedReceiptScalarFields(receipts: EmbeddedReceiptLineInput[]) {
+  if (receipts.length === 0) {
+    return {
+      embeddedReceiptAmount: null as number | null,
+      embeddedReceiptAccountId: null as number | null,
+      embeddedReceiptLines: Prisma.JsonNull,
+    };
+  }
+  const sum = roundMoney(receipts.reduce((total, line) => total + line.amount, 0));
+  return {
+    embeddedReceiptAmount: sum,
+    embeddedReceiptAccountId: receipts[0].accountId,
+    embeddedReceiptLines: receipts.map((line) => ({
+      amount: line.amount,
+      accountId: line.accountId,
+    })),
+  };
+}
+
+export function embeddedPaymentScalarFields(payments: EmbeddedPaymentLineInput[]) {
+  if (payments.length === 0) {
+    return {
+      embeddedPaymentAmount: null as number | null,
+      embeddedPaymentAccountId: null as number | null,
+      embeddedPaymentLines: Prisma.JsonNull,
+    };
+  }
+  const sum = roundMoney(payments.reduce((total, line) => total + line.amount, 0));
+  return {
+    embeddedPaymentAmount: sum,
+    embeddedPaymentAccountId: payments[0].accountId,
+    embeddedPaymentLines: payments.map((line) => ({
+      amount: line.amount,
+      accountId: line.accountId,
+    })),
+  };
+}
+
 async function assertBankOrCashAccount(
   tx: Prisma.TransactionClient,
   accountId: number,
@@ -160,7 +215,8 @@ async function assertBankOrCashAccount(
   return account;
 }
 
-async function deletePendingEmbeddedVouchersInTx(
+/** Delete leftover pending SALE_RECEIPT / PURCHASE_PAYMENT vouchers (legacy separate-voucher flow). */
+export async function deletePendingEmbeddedVouchersInTx(
   tx: Prisma.TransactionClient,
   invoiceId: number,
   type: typeof VoucherType.SALE_RECEIPT | typeof VoucherType.PURCHASE_PAYMENT,
@@ -177,10 +233,291 @@ async function deletePendingEmbeddedVouchersInTx(
   }
 }
 
+/**
+ * Persist embedded receipt lines on the invoice (JSON + scalars).
+ * Does NOT create separate SALE_RECEIPT vouchers — payment legs fold into SALE_INVOICE at post.
+ */
+export async function saveEmbeddedSaleReceiptsInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    invoiceId: number;
+    receipts: EmbeddedReceiptLineInput[];
+  },
+) {
+  for (const receipt of data.receipts) {
+    await assertBankOrCashAccount(tx, receipt.accountId, 'Receipt');
+  }
+  await deletePendingEmbeddedVouchersInTx(tx, data.invoiceId, VoucherType.SALE_RECEIPT);
+  await tx.invoice.update({
+    where: { id: data.invoiceId },
+    data: embeddedReceiptScalarFields(data.receipts),
+  });
+}
+
+/**
+ * Persist embedded payment lines on the invoice (JSON + scalars).
+ * Does NOT create separate PURCHASE_PAYMENT vouchers — payment legs fold into PURCHASE_INVOICE at post.
+ */
+export async function saveEmbeddedPurchasePaymentsInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    invoiceId: number;
+    payments: EmbeddedPaymentLineInput[];
+  },
+) {
+  for (const payment of data.payments) {
+    await assertBankOrCashAccount(tx, payment.accountId, 'Payment');
+  }
+  await deletePendingEmbeddedVouchersInTx(tx, data.invoiceId, VoucherType.PURCHASE_PAYMENT);
+  await tx.invoice.update({
+    where: { id: data.invoiceId },
+    data: embeddedPaymentScalarFields(data.payments),
+  });
+}
+
+/** @deprecated Prefer saveEmbeddedSaleReceiptsInTx — no longer creates SALE_RECEIPT vouchers. */
+export async function syncEmbeddedSaleReceiptsInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    invoiceId: number;
+    customerAccountId: number;
+    receipts: EmbeddedReceiptLineInput[];
+    invoiceDate: Date;
+    invoiceReference: string;
+    createdById: number;
+  },
+) {
+  void data.customerAccountId;
+  void data.invoiceDate;
+  void data.invoiceReference;
+  void data.createdById;
+  await saveEmbeddedSaleReceiptsInTx(tx, {
+    invoiceId: data.invoiceId,
+    receipts: data.receipts,
+  });
+}
+
+/** @deprecated Prefer saveEmbeddedPurchasePaymentsInTx — no longer creates PURCHASE_PAYMENT vouchers. */
+export async function syncEmbeddedPurchasePaymentsInTx(
+  tx: Prisma.TransactionClient,
+  data: {
+    invoiceId: number;
+    supplierAccountId: number;
+    payments: EmbeddedPaymentLineInput[];
+    invoiceDate: Date;
+    invoiceReference: string;
+    createdById: number;
+  },
+) {
+  void data.supplierAccountId;
+  void data.invoiceDate;
+  void data.invoiceReference;
+  void data.createdById;
+  await saveEmbeddedPurchasePaymentsInTx(tx, {
+    invoiceId: data.invoiceId,
+    payments: data.payments,
+  });
+}
+
+export async function resolveEmbeddedReceiptLinesForPosting(
+  tx: Prisma.TransactionClient,
+  invoice: {
+    id: number;
+    total: Prisma.Decimal | number;
+    embeddedReceiptAmount: Prisma.Decimal | number | null;
+    embeddedReceiptAccountId: number | null;
+    embeddedReceiptLines?: unknown;
+  },
+): Promise<EmbeddedReceiptLineInput[]> {
+  const fromJson = parseStoredEmbeddedLines(invoice.embeddedReceiptLines);
+  if (fromJson.length > 0) {
+    return parseEmbeddedReceiptLinesInput({ receipts: fromJson }, Number(invoice.total));
+  }
+
+  const links = await tx.invoiceVoucher.findMany({
+    where: {
+      invoiceId: invoice.id,
+      voucher: { type: VoucherType.SALE_RECEIPT, status: VoucherStatus.PENDING_APPROVAL },
+    },
+    include: { voucher: true },
+    orderBy: { id: 'asc' },
+  });
+  if (links.length > 0) {
+    return parseEmbeddedReceiptLinesInput(
+      {
+        receipts: links.map((link) => ({
+          amount: Number(link.voucher.amount),
+          accountId: link.voucher.debitAccountId ?? undefined,
+        })),
+      },
+      Number(invoice.total),
+    );
+  }
+
+  return parseEmbeddedReceiptLinesInput(
+    {
+      receiptAmount:
+        invoice.embeddedReceiptAmount != null ? Number(invoice.embeddedReceiptAmount) : undefined,
+      receiptAccountId: invoice.embeddedReceiptAccountId ?? undefined,
+    },
+    Number(invoice.total),
+  );
+}
+
+export async function resolveEmbeddedPaymentLinesForPosting(
+  tx: Prisma.TransactionClient,
+  invoice: {
+    id: number;
+    total: Prisma.Decimal | number;
+    embeddedPaymentAmount: Prisma.Decimal | number | null;
+    embeddedPaymentAccountId: number | null;
+    embeddedPaymentLines?: unknown;
+  },
+): Promise<EmbeddedPaymentLineInput[]> {
+  const fromJson = parseStoredEmbeddedLines(invoice.embeddedPaymentLines);
+  if (fromJson.length > 0) {
+    return parseEmbeddedPaymentLinesInput({ payments: fromJson }, Number(invoice.total));
+  }
+
+  const links = await tx.invoiceVoucher.findMany({
+    where: {
+      invoiceId: invoice.id,
+      voucher: { type: VoucherType.PURCHASE_PAYMENT, status: VoucherStatus.PENDING_APPROVAL },
+    },
+    include: { voucher: true },
+    orderBy: { id: 'asc' },
+  });
+  if (links.length > 0) {
+    return parseEmbeddedPaymentLinesInput(
+      {
+        payments: links.map((link) => ({
+          amount: Number(link.voucher.amount),
+          accountId: link.voucher.creditAccountId ?? undefined,
+        })),
+      },
+      Number(invoice.total),
+    );
+  }
+
+  return parseEmbeddedPaymentLinesInput(
+    {
+      paymentAmount:
+        invoice.embeddedPaymentAmount != null ? Number(invoice.embeddedPaymentAmount) : undefined,
+      paymentAccountId: invoice.embeddedPaymentAccountId ?? undefined,
+    },
+    Number(invoice.total),
+  );
+}
+
+export async function appendSaleReceiptLegsInTx(
+  tx: Prisma.TransactionClient,
+  legs: VoucherLeg[],
+  data: {
+    customerAccountId: number;
+    receipts: EmbeddedReceiptLineInput[];
+    invoiceReference: string;
+  },
+) {
+  if (data.receipts.length === 0) return;
+
+  const accounts = await Promise.all(
+    data.receipts.map((receipt) => assertBankOrCashAccount(tx, receipt.accountId, 'Receipt')),
+  );
+
+  for (let i = 0; i < data.receipts.length; i++) {
+    const receipt = data.receipts[i];
+    const account = accounts[i];
+    const label = formatBankCashAccountLabel(account.category.name, account.name);
+    const description =
+      data.receipts.length === 1
+        ? `Receipt against Invoice #${data.invoiceReference}`
+        : `Receipt against Invoice #${data.invoiceReference} (${label})`;
+
+    legs.push({
+      accountId: receipt.accountId,
+      type: LedgerEntryType.DEBIT,
+      amount: receipt.amount,
+      description,
+    });
+    legs.push({
+      accountId: data.customerAccountId,
+      type: LedgerEntryType.CREDIT,
+      amount: receipt.amount,
+      description,
+    });
+  }
+}
+
+export async function appendPurchasePaymentLegsInTx(
+  tx: Prisma.TransactionClient,
+  legs: VoucherLeg[],
+  data: {
+    supplierAccountId: number;
+    payments: EmbeddedPaymentLineInput[];
+    invoiceReference: string;
+  },
+) {
+  if (data.payments.length === 0) return;
+
+  const accounts = await Promise.all(
+    data.payments.map((payment) => assertBankOrCashAccount(tx, payment.accountId, 'Payment')),
+  );
+
+  for (let i = 0; i < data.payments.length; i++) {
+    const payment = data.payments[i];
+    const account = accounts[i];
+    const label = formatBankCashAccountLabel(account.category.name, account.name);
+    const description =
+      data.payments.length === 1
+        ? `Payment against Invoice #${data.invoiceReference}`
+        : `Payment against Invoice #${data.invoiceReference} (${label})`;
+
+    legs.push({
+      accountId: data.supplierAccountId,
+      type: LedgerEntryType.DEBIT,
+      amount: payment.amount,
+      description,
+    });
+    legs.push({
+      accountId: payment.accountId,
+      type: LedgerEntryType.CREDIT,
+      amount: payment.amount,
+      description,
+    });
+  }
+}
+
+export function assertLegsBalance(legs: VoucherLeg[], label: string) {
+  const totalDebits = roundMoney(
+    legs.filter((l) => l.type === LedgerEntryType.DEBIT).reduce((s, l) => s + l.amount, 0),
+  );
+  const totalCredits = roundMoney(
+    legs.filter((l) => l.type === LedgerEntryType.CREDIT).reduce((s, l) => s + l.amount, 0),
+  );
+  if (Math.abs(totalDebits - totalCredits) > 0.01) {
+    throw new AppError(500, `${label} voucher debits and credits do not balance`);
+  }
+}
+
 export async function recomputeEmbeddedReceiptScalarsInTx(
   tx: Prisma.TransactionClient,
   invoiceId: number,
 ) {
+  const invoice = await tx.invoice.findFirst({
+    where: { id: invoiceId },
+    select: { embeddedReceiptLines: true, total: true },
+  });
+  if (!invoice) return;
+
+  const fromJson = parseStoredEmbeddedLines(invoice.embeddedReceiptLines);
+  if (fromJson.length > 0) {
+    await tx.invoice.update({
+      where: { id: invoiceId },
+      data: embeddedReceiptScalarFields(fromJson),
+    });
+    return;
+  }
+
   const links = await tx.invoiceVoucher.findMany({
     where: {
       invoiceId,
@@ -196,7 +533,11 @@ export async function recomputeEmbeddedReceiptScalarsInTx(
   if (links.length === 0) {
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { embeddedReceiptAmount: null, embeddedReceiptAccountId: null },
+      data: {
+        embeddedReceiptAmount: null,
+        embeddedReceiptAccountId: null,
+        embeddedReceiptLines: Prisma.JsonNull,
+      },
     });
     return;
   }
@@ -215,6 +556,21 @@ export async function recomputeEmbeddedPaymentScalarsInTx(
   tx: Prisma.TransactionClient,
   invoiceId: number,
 ) {
+  const invoice = await tx.invoice.findFirst({
+    where: { id: invoiceId },
+    select: { embeddedPaymentLines: true, total: true },
+  });
+  if (!invoice) return;
+
+  const fromJson = parseStoredEmbeddedLines(invoice.embeddedPaymentLines);
+  if (fromJson.length > 0) {
+    await tx.invoice.update({
+      where: { id: invoiceId },
+      data: embeddedPaymentScalarFields(fromJson),
+    });
+    return;
+  }
+
   const links = await tx.invoiceVoucher.findMany({
     where: {
       invoiceId,
@@ -230,7 +586,11 @@ export async function recomputeEmbeddedPaymentScalarsInTx(
   if (links.length === 0) {
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { embeddedPaymentAmount: null, embeddedPaymentAccountId: null },
+      data: {
+        embeddedPaymentAmount: null,
+        embeddedPaymentAccountId: null,
+        embeddedPaymentLines: Prisma.JsonNull,
+      },
     });
     return;
   }
@@ -245,6 +605,10 @@ export async function recomputeEmbeddedPaymentScalarsInTx(
   });
 }
 
+/**
+ * Legacy helper: creates a separate SALE_RECEIPT voucher.
+ * Kept for historical/tests; new invoices fold receipt legs into SALE_INVOICE instead.
+ */
 export async function createEmbeddedSaleReceiptInTx(
   tx: Prisma.TransactionClient,
   data: {
@@ -277,6 +641,10 @@ export async function createEmbeddedSaleReceiptInTx(
   return voucher;
 }
 
+/**
+ * Legacy helper: creates a separate PURCHASE_PAYMENT voucher.
+ * Kept for historical/tests; new invoices fold payment legs into PURCHASE_INVOICE instead.
+ */
 export async function createEmbeddedPurchasePaymentInTx(
   tx: Prisma.TransactionClient,
   data: {
@@ -307,90 +675,6 @@ export async function createEmbeddedPurchasePaymentInTx(
   });
 
   return voucher;
-}
-
-export async function syncEmbeddedSaleReceiptsInTx(
-  tx: Prisma.TransactionClient,
-  data: {
-    invoiceId: number;
-    customerAccountId: number;
-    receipts: EmbeddedReceiptLineInput[];
-    invoiceDate: Date;
-    invoiceReference: string;
-    createdById: number;
-  },
-) {
-  await deletePendingEmbeddedVouchersInTx(tx, data.invoiceId, VoucherType.SALE_RECEIPT);
-
-  for (const receipt of data.receipts) {
-    await createEmbeddedSaleReceiptInTx(tx, {
-      invoiceId: data.invoiceId,
-      customerAccountId: data.customerAccountId,
-      receipt,
-      invoiceDate: data.invoiceDate,
-      invoiceReference: data.invoiceReference,
-      createdById: data.createdById,
-    });
-  }
-
-  if (data.receipts.length === 0) {
-    await tx.invoice.update({
-      where: { id: data.invoiceId },
-      data: { embeddedReceiptAmount: null, embeddedReceiptAccountId: null },
-    });
-    return;
-  }
-
-  const sum = roundMoney(data.receipts.reduce((total, line) => total + line.amount, 0));
-  await tx.invoice.update({
-    where: { id: data.invoiceId },
-    data: {
-      embeddedReceiptAmount: sum,
-      embeddedReceiptAccountId: data.receipts[0].accountId,
-    },
-  });
-}
-
-export async function syncEmbeddedPurchasePaymentsInTx(
-  tx: Prisma.TransactionClient,
-  data: {
-    invoiceId: number;
-    supplierAccountId: number;
-    payments: EmbeddedPaymentLineInput[];
-    invoiceDate: Date;
-    invoiceReference: string;
-    createdById: number;
-  },
-) {
-  await deletePendingEmbeddedVouchersInTx(tx, data.invoiceId, VoucherType.PURCHASE_PAYMENT);
-
-  for (const payment of data.payments) {
-    await createEmbeddedPurchasePaymentInTx(tx, {
-      invoiceId: data.invoiceId,
-      supplierAccountId: data.supplierAccountId,
-      payment,
-      invoiceDate: data.invoiceDate,
-      invoiceReference: data.invoiceReference,
-      createdById: data.createdById,
-    });
-  }
-
-  if (data.payments.length === 0) {
-    await tx.invoice.update({
-      where: { id: data.invoiceId },
-      data: { embeddedPaymentAmount: null, embeddedPaymentAccountId: null },
-    });
-    return;
-  }
-
-  const sum = roundMoney(data.payments.reduce((total, line) => total + line.amount, 0));
-  await tx.invoice.update({
-    where: { id: data.invoiceId },
-    data: {
-      embeddedPaymentAmount: sum,
-      embeddedPaymentAccountId: data.payments[0].accountId,
-    },
-  });
 }
 
 export function formatBankCashAccountLabel(categoryName: string, accountName: string) {

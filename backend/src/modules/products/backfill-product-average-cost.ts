@@ -275,6 +275,45 @@ async function ledgerOverStockFallback(
   return null;
 }
 
+/**
+ * Resolve unit cost for reporting / sale profit:
+ * 1) Product.averageCost when already stored
+ * 2) else replay WAC from Opening / Purchase / Stock Adjustment history (same as backfill)
+ * 3) else ledger÷stock fallback
+ * Returns null only when no cost basis exists — callers must NOT treat null as zero.
+ */
+export async function resolveProductAverageCost(
+  db: DbClient,
+  product: {
+    id: number;
+    kind: ProductKind;
+    accountId: number;
+    averageCost: unknown;
+  },
+): Promise<{ averageCost: number; derivedFrom: string } | null> {
+  const stored =
+    product.averageCost == null || product.averageCost === ''
+      ? null
+      : Number(product.averageCost);
+  if (stored != null && Number.isFinite(stored) && stored >= 0) {
+    return { averageCost: stored, derivedFrom: 'Product.averageCost' };
+  }
+
+  const events = await collectEventsForProduct(db, product);
+  let result = replayWac(events);
+  if (result.averageCost == null) {
+    const fallback = await ledgerOverStockFallback(db, product);
+    if (fallback) result = fallback;
+  }
+  if (result.averageCost == null || !Number.isFinite(result.averageCost)) {
+    return null;
+  }
+  return {
+    averageCost: result.averageCost,
+    derivedFrom: result.sources.join(', ') || 'stock-in history',
+  };
+}
+
 /** Preview what would be updated without writing (for CLI dry-run). */
 export async function planProductAverageCostBackfill(
   db: DbClient,

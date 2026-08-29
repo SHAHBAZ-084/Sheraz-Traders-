@@ -205,11 +205,62 @@ describe('voucher posting (PART 7 scenarios)', () => {
     expect(await ledgerBalance(cashId)).toBe(cashBefore + 3333);
     expect(await ledgerBalance(bankId)).toBe(bankBefore - 3333);
 
-    const { cancelVoucher } = await import('./accounting.service');
+    const { cancelVoucher, verifyLedgerIntegrity } = await import('./accounting.service');
     await cancelVoucher(voucher.id, userId);
 
     expect(await ledgerBalance(cashId)).toBeCloseTo(cashBefore, 2);
     expect(await ledgerBalance(bankId)).toBeCloseTo(bankBefore, 2);
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
+  });
+
+  it('Cancel voucher with large ledger history stays fast and correct', async () => {
+    const { cancelVoucher, createVouchersBatch, verifyLedgerIntegrity } = await import(
+      './accounting.service'
+    );
+
+    const cashBefore = await ledgerBalance(cashId);
+    const bankBefore = await ledgerBalance(bankId);
+
+    const early = await createVoucher({
+      type: 'JOURNAL',
+      debitAccountId: cashId,
+      creditAccountId: bankId,
+      amount: 111,
+      date: voucherDate,
+      createdById: userId,
+      reference: 'CANCEL-PERF-EARLY',
+    });
+
+    const laterBatch = Array.from({ length: 120 }, (_, i) => ({
+      type: 'JOURNAL' as const,
+      debitAccountId: cashId,
+      creditAccountId: bankId,
+      amount: 10 + (i % 7),
+      date: voucherDate,
+      reference: `CANCEL-PERF-LATER-${i}`,
+    }));
+    await createVouchersBatch({
+      vouchers: laterBatch,
+      createdById: userId,
+      postImmediately: true,
+    });
+
+    const started = Date.now();
+    await cancelVoucher(early.id, userId);
+    const elapsedMs = Date.now() - started;
+
+    expect(elapsedMs).toBeLessThan(8_000);
+    expect(await ledgerBalance(cashId)).toBeCloseTo(
+      cashBefore + laterBatch.reduce((sum, v) => sum + v.amount, 0),
+      2,
+    );
+    expect(await ledgerBalance(bankId)).toBeCloseTo(
+      bankBefore - laterBatch.reduce((sum, v) => sum + v.amount, 0),
+      2,
+    );
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
   });
 
   it('createVouchersBatch posts all queued vouchers in a single transaction', async () => {

@@ -1,13 +1,11 @@
-import { AccountType, VoucherStatus, VoucherType } from '@prisma/client';
+import { AccountType, VoucherType } from '@prisma/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import { voucherDateInActiveYear } from '../../test-helpers/financial-year';
 import {
   bootstrapChartOfAccounts,
-  createVoucher,
   KACHI_MAAL_CATEGORY_NAMES,
 } from '../accounting/accounting.service';
-import { approvePendingVoucher } from '../approvals/approvals.service';
 import { createProduct } from '../products/products.service';
 import { createStore } from '../stores/stores.service';
 import { createSaleInvoice } from './sale-invoice.service';
@@ -88,28 +86,13 @@ describe('embedded invoice vouchers and sale bill report (focused)', () => {
     cashAccountId = cash.id;
   });
 
-  it('uses independent SALE_RECEIPT numbering from standalone RECEIPT', async () => {
+  it('does not create SALE_RECEIPT when invoice includes receipt (folded into SALE_INVOICE)', async () => {
     const fy = await prisma.financialYear.findFirst({ where: { status: 'ACTIVE' } });
     if (!fy) throw new Error('active FY required');
 
-    const receiptMax = await prisma.voucher.aggregate({
-      where: { financialYearId: fy.id, type: VoucherType.RECEIPT },
-      _max: { number: true },
-    });
-    const saleReceiptMax = await prisma.voucher.aggregate({
+    const saleReceiptMaxBefore = await prisma.voucher.aggregate({
       where: { financialYearId: fy.id, type: VoucherType.SALE_RECEIPT },
       _max: { number: true },
-    });
-
-    const standalone = await createVoucher({
-      type: VoucherType.RECEIPT,
-      debitAccountId: cashAccountId,
-      creditAccountId: customerAccountId,
-      amount: 100,
-      date: invoiceDate,
-      reference: `RCPT-EMBED-${Date.now()}`,
-      createdById: userId,
-      postImmediately: false,
     });
 
     const invoice = await createSaleInvoice(
@@ -131,15 +114,27 @@ describe('embedded invoice vouchers and sale bill report (focused)', () => {
         invoiceLink: { invoiceId: invoice.id },
       },
     });
+    expect(embeddedReceipt).toBeNull();
 
-    expect(embeddedReceipt).toBeTruthy();
-    expect(embeddedReceipt!.status).toBe(VoucherStatus.PENDING_APPROVAL);
-    expect(embeddedReceipt!.number).toBe((saleReceiptMax._max.number ?? 0) + 1);
-    expect(standalone.number).toBe((receiptMax._max.number ?? 0) + 1);
-    expect(embeddedReceipt!.number).not.toBe(standalone.number);
+    const saleInvoice = await prisma.voucher.findFirst({
+      where: { type: VoucherType.SALE_INVOICE, invoiceLink: { invoiceId: invoice.id } },
+      include: {
+        ledgerEntries: { where: { isReversal: false } },
+      },
+    });
+    expect(saleInvoice).toBeTruthy();
+    expect(
+      saleInvoice!.ledgerEntries.some((e) => (e.notes ?? '').includes('Receipt against Invoice')),
+    ).toBe(true);
+
+    const saleReceiptMaxAfter = await prisma.voucher.aggregate({
+      where: { financialYearId: fy.id, type: VoucherType.SALE_RECEIPT },
+      _max: { number: true },
+    });
+    expect(saleReceiptMaxAfter._max.number ?? 0).toBe(saleReceiptMaxBefore._max.number ?? 0);
   });
 
-  it('sale bill report counts only approved embedded receipts in received total', async () => {
+  it('sale bill report counts folded receipts as received on posted invoices', async () => {
     const invoiceA = await createSaleInvoice(
       {
         invoiceDate,
@@ -164,24 +159,14 @@ describe('embedded invoice vouchers and sale bill report (focused)', () => {
       { postImmediately: true },
     );
 
-    let report = await getSaleBillSummary({ fromDate: invoiceDate, toDate: invoiceDate });
+    const report = await getSaleBillSummary({ fromDate: invoiceDate, toDate: invoiceDate });
     const rowA = report.invoices.find((r) => r.invoiceId === invoiceA.id);
     const rowB = report.invoices.find((r) => r.invoiceId === invoiceB.id);
 
-    expect(rowA?.receivedAmount).toBe(0);
-    expect(rowA?.receivedPending).toBe(true);
+    expect(rowA?.receivedAmount).toBe(300);
+    expect(rowA?.receivedPending).toBe(false);
     expect(rowA?.netTotal).toBe(500);
     expect(rowB?.receivedAmount).toBe(0);
     expect(rowB?.netTotal).toBe(220);
-
-    const pendingReceipt = await prisma.voucher.findFirst({
-      where: { type: VoucherType.SALE_RECEIPT, invoiceLink: { invoiceId: invoiceA.id } },
-    });
-    await approvePendingVoucher(pendingReceipt!.id, userId);
-
-    report = await getSaleBillSummary({ fromDate: invoiceDate, toDate: invoiceDate });
-    const rowAAfter = report.invoices.find((r) => r.invoiceId === invoiceA.id);
-    expect(rowAAfter?.receivedAmount).toBe(300);
-    expect(rowAAfter?.receivedPending).toBe(false);
   });
 });

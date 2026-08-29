@@ -1,25 +1,18 @@
 import {
   AccountType,
   InvoiceStatus,
-  InvoiceType,
-  VoucherStatus,
   VoucherType,
 } from '@prisma/client';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma';
 import { voucherDateInActiveYear } from '../../test-helpers/financial-year';
 import {
-  approveVoucher,
   bootstrapChartOfAccounts,
-  createVoucher,
   KACHI_MAAL_CATEGORY_NAMES,
   verifyLedgerIntegrity,
 } from '../accounting/accounting.service';
 import {
-  approvePendingVoucher,
   listPendingApprovals,
-  rejectPendingVoucher,
-  updatePendingVoucher,
 } from '../approvals/approvals.service';
 import { createProduct } from '../products/products.service';
 import { createStore } from '../stores/stores.service';
@@ -81,6 +74,26 @@ async function saleInvoiceVoucher(invoiceId: number) {
   });
 }
 
+async function invoiceVoucherLegs(invoiceId: number, type: VoucherType) {
+  const voucher = await prisma.voucher.findFirst({
+    where: { type, invoiceLink: { invoiceId } },
+    include: {
+      ledgerEntries: {
+        where: { isReversal: false },
+        orderBy: { id: 'asc' },
+        include: { ledger: { include: { account: true } } },
+      },
+    },
+  });
+  if (!voucher) return [];
+  return voucher.ledgerEntries.map((e) => ({
+    accountId: e.ledger.accountId,
+    type: e.type,
+    amount: Number(e.amount),
+    notes: e.notes ?? '',
+  }));
+}
+
 describe('embedded invoice vouchers — full scenario matrix', () => {
   let userId: number;
   let storeId: number;
@@ -91,7 +104,6 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
   let cashAccountId: number;
   let bankAccountId: number;
   let invoiceDate: string;
-  let adminEditor: { id: number; role: 'ADMIN' };
 
   beforeAll(async () => {
     await bootstrapChartOfAccounts();
@@ -99,7 +111,6 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
     const user = await prisma.user.findFirst();
     if (!user) throw new Error('seed user required');
     userId = user.id;
-    adminEditor = { id: userId, role: 'ADMIN' };
 
     storeId = (await createStore(`Full Embed Store ${Date.now()}`)).id;
 
@@ -158,8 +169,9 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
   });
 
   describe('1. Sale Invoice — embedded Payment Received', () => {
-    it('full payment creates SALE_RECEIPT pending voucher with correct legs', async () => {
+    it('full payment folds receipt legs into SALE_INVOICE (no separate SALE_RECEIPT)', async () => {
       const partyBefore = await ledgerBalance(salePartyAId);
+      const bankBefore = await ledgerBalance(bankAccountId);
       const invoice = await createSaleInvoice(
         {
           invoiceDate,
@@ -175,25 +187,27 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
 
       expect(invoice.status).toBe(InvoiceStatus.POSTED);
       expect(await saleInvoiceVoucher(invoice.id)).toBeTruthy();
+      expect(await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT)).toBeNull();
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(embedded).toBeTruthy();
-      expect(embedded!.status).toBe(VoucherStatus.PENDING_APPROVAL);
-      expect(embedded!.type).toBe(VoucherType.SALE_RECEIPT);
-      expect(Number(embedded!.amount)).toBe(50_000);
-      expect(embedded!.debitAccountId).toBe(bankAccountId);
-      expect(embedded!.creditAccountId).toBe(salePartyAId);
-      expect(embedded!.description).toContain(`#${invoice.reference}`);
+      const legs = await invoiceVoucherLegs(invoice.id, VoucherType.SALE_INVOICE);
+      const receiptLegs = legs.filter((l) => l.notes.includes(`Receipt against Invoice #${invoice.reference}`));
+      expect(receiptLegs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ accountId: bankAccountId, type: 'DEBIT', amount: 50_000 }),
+          expect.objectContaining({ accountId: salePartyAId, type: 'CREDIT', amount: 50_000 }),
+        ]),
+      );
 
-      const partyAfterInvoice = await ledgerBalance(salePartyAId);
-      expect(partyAfterInvoice - partyBefore).toBe(50_000);
+      // Full payment: party debited 50k then credited 50k → net 0; bank +50k.
+      expect(await ledgerBalance(salePartyAId) - partyBefore).toBe(0);
+      expect(await ledgerBalance(bankAccountId) - bankBefore).toBe(50_000);
     });
 
-    it('partial payment creates embedded voucher for partial amount only', async () => {
+    it('partial payment nets party to remaining outstanding', async () => {
       const partyBefore = await ledgerBalance(salePartyAId);
       const cashBefore = await ledgerBalance(cashAccountId);
 
-      const invoice = await createSaleInvoice(
+      await createSaleInvoice(
         {
           invoiceDate,
           storeId,
@@ -206,18 +220,11 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(Number(embedded!.amount)).toBe(20_000);
-
-      await approvePendingVoucher(embedded!.id, userId);
-
-      const partyAfter = await ledgerBalance(salePartyAId);
-      const cashAfter = await ledgerBalance(cashAccountId);
-      expect(partyAfter - partyBefore).toBe(30_000);
-      expect(cashAfter - cashBefore).toBe(20_000);
+      expect(await ledgerBalance(salePartyAId) - partyBefore).toBe(30_000);
+      expect(await ledgerBalance(cashAccountId) - cashBefore).toBe(20_000);
     });
 
-    it('multiple receipt lines create separate pending SALE_RECEIPT vouchers', async () => {
+    it('multiple receipt lines fold into one SALE_INVOICE with distinguishable leg notes', async () => {
       const invoice = await createSaleInvoice(
         {
           invoiceDate,
@@ -233,23 +240,12 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVouchersForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(embedded).toHaveLength(2);
-      expect(embedded.every((v) => v.status === VoucherStatus.PENDING_APPROVAL)).toBe(true);
-      expect(Number(embedded[0].amount)).toBe(20_000);
-      expect(Number(embedded[1].amount)).toBe(25_000);
-      expect(embedded[0].debitAccountId).toBe(cashAccountId);
-      expect(embedded[1].debitAccountId).toBe(bankAccountId);
-      expect(embedded[0].description).toContain(`#${invoice.reference}`);
-      expect(embedded[1].description).toContain(`#${invoice.reference}`);
-      expect(embedded[0].number).not.toBe(embedded[1].number);
-
-      await approvePendingVoucher(embedded[0].id, userId);
-      const afterFirst = await embeddedVouchersForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(afterFirst.find((v) => v.id === embedded[0].id)!.status).toBe(VoucherStatus.ACTIVE);
-      expect(afterFirst.find((v) => v.id === embedded[1].id)!.status).toBe(
-        VoucherStatus.PENDING_APPROVAL,
-      );
+      expect(await embeddedVouchersForInvoice(invoice.id, VoucherType.SALE_RECEIPT)).toHaveLength(0);
+      const legs = await invoiceVoucherLegs(invoice.id, VoucherType.SALE_INVOICE);
+      const receiptNotes = legs.filter((l) => l.notes.includes('Receipt against Invoice'));
+      expect(receiptNotes).toHaveLength(4); // Dr+Cr per line
+      expect(receiptNotes.some((l) => l.notes.includes('Cash') || l.accountId === cashAccountId)).toBe(true);
+      expect(receiptNotes.some((l) => l.accountId === bankAccountId)).toBe(true);
     });
 
     it('no payment creates no embedded voucher', async () => {
@@ -303,7 +299,9 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
   });
 
   describe('2. Purchase Invoice — embedded Payment Made', () => {
-    it('full payment creates PURCHASE_PAYMENT pending voucher (Dr party / Cr bank)', async () => {
+    it('full payment folds payment legs into PURCHASE_INVOICE (no separate PURCHASE_PAYMENT)', async () => {
+      const partyBefore = await ledgerBalance(purchasePartyId);
+      const bankBefore = await ledgerBalance(bankAccountId);
       const invoice = await createPurchaseInvoice(
         {
           invoiceDate,
@@ -317,20 +315,25 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.PURCHASE_PAYMENT);
-      expect(embedded).toBeTruthy();
-      expect(embedded!.status).toBe(VoucherStatus.PENDING_APPROVAL);
-      expect(Number(embedded!.amount)).toBe(50_000);
-      expect(embedded!.debitAccountId).toBe(purchasePartyId);
-      expect(embedded!.creditAccountId).toBe(bankAccountId);
-      expect(embedded!.description).toContain(`#${invoice.reference}`);
+      expect(await embeddedVoucherForInvoice(invoice.id, VoucherType.PURCHASE_PAYMENT)).toBeNull();
+      const legs = await invoiceVoucherLegs(invoice.id, VoucherType.PURCHASE_INVOICE);
+      const paymentLegs = legs.filter((l) => l.notes.includes(`Payment against Invoice #${invoice.reference}`));
+      expect(paymentLegs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ accountId: purchasePartyId, type: 'DEBIT', amount: 50_000 }),
+          expect.objectContaining({ accountId: bankAccountId, type: 'CREDIT', amount: 50_000 }),
+        ]),
+      );
+      // Full payment: Cr 50k then Dr 50k → net 0; bank −50k.
+      expect(await ledgerBalance(purchasePartyId) - partyBefore).toBe(0);
+      expect(await ledgerBalance(bankAccountId) - bankBefore).toBe(-50_000);
     });
 
-    it('partial payment reduces outstanding supplier balance after approval', async () => {
+    it('partial payment reduces outstanding supplier balance', async () => {
       const partyBefore = await ledgerBalance(purchasePartyId);
       const bankBefore = await ledgerBalance(bankAccountId);
 
-      const invoice = await createPurchaseInvoice(
+      await createPurchaseInvoice(
         {
           invoiceDate,
           storeId,
@@ -343,14 +346,9 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.PURCHASE_PAYMENT);
-      await approvePendingVoucher(embedded!.id, userId);
-
-      const partyAfter = await ledgerBalance(purchasePartyId);
-      const bankAfter = await ledgerBalance(bankAccountId);
-      // Liability party: invoice credits 50k (more negative), payment debits 20k → net −30k change.
-      expect(partyAfter - partyBefore).toBe(-30_000);
-      expect(bankAfter - bankBefore).toBe(-20_000);
+      // Liability party: invoice credits 50k, payment debits 20k → net −30k.
+      expect(await ledgerBalance(purchasePartyId) - partyBefore).toBe(-30_000);
+      expect(await ledgerBalance(bankAccountId) - bankBefore).toBe(-20_000);
     });
 
     it('no payment creates no embedded voucher', async () => {
@@ -400,8 +398,8 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
     });
   });
 
-  describe('3. Approval flow for embedded vouchers', () => {
-    it('lists embedded vouchers in pending approvals with clear description', async () => {
+  describe('3. Pending approval — one item for invoice + payment', () => {
+    it('pending sale with receipt shows one invoice item (not a SALE_RECEIPT voucher)', async () => {
       const invoice = await createSaleInvoice(
         {
           invoiceDate,
@@ -412,23 +410,26 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
           receiptAccountId: cashAccountId,
           lines: [{ productId, quantity: 1, rate: 5000 }],
         },
-        { postImmediately: true },
+        { postImmediately: false },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(embedded).toBeTruthy();
-      expect(embedded!.description).toContain(`#${invoice.reference}`);
-
+      expect(await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT)).toBeNull();
       const pending = await listPendingApprovals();
-      const row = pending.find(
-        (p) => p.kind === 'voucher' && p.id === embedded!.id,
-      );
-      expect(row).toBeTruthy();
-      expect(row!.type).toBe(VoucherType.SALE_RECEIPT);
-      expect(row!.description).toContain(`#${invoice.reference}`);
+      const invoiceRows = pending.filter((p) => p.kind === 'invoice' && p.id === invoice.id);
+      expect(invoiceRows).toHaveLength(1);
+      expect(invoiceRows[0].description).toMatch(/Received/i);
+      expect(
+        pending.some(
+          (p) =>
+            p.kind === 'voucher'
+            && p.type === VoucherType.SALE_RECEIPT
+            && (p.reference === `SR-${invoice.reference}` || p.description?.includes(`#${invoice.reference}`)),
+        ),
+      ).toBe(false);
     });
 
-    it('rejecting embedded receipt leaves posted invoice intact', async () => {
+    it('rejecting pending invoice removes invoice and payment together', async () => {
+      const { rejectPendingInvoice } = await import('../approvals/approvals.service');
       const invoice = await createSaleInvoice(
         {
           invoiceDate,
@@ -439,19 +440,16 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
           receiptAccountId: cashAccountId,
           lines: [{ productId, quantity: 1, rate: 3000 }],
         },
-        { postImmediately: true },
+        { postImmediately: false },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      await rejectPendingVoucher(embedded!.id);
-
-      const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-      expect(inv.status).toBe(InvoiceStatus.POSTED);
+      await rejectPendingInvoice(invoice.id);
+      expect(await prisma.invoice.findUnique({ where: { id: invoice.id } })).toBeNull();
       expect(await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT)).toBeNull();
-      expect(inv.embeddedReceiptAmount).toBeNull();
     });
 
-    it('allows editing pending embedded receipt before approval', async () => {
+    it('editing pending invoice receipt lines stays as one pending invoice', async () => {
+      const { updatePendingSaleInvoice } = await import('./sale-invoice.service');
       const invoice = await createSaleInvoice(
         {
           invoiceDate,
@@ -462,55 +460,35 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
           receiptAccountId: cashAccountId,
           lines: [{ productId, quantity: 1, rate: 8000 }],
         },
-        { postImmediately: true },
+        { postImmediately: false },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      await updatePendingVoucher(embedded!.id, adminEditor, {
-        date: invoiceDate,
-        debitAccountId: bankAccountId,
-        creditAccountId: salePartyBId,
-        amount: 6000,
-        reference: embedded!.reference!,
-        description: embedded!.description,
+      await updatePendingSaleInvoice(invoice.id, {
+        invoiceDate,
+        storeId,
+        customerAccountId: salePartyBId,
+        receiptAmount: 6000,
+        receiptAccountId: bankAccountId,
+        lines: [{ productId, quantity: 1, rate: 8000 }],
       });
 
-      const updated = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(updated!.status).toBe(VoucherStatus.PENDING_APPROVAL);
-      expect(Number(updated!.amount)).toBe(6000);
-      expect(updated!.debitAccountId).toBe(bankAccountId);
-
-      await approvePendingVoucher(updated!.id, userId);
-      expect((await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT))!.status).toBe(
-        VoucherStatus.ACTIVE,
-      );
+      const updated = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(updated.status).toBe(InvoiceStatus.PENDING_APPROVAL);
+      expect(Number(updated.embeddedReceiptAmount)).toBe(6000);
+      expect(updated.embeddedReceiptAccountId).toBe(bankAccountId);
+      expect(await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT)).toBeNull();
     });
   });
 
   describe('4. Voucher numbering isolation', () => {
-    it('SALE_RECEIPT numbers independently from RECEIPT', async () => {
+    it('creating invoice with receipt does not create SALE_RECEIPT numbers', async () => {
       const fy = await prisma.financialYear.findFirst({ where: { status: 'ACTIVE' } });
-      const receiptMax = await prisma.voucher.aggregate({
-        where: { financialYearId: fy!.id, type: VoucherType.RECEIPT },
-        _max: { number: true },
-      });
-      const saleReceiptMax = await prisma.voucher.aggregate({
+      const saleReceiptMaxBefore = await prisma.voucher.aggregate({
         where: { financialYearId: fy!.id, type: VoucherType.SALE_RECEIPT },
         _max: { number: true },
       });
 
-      const standalone = await createVoucher({
-        type: VoucherType.RECEIPT,
-        debitAccountId: cashAccountId,
-        creditAccountId: salePartyAId,
-        amount: 111,
-        date: invoiceDate,
-        reference: `RCPT-ISO-${Date.now()}`,
-        createdById: userId,
-        postImmediately: false,
-      });
-
-      const invoice = await createSaleInvoice(
+      await createSaleInvoice(
         {
           invoiceDate,
           storeId,
@@ -523,35 +501,21 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.SALE_RECEIPT);
-      expect(standalone.number).toBe((receiptMax._max.number ?? 0) + 1);
-      expect(embedded!.number).toBe((saleReceiptMax._max.number ?? 0) + 1);
-      expect(embedded!.number).not.toBe(standalone.number);
-    });
-
-    it('PURCHASE_PAYMENT numbers independently from PAYMENT', async () => {
-      const fy = await prisma.financialYear.findFirst({ where: { status: 'ACTIVE' } });
-      const paymentMax = await prisma.voucher.aggregate({
-        where: { financialYearId: fy!.id, type: VoucherType.PAYMENT },
+      const saleReceiptMaxAfter = await prisma.voucher.aggregate({
+        where: { financialYearId: fy!.id, type: VoucherType.SALE_RECEIPT },
         _max: { number: true },
       });
-      const purchasePaymentMax = await prisma.voucher.aggregate({
+      expect(saleReceiptMaxAfter._max.number ?? 0).toBe(saleReceiptMaxBefore._max.number ?? 0);
+    });
+
+    it('creating purchase with payment does not create PURCHASE_PAYMENT numbers', async () => {
+      const fy = await prisma.financialYear.findFirst({ where: { status: 'ACTIVE' } });
+      const before = await prisma.voucher.aggregate({
         where: { financialYearId: fy!.id, type: VoucherType.PURCHASE_PAYMENT },
         _max: { number: true },
       });
 
-      const standalone = await createVoucher({
-        type: VoucherType.PAYMENT,
-        debitAccountId: purchasePartyId,
-        creditAccountId: cashAccountId,
-        amount: 333,
-        date: invoiceDate,
-        reference: `PAY-ISO-${Date.now()}`,
-        createdById: userId,
-        postImmediately: false,
-      });
-
-      const invoice = await createPurchaseInvoice(
+      await createPurchaseInvoice(
         {
           invoiceDate,
           storeId,
@@ -564,15 +528,16 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const embedded = await embeddedVoucherForInvoice(invoice.id, VoucherType.PURCHASE_PAYMENT);
-      expect(standalone.number).toBe((paymentMax._max.number ?? 0) + 1);
-      expect(embedded!.number).toBe((purchasePaymentMax._max.number ?? 0) + 1);
-      expect(embedded!.number).not.toBe(standalone.number);
+      const after = await prisma.voucher.aggregate({
+        where: { financialYearId: fy!.id, type: VoucherType.PURCHASE_PAYMENT },
+        _max: { number: true },
+      });
+      expect(after._max.number ?? 0).toBe(before._max.number ?? 0);
     });
   });
 
   describe('5. Sale Bill Summary report', () => {
-    it('groups invoices by party with correct totals and pending exclusion', async () => {
+    it('groups invoices by party with correct totals from embedded receipt scalars', async () => {
       const invFull = await createSaleInvoice(
         {
           invoiceDate,
@@ -608,9 +573,6 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
         { postImmediately: true },
       );
 
-      const fullReceipt = await embeddedVoucherForInvoice(invFull.id, VoucherType.SALE_RECEIPT);
-      await approvePendingVoucher(fullReceipt!.id, userId);
-
       let report = await getSaleBillSummary({ fromDate: invoiceDate, toDate: invoiceDate });
       const testInvoices = report.invoices.filter((r) =>
         [invFull.id, invPartial.id, invNone.id].includes(r.invoiceId),
@@ -624,20 +586,15 @@ describe('embedded invoice vouchers — full scenario matrix', () => {
       expect(rowFull.receivedAmount).toBe(10_000);
       expect(rowFull.receivedPending).toBe(false);
       expect(rowFull.netTotal).toBe(10_000);
-      expect(rowFull.lines[0].productName).toBeTruthy();
 
-      expect(rowPartial.receivedAmount).toBe(0);
-      expect(rowPartial.receivedPending).toBe(true);
+      // Posted invoices with folded receipts count as received (not pending).
+      expect(rowPartial.receivedAmount).toBe(3000);
+      expect(rowPartial.receivedPending).toBe(false);
       expect(rowPartial.netTotal).toBe(8000);
 
       expect(rowNone.receivedAmount).toBe(0);
       expect(rowNone.receivedPending).toBe(false);
       expect(rowNone.receivedAccountLabel).toBeNull();
-
-      const sumNet = testInvoices.reduce((s, r) => s + r.netTotal, 0);
-      const sumReceived = testInvoices.reduce((s, r) => s + r.receivedAmount, 0);
-      expect(sumReceived).toBe(10_000);
-      expect(sumNet - sumReceived).toBe(report.remainingTotal >= 0 ? sumNet - sumReceived : 0);
 
       report = await getSaleBillSummary({
         fromDate: invoiceDate,

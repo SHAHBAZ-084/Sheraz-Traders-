@@ -73,6 +73,29 @@ export function embeddedLinesFromLegacyScalar(
   ];
 }
 
+export function embeddedLinesFromStoredJson(
+  accounts: Account[],
+  raw: unknown,
+): EmbeddedPaymentLineDraft[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const out: EmbeddedPaymentLineDraft[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { amount?: unknown; accountId?: unknown };
+    const amount = Number(row.amount);
+    const accountId = Number(row.accountId);
+    if (!(amount > 0) || !(accountId > 0)) continue;
+    const acct = accounts.find((a) => a.id === accountId);
+    out.push({
+      clientId: `stored-${accountId}-${out.length}`,
+      categoryId: acct ? String(acct.categoryId) : '',
+      accountId: String(accountId),
+      amount: String(amount),
+    });
+  }
+  return out;
+}
+
 export function embeddedLinesFromInvoiceVouchers(
   accounts: Account[],
   vouchers: Array<{

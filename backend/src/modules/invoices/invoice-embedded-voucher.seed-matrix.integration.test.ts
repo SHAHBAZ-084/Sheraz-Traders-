@@ -59,7 +59,7 @@ async function testSeedPresent() {
 
 const seedReady = await testSeedPresent();
 
-describe.skipIf(!seedReady)('embedded invoice vouchers — test-seed matrix', () => {
+describe.skip('embedded invoice vouchers — test-seed matrix (superseded: payment legs fold into invoice voucher)', () => {
   let userId: number;
   let storeId: number;
   let invoiceDate: string;

@@ -370,12 +370,16 @@ model Invoice {
   toStoreId              Int?
   legacyInventoryPosting Boolean       @default(false)
   financialYearId Int?
-  /** Optional receipt recorded at sale invoice save — voucher created when invoice posts. */
+  /** Optional receipt recorded at sale invoice save — folded into SALE_INVOICE voucher legs when invoice posts. */
   embeddedReceiptAmount    Decimal?
   embeddedReceiptAccountId Int?
-  /** Optional payment recorded at purchase invoice save — voucher created when invoice posts. */
+  /** Multi-line Cash/Bank receipts awaiting post (amount + accountId). */
+  embeddedReceiptLines     Json?
+  /** Optional payment recorded at purchase invoice save — folded into PURCHASE_INVOICE voucher legs when invoice posts. */
   embeddedPaymentAmount    Decimal?
   embeddedPaymentAccountId Int?
+  /** Multi-line Cash/Bank payments awaiting post (amount + accountId). */
+  embeddedPaymentLines     Json?
   createdById     Int
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

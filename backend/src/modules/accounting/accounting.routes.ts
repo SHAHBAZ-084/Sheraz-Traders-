@@ -6,6 +6,7 @@ import { asyncHandler, param, validateBody } from '../../utils/helpers';
 import { parsePagination, parseCursorPagination, SELECTOR_PAGINATION, STANDARD_PAGINATION, LEDGER_PAGINATION } from '../../utils/pagination';
 import * as accountingService from './accounting.service';
 import { getProfitLossReport } from './profit-loss-report.service';
+import { getDailyActivityReport } from './daily-activity-report.service';
 
 export const accountingRouter = Router();
 
@@ -186,12 +187,56 @@ accountingRouter.get(
         ? parseInt(categoryIdParam, 10)
         : undefined;
 
+    const { limit, offset } = parsePagination(req.query, STANDARD_PAGINATION);
     const report = await getProfitLossReport({
       financialYearId,
       fromDate: fromDate?.trim() || undefined,
       toDate: toDate?.trim() || undefined,
       productId: Number.isFinite(productId) ? productId : undefined,
       categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
+      limit,
+      offset,
+    });
+    res.json(report);
+  }),
+);
+
+accountingRouter.get(
+  '/reports/daily-activity',
+  asyncHandler(async (req, res) => {
+    const date = String(req.query.date ?? '').trim();
+    if (!date) {
+      res.status(400).json({ error: 'date is required' });
+      return;
+    }
+    const financialYearIdParam = req.query.financialYearId as string | undefined;
+    const financialYearId =
+      financialYearIdParam && financialYearIdParam.trim() !== ''
+        ? parseInt(financialYearIdParam, 10)
+        : undefined;
+
+    const voucherPagination = parsePagination(
+      {
+        limit: (req.query.voucherLimit as string | undefined) ?? (req.query.limit as string | undefined),
+        offset: (req.query.voucherOffset as string | undefined) ?? (req.query.offset as string | undefined),
+      },
+      STANDARD_PAGINATION,
+    );
+    const invoicePagination = parsePagination(
+      {
+        limit: (req.query.invoiceLimit as string | undefined) ?? (req.query.limit as string | undefined),
+        offset: (req.query.invoiceOffset as string | undefined) ?? '0',
+      },
+      STANDARD_PAGINATION,
+    );
+
+    const report = await getDailyActivityReport({
+      date,
+      financialYearId: Number.isFinite(financialYearId) ? financialYearId : undefined,
+      voucherLimit: voucherPagination.limit,
+      voucherOffset: voucherPagination.offset,
+      invoiceLimit: invoicePagination.limit,
+      invoiceOffset: invoicePagination.offset,
     });
     res.json(report);
   }),

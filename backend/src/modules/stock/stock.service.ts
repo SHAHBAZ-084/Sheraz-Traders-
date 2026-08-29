@@ -95,10 +95,10 @@ export async function getStockReport(params: {
   };
 
   const total = await prisma.stockMovement.count({ where });
+  // Load all movements so running balances and report-wide totals stay correct when paginating.
   const movements = await prisma.stockMovement.findMany({
     where,
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
-    ...(params.limit != null ? { skip: params.offset ?? 0, take: params.limit } : {}),
   });
 
   const remainder = await prisma.stockRemainder.aggregate({
@@ -115,7 +115,7 @@ export async function getStockReport(params: {
   let saleInvoiceTotal = 0;
   let purchaseInvoiceTotal = 0;
   const isKachi = product.kind === ProductKind.KACHI;
-  const rows = movements.map((m) => {
+  const allRows = movements.map((m) => {
     const qty =
       isKachi && m.weightKg != null ? Number(m.weightKg) : Number(m.bags);
     if (m.direction === StockDirection.IN) {
@@ -146,6 +146,10 @@ export async function getStockReport(params: {
       runningBalanceDisplay: formatStockQuantity(running, product.kind),
     };
   });
+
+  const offset = params.offset ?? 0;
+  const rows =
+    params.limit != null ? allRows.slice(offset, offset + params.limit) : allRows;
 
   return {
     product: { id: product.id, name: product.name, code: product.code, kind: product.kind },
@@ -298,25 +302,36 @@ export async function getStockByStore(storeId: number, categoryId?: number) {
 export async function getStockQuantityReport(params: {
   storeId?: number | null;
   categoryId?: number | null;
+  limit?: number;
+  offset?: number;
 }) {
   const storeId = optionalPositiveId(params.storeId);
   const categoryId = optionalPositiveId(params.categoryId);
 
+  let products: StockQuantityProductRow[];
+  let storeName: string | null = null;
   if (storeId != null) {
     const result = await getStockByStore(storeId, categoryId);
-    return {
-      storeId: result.store.id,
-      storeName: result.store.name,
-      categoryId: categoryId ?? null,
-      products: result.products,
-    };
+    products = result.products;
+    storeName = result.store.name;
+  } else {
+    products = await loadStockQuantityRows({ categoryId });
   }
 
+  const totalCount = products.length;
+  const offset = params.offset ?? 0;
+  const pageProducts =
+    params.limit != null ? products.slice(offset, offset + params.limit) : products;
+
   return {
-    storeId: null,
-    storeName: null,
+    storeId: storeId ?? null,
+    storeName,
     categoryId: categoryId ?? null,
-    products: await loadStockQuantityRows({ categoryId }),
+    products: pageProducts,
+    totalCount,
+    ...(params.limit != null
+      ? { pagination: { total: totalCount, limit: params.limit, offset } }
+      : {}),
   };
 }
 
@@ -324,6 +339,8 @@ export async function getStockValueReport(params: {
   date: string;
   storeId?: number | null;
   categoryId?: number | null;
+  limit?: number;
+  offset?: number;
 }) {
   const { getAccountBalancesAsOf } = await import('../accounting/accounting.service');
   const storeId = optionalPositiveId(params.storeId);
@@ -362,7 +379,7 @@ export async function getStockValueReport(params: {
   const qtyInStore =
     storeId != null ? await getCurrentStockBalancesForProducts(productRefs, storeId) : null;
 
-  const rows = products.map((product) => {
+  const allRows = products.map((product) => {
     const ledgerBalance = ledgerByAccount.get(product.accountId) ?? 0;
     let value = ledgerBalance;
     if (qtyAllStores && qtyInStore) {
@@ -379,12 +396,22 @@ export async function getStockValueReport(params: {
     };
   });
 
+  const totalValue = allRows.reduce((sum, row) => sum + row.value, 0);
+  const totalCount = allRows.length;
+  const offset = params.offset ?? 0;
+  const rows =
+    params.limit != null ? allRows.slice(offset, offset + params.limit) : allRows;
+
   return {
     date: params.date,
     storeId: storeId ?? null,
     categoryId: categoryId ?? null,
     rows,
-    totalValue: rows.reduce((sum, row) => sum + row.value, 0),
+    totalValue,
+    totalCount,
+    ...(params.limit != null
+      ? { pagination: { total: totalCount, limit: params.limit, offset } }
+      : {}),
   };
 }
 

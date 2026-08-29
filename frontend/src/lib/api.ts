@@ -360,7 +360,10 @@ export const api = {
         date: string | null;
         debitAccountName?: string | null;
         creditAccountName?: string | null;
+        ledgerAccountId?: number | null;
         amount: number;
+        creditAmount?: number | null;
+        debitAmount?: number | null;
         description: string | null;
         createdBy: { id: number; displayName: string; username: string } | null;
       }>
@@ -426,11 +429,62 @@ export const api = {
   rejectPendingAccount(id: number) {
     return request(`/api/approvals/accounts/${id}/reject`, { method: 'POST', body: '{}' });
   },
+  getPendingAccount(id: number) {
+    return request<{
+      id: number;
+      name: string;
+      code: string;
+      categoryId: number;
+      category: { id: number; name: string } | null;
+      pendingOpeningBalance: number | null;
+      pendingOpeningSide: 'DR' | 'CR' | null;
+      status: string;
+      createdById: number | null;
+    }>(`/api/approvals/accounts/${id}`);
+  },
+  updatePendingAccount(
+    id: number,
+    data: {
+      name: string;
+      categoryId: number;
+      openingBalance?: number;
+      openingBalanceSide?: 'DR' | 'CR';
+    },
+  ) {
+    return request(`/api/approvals/accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
   approvePendingProduct(id: number) {
     return request(`/api/approvals/products/${id}/approve`, { method: 'POST', body: '{}' });
   },
   rejectPendingProduct(id: number) {
     return request(`/api/approvals/products/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  getPendingProduct(id: number) {
+    return request<{
+      id: number;
+      name: string;
+      code: string;
+      unit: string | null;
+      kind: string;
+      categoryId: number | null;
+      category: { id: number; name: string } | null;
+      accountId: number;
+      pendingOpeningStoreId: number | null;
+      pendingOpeningQty: number | null;
+      pendingOpeningRate: number | null;
+      pendingKachiOpening: unknown;
+      status: string;
+      createdById: number | null;
+    }>(`/api/approvals/products/${id}`);
+  },
+  updatePendingProduct(id: number, data: Record<string, unknown>) {
+    return request(`/api/approvals/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   },
   approvePendingAccountAdjustment(id: number) {
     return request(`/api/approvals/account-adjustments/${id}/approve`, { method: 'POST', body: '{}' });
@@ -438,11 +492,69 @@ export const api = {
   rejectPendingAccountAdjustment(id: number) {
     return request(`/api/approvals/account-adjustments/${id}/reject`, { method: 'POST', body: '{}' });
   },
+  getPendingAccountAdjustment(id: number) {
+    return request<{
+      id: number;
+      adjustmentDate: string;
+      accountId: number | null;
+      account: { id: number; name: string; code: string; categoryId: number } | null;
+      amount: number;
+      side: 'DR' | 'CR';
+      description: string | null;
+      status: string;
+      createdById: number | null;
+    }>(`/api/approvals/account-adjustments/${id}`);
+  },
+  updatePendingAccountAdjustment(
+    id: number,
+    data: {
+      adjustmentDate: string;
+      accountId: number;
+      amount: number;
+      side: 'DR' | 'CR';
+      description?: string | null;
+    },
+  ) {
+    return request(`/api/approvals/account-adjustments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
   approvePendingStockAdjustment(id: number) {
     return request(`/api/approvals/stock-adjustments/${id}/approve`, { method: 'POST', body: '{}' });
   },
   rejectPendingStockAdjustment(id: number) {
     return request(`/api/approvals/stock-adjustments/${id}/reject`, { method: 'POST', body: '{}' });
+  },
+  getPendingStockAdjustment(id: number) {
+    return request<{
+      id: number;
+      adjustmentDate: string;
+      productId: number | null;
+      product: {
+        id: number;
+        name: string;
+        code: string;
+        unit: string | null;
+        kind: string;
+        categoryId: number | null;
+        accountId: number;
+      } | null;
+      storeId: number | null;
+      store: { id: number; name: string } | null;
+      quantity: number | null;
+      rate: number | null;
+      kachiOpening: unknown;
+      description: string | null;
+      status: string;
+      createdById: number | null;
+    }>(`/api/approvals/stock-adjustments/${id}`);
+  },
+  updatePendingStockAdjustment(id: number, data: Record<string, unknown>) {
+    return request(`/api/approvals/stock-adjustments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   },
 
   listCategories() {
@@ -769,16 +881,71 @@ export const api = {
     toDate: string;
     partyAccountId?: number;
     financialYearId?: number;
+    limit?: number;
+    offset?: number;
   }) {
     const query = new URLSearchParams();
     query.set('fromDate', params.fromDate);
     query.set('toDate', params.toDate);
     if (params.partyAccountId != null) query.set('partyAccountId', String(params.partyAccountId));
     if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
-    return request<SaleBillReportResult>(`/api/invoices/reports/sale-bill?${query}`);
+    if (params.limit != null) query.set('limit', String(params.limit));
+    if (params.offset != null) query.set('offset', String(params.offset));
+    return request<SaleBillReportResult & {
+      totalCount?: number;
+      pagination?: { total: number; limit: number; offset: number };
+    }>(`/api/invoices/reports/sale-bill?${query}`);
   },
 
-
+  getDailyActivityReport(params: {
+    date: string;
+    financialYearId?: number;
+    voucherLimit?: number;
+    voucherOffset?: number;
+    invoiceLimit?: number;
+    invoiceOffset?: number;
+  }) {
+    const query = new URLSearchParams({ date: params.date });
+    if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    if (params.voucherLimit != null) query.set('voucherLimit', String(params.voucherLimit));
+    if (params.voucherOffset != null) query.set('voucherOffset', String(params.voucherOffset));
+    if (params.invoiceLimit != null) query.set('invoiceLimit', String(params.invoiceLimit));
+    if (params.invoiceOffset != null) query.set('invoiceOffset', String(params.invoiceOffset));
+    return request<{
+      date: string;
+      financialYearId: number;
+      vouchers: {
+        items: Array<{
+          id: number;
+          number: number;
+          type: string;
+          debitAccountName: string | null;
+          creditAccountName: string | null;
+          description: string | null;
+          amount: number;
+          reference: string | null;
+        }>;
+        total: number;
+        totalAmount: number;
+      };
+      invoices: {
+        items: Array<{
+          id: number;
+          type: string;
+          reference: string;
+          debitAccountName: string | null;
+          creditAccountName: string | null;
+          description: string | null;
+          amount: number;
+          paymentDetail: string | null;
+          mazduriDetail: string | null;
+          taxDetail: string | null;
+        }>;
+        total: number;
+        totalAmount: number;
+      };
+    }>(`/api/accounting/reports/daily-activity?${query}`);
+  },
 
 
   getSystemPreferences() {
@@ -1206,19 +1373,27 @@ export const api = {
   },
 
 
-  getStockReport(params: { productId: number; storeId?: number | null }) {
+  getStockReport(params: {
+    productId: number;
+    storeId?: number | null;
+    limit?: number;
+    offset?: number;
+  }) {
     const query = new URLSearchParams({
       productId: String(params.productId),
     });
     if (params.storeId != null && params.storeId > 0) {
       query.set('storeId', String(params.storeId));
     }
+    if (params.limit != null) query.set('limit', String(params.limit));
+    if (params.offset != null) query.set('offset', String(params.offset));
     return request<{
       product: { id: number; name: string; code: string; kind: 'STANDARD' | 'KACHI' };
       storeId: number | null;
       trackingStartedAt: string;
       historicalBackfill: false;
       carriedRemainderKg: number;
+      totalCount?: number;
       rows: Array<{
         id: number;
         date: string;
@@ -1241,13 +1416,22 @@ export const api = {
         purchaseInvoiceQty: number;
         netBalanceDisplay: string;
       };
+      pagination?: { total: number; limit: number; offset: number };
     }>(`/api/stock/report?${query.toString()}`);
   },
 
-  getStockValueReport(params: { date: string; storeId?: number | null; categoryId?: number | null }) {
+  getStockValueReport(params: {
+    date: string;
+    storeId?: number | null;
+    categoryId?: number | null;
+    limit?: number;
+    offset?: number;
+  }) {
     const query = new URLSearchParams({ date: params.date });
     if (params.storeId != null && params.storeId > 0) query.set('storeId', String(params.storeId));
     if (params.categoryId != null && params.categoryId > 0) query.set('categoryId', String(params.categoryId));
+    if (params.limit != null) query.set('limit', String(params.limit));
+    if (params.offset != null) query.set('offset', String(params.offset));
     return request<{
       date: string;
       storeId: number | null;
@@ -1260,13 +1444,22 @@ export const api = {
         value: number;
       }>;
       totalValue: number;
+      totalCount?: number;
+      pagination?: { total: number; limit: number; offset: number };
     }>(`/api/stock/value-report?${query.toString()}`);
   },
 
-  getStockQuantityReport(params?: { storeId?: number | null; categoryId?: number | null }) {
+  getStockQuantityReport(params?: {
+    storeId?: number | null;
+    categoryId?: number | null;
+    limit?: number;
+    offset?: number;
+  }) {
     const query = new URLSearchParams();
     if (params?.storeId != null && params.storeId > 0) query.set('storeId', String(params.storeId));
     if (params?.categoryId != null && params.categoryId > 0) query.set('categoryId', String(params.categoryId));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
     const suffix = query.toString() ? `?${query}` : '';
     return request<{
       storeId: number | null;
@@ -1281,6 +1474,8 @@ export const api = {
         saleInvoiceQty: number;
         purchaseInvoiceQty: number;
       }>;
+      totalCount?: number;
+      pagination?: { total: number; limit: number; offset: number };
     }>(`/api/stock/quantity-report${suffix}`);
   },
 
@@ -1290,12 +1485,16 @@ export const api = {
     toDate?: string;
     productId?: number;
     categoryId?: number;
+    limit?: number;
+    offset?: number;
   }) {
     const query = new URLSearchParams({ financialYearId: String(params.financialYearId) });
     if (params.fromDate) query.set('fromDate', params.fromDate);
     if (params.toDate) query.set('toDate', params.toDate);
     if (params.productId != null) query.set('productId', String(params.productId));
     if (params.categoryId != null) query.set('categoryId', String(params.categoryId));
+    if (params.limit != null) query.set('limit', String(params.limit));
+    if (params.offset != null) query.set('offset', String(params.offset));
     return request<{
       financialYearId: number;
       financialYearLabel: string;
@@ -1309,10 +1508,15 @@ export const api = {
         purchasePrice: number | null;
         salePrice: number | null;
         profit: number;
+        costUnavailable: boolean;
+        note: string | null;
       }>;
       totalPurchase: number;
       totalSale: number;
       netProfit: number;
+      costUnavailableCount: number;
+      totalCount?: number;
+      pagination?: { total: number; limit: number; offset: number };
     }>(`/api/accounting/reports/profit-loss?${query.toString()}`);
   },
 

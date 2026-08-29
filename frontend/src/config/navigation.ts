@@ -99,6 +99,7 @@ export const SIDEBAR_NAV: SidebarSection[] = [
           { label: 'Vouchers', to: '/reports/vouchers' },
         ],
       },
+      { kind: 'link', label: 'Daily Report', to: '/reports/daily-activity' },
       { kind: 'link', label: 'Detail Trial Balance', to: '/reports/trial-balance' },
       { kind: 'link', label: 'Profit & Loss Statement', to: '/reports/profit-loss' },
       { kind: 'link', label: 'Financial Year Reports', to: '/reports/financial-year' },
@@ -199,6 +200,9 @@ export const ADMIN_ONLY_NAV_PATHS = new Set([
   '/products/remove',
 ]);
 
+/** Report routes visible to USER (other reports remain admin-only in the top nav). */
+export const USER_ALLOWED_REPORT_PATHS = new Set(['/reports/daily-activity']);
+
 export function filterNavItemsForRole(items: NavItem[], isAdmin: boolean): NavItem[] {
   if (isAdmin) return items;
   return items.flatMap((item): NavItem[] => {
@@ -211,12 +215,27 @@ export function filterNavItemsForRole(items: NavItem[], isAdmin: boolean): NavIt
   });
 }
 
+/** Reports dropdown for USER: Daily Report only. */
+export function filterReportNavItemsForUser(items: NavItem[]): NavItem[] {
+  return items.flatMap((item): NavItem[] => {
+    if (item.kind === 'link') {
+      return USER_ALLOWED_REPORT_PATHS.has(item.to) ? [item] : [];
+    }
+    const children = item.children.filter((child) => USER_ALLOWED_REPORT_PATHS.has(child.to));
+    if (children.length === 0) return [];
+    return [{ ...item, children }];
+  });
+}
+
 export function filterSidebarSectionsForRole(sections: SidebarSection[], isAdmin: boolean): SidebarSection[] {
   if (isAdmin) return sections;
   return sections
     .map((section) => ({
       ...section,
-      items: filterNavItemsForRole(section.items, isAdmin),
+      items:
+        section.id === 'reports'
+          ? filterReportNavItemsForUser(section.items)
+          : filterNavItemsForRole(section.items, isAdmin),
     }))
     .filter((section) => section.items.length > 0);
 }

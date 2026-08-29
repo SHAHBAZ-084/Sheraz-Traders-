@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ReportLetterhead } from '../../components/reports/ReportLetterhead';
 import { ListPagination } from '../../components/ui/ListPagination';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
@@ -56,6 +57,12 @@ function productToExportRow(product: Product): string[] {
 }
 
 export function AddProductPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pendingIdParam = searchParams.get('pendingId');
+  const pendingId = pendingIdParam ? Number(pendingIdParam) : null;
+  const isEditingPending = pendingId != null && Number.isFinite(pendingId) && pendingId > 0;
+
   const isAdmin = useIsAdmin();
   const [productKind, setProductKind] = useState<AddProductKind>('OTHER');
   const [name, setName] = useState('');
@@ -139,6 +146,41 @@ export function AddProductPage() {
     void loadCategories();
     void loadStores();
   }, []);
+
+  useEffect(() => {
+    if (!isEditingPending || pendingId == null) return;
+    let cancelled = false;
+    api
+      .getPendingProduct(pendingId)
+      .then((product) => {
+        if (cancelled) return;
+        setProductKind(product.kind === 'KACHI' ? 'KACHI' : 'OTHER');
+        setName(product.name);
+        setUnit(product.unit ?? '');
+        setCategoryId(product.categoryId ?? '');
+        if (product.pendingOpeningStoreId != null) {
+          setOpeningStoreId(product.pendingOpeningStoreId);
+        }
+        if (product.kind === 'KACHI' && product.pendingKachiOpening && typeof product.pendingKachiOpening === 'object') {
+          const k = product.pendingKachiOpening as Record<string, unknown>;
+          setKachiBagMode(k.bagMode === 'BORI' ? 'BORI' : 'THELA');
+          setKachiBagCount(k.bagCount != null ? String(k.bagCount) : '');
+          setKachiDharan(k.dharanCount != null ? String(k.dharanCount) : '');
+          setKachiLooseKg(k.looseKg != null ? String(k.looseKg) : '');
+          setKachiBhartii(k.bhartii != null ? String(k.bhartii) : '');
+          setKachiRatePerMaund(k.ratePerMaund != null ? String(k.ratePerMaund) : '');
+        } else {
+          setOpeningStock(product.pendingOpeningQty != null ? String(product.pendingOpeningQty) : '');
+          setOpeningStockRate(product.pendingOpeningRate != null ? String(product.pendingOpeningRate) : '');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load pending product');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditingPending, pendingId]);
 
   useEffect(() => {
     void loadProducts(offset);
@@ -258,6 +300,26 @@ export function AddProductPage() {
             })
           : null;
 
+        if (isEditingPending && pendingId != null) {
+          await api.updatePendingProduct(pendingId, {
+            name,
+            categoryId: categoryId === '' ? null : categoryId,
+            openingStoreId: openingStoreId === '' ? null : openingStoreId,
+            kachiOpening: hasWeight
+              ? {
+                  bagMode: kachiBagMode,
+                  bagCount,
+                  dharanCount,
+                  looseKg,
+                  bhartii,
+                  ratePerMaund,
+                }
+              : null,
+          });
+          navigate('/system/approvals');
+          return;
+        }
+
         const product = await api.createProduct({
           name,
           kind: 'KACHI',
@@ -319,6 +381,18 @@ export function AddProductPage() {
     }
 
     try {
+      if (isEditingPending && pendingId != null) {
+        await api.updatePendingProduct(pendingId, {
+          name,
+          unit: unit || null,
+          categoryId: categoryId === '' ? null : categoryId,
+          openingStock: hasQty ? parsedOpeningStock : 0,
+          openingStockRate: hasRate ? parsedOpeningRate : 0,
+          openingStoreId: openingStoreId === '' ? null : openingStoreId,
+        });
+        navigate('/system/approvals');
+        return;
+      }
       const product = await api.createProduct({
         name,
         unit: unit || undefined,
@@ -439,7 +513,7 @@ export function AddProductPage() {
     parseNum(kachiBagCount) > 0 || parseNum(kachiDharan) > 0 || parseNum(kachiLooseKg) > 0;
 
   return (
-    <PageShell title="Add Product">
+    <PageShell title={isEditingPending ? 'Edit Pending Product' : 'Add Product'}>
       <Panel className="max-w-lg">
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
@@ -451,6 +525,7 @@ export function AddProductPage() {
                   name="productKind"
                   checked={productKind === 'OTHER'}
                   onChange={() => setProductKind('OTHER')}
+                  disabled={isEditingPending}
                 />
                 Other
               </label>
@@ -460,6 +535,7 @@ export function AddProductPage() {
                   name="productKind"
                   checked={productKind === 'KACHI'}
                   onChange={() => setProductKind('KACHI')}
+                  disabled={isEditingPending}
                 />
                 Kachi Product
               </label>
@@ -647,7 +723,16 @@ export function AddProductPage() {
           </div>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {message ? <p className="text-sm text-success">{message}</p> : null}
-          <PrimaryButton type="submit">Add Product</PrimaryButton>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton type="submit">
+              {isEditingPending ? 'Update pending' : 'Add Product'}
+            </PrimaryButton>
+            {isEditingPending ? (
+              <SecondaryButton type="button" onClick={() => navigate('/system/approvals')}>
+                Back to approvals
+              </SecondaryButton>
+            ) : null}
+          </div>
         </form>
       </Panel>
 

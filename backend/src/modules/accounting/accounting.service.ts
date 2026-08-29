@@ -20,11 +20,15 @@ import { verifyLedgerIntegrity, LEDGER_INTEGRITY_SQL } from './ledger-integrity'
 export { verifyLedgerIntegrity, LEDGER_INTEGRITY_SQL };
 import { isBardanaLedgerNote } from '../invoices/invoice-voucher-descriptions';
 import { getStockSummary } from '../stock/stock.service';
+import { withSqliteRetry } from '../../lib/sqlite-retry';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /** Voucher posting recomputes full ledger chains — allow longer interactive transactions. */
 export const WRITE_TRANSACTION_OPTIONS = { maxWait: 30_000, timeout: 120_000 } as const;
+
+/** Cancel can touch many later FY rows; keep retries bounded (not an infinite hang). */
+const CANCEL_VOUCHER_SQLITE_RETRY = { maxAttempts: 4, baseDelayMs: 75, maxDelayMs: 2_000 } as const;
 
 export function fiscalYearLabelForDate(date: Date): { label: string; startDate: Date } {
   const year = date.getFullYear();
@@ -438,6 +442,146 @@ export async function recomputeLedgerRunningBalancesInTx(
   }
 
   await recomputeFullLedgerBalanceInTx(tx, ledgerId);
+}
+
+function isLedgerEntryAtOrAfterCutoff(
+  entry: {
+    date: Date;
+    isOpeningBalance: boolean;
+    voucher?: { number: number } | null;
+  },
+  cutoff: { date: Date; voucherNumber: number },
+): boolean {
+  if (entry.isOpeningBalance) return false;
+  const cmp = entry.date.getTime() - cutoff.date.getTime();
+  if (cmp !== 0) return cmp > 0;
+  return (entry.voucher?.number ?? 0) > cutoff.voucherNumber;
+}
+
+/**
+ * After cancelling a voucher: recompute FY running balances only for ACTIVE stream
+ * entries that sort after the cancelled voucher. Prior balances are trusted.
+ * Does not update live ledger.balance — callers apply an O(1) reversal delta for that.
+ */
+export async function recomputeLedgerRunningBalancesFromCutoffInTx(
+  tx: Prisma.TransactionClient,
+  ledgerId: number,
+  financialYearId: number,
+  cutoff: { date: Date; voucherNumber: number },
+) {
+  const ledger = await tx.ledger.findUniqueOrThrow({
+    where: { id: ledgerId },
+    include: { account: true },
+  });
+
+  const { balance: opening } = await getOpeningBalanceSnapshot(tx, ledger.accountId, financialYearId);
+  const { yearStart, yearEnd } = await loadFinancialYearBounds(tx, financialYearId);
+  const yearWhere = ledgerEntriesForYearWhere(ledgerId, financialYearId, yearStart, yearEnd);
+
+  const priorLinked = await tx.ledgerEntry.findFirst({
+    where: {
+      AND: [
+        yearWhere,
+        { voucherId: { not: null } },
+        {
+          OR: [
+            { date: { lt: cutoff.date } },
+            {
+              date: cutoff.date,
+              voucher: { number: { lt: cutoff.voucherNumber } },
+            },
+          ],
+        },
+      ],
+    },
+    include: { voucher: { select: { number: true } } },
+    orderBy: [{ date: 'desc' }, { voucher: { number: 'desc' } }, { id: 'desc' }],
+  });
+  const priorOpening = await tx.ledgerEntry.findFirst({
+    where: {
+      AND: [
+        yearWhere,
+        { isOpeningBalance: true },
+        {
+          OR: [
+            { date: { lt: cutoff.date } },
+            { date: cutoff.date },
+          ],
+        },
+      ],
+    },
+    include: { voucher: { select: { number: true } } },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+  });
+  const priorOrphan = await tx.ledgerEntry.findFirst({
+    where: {
+      AND: [
+        yearWhere,
+        { voucherId: null, isOpeningBalance: false },
+        { date: { lt: cutoff.date } },
+      ],
+    },
+    include: { voucher: { select: { number: true } } },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+  });
+  const priorTips = [priorLinked, priorOpening, priorOrphan].filter(
+    (e): e is NonNullable<typeof e> => e != null && !isLedgerEntryAtOrAfterCutoff(e, cutoff),
+  );
+  let running = opening;
+  if (priorTips.length > 0) {
+    let tip = priorTips[0];
+    for (let i = 1; i < priorTips.length; i += 1) {
+      if (compareLedgerEntries(priorTips[i], tip) > 0) tip = priorTips[i];
+    }
+    running = Number(tip.balance);
+  }
+
+  const laterEntries = await tx.ledgerEntry.findMany({
+    where: {
+      AND: [
+        yearWhere,
+        {
+          OR: [
+            { date: { gt: cutoff.date } },
+            {
+              date: cutoff.date,
+              voucher: { number: { gt: cutoff.voucherNumber } },
+            },
+          ],
+        },
+      ],
+    },
+    include: { voucher: { select: { number: true } } },
+  });
+  laterEntries.sort(compareLedgerEntries);
+
+  for (const entry of laterEntries) {
+    if (!isLedgerEntryAtOrAfterCutoff(entry, cutoff)) continue;
+    const debit = entry.type === LedgerEntryType.DEBIT ? Number(entry.amount) : 0;
+    const credit = entry.type === LedgerEntryType.CREDIT ? Number(entry.amount) : 0;
+    running = computeLedgerBalance(running, debit, credit);
+    const stored = Number(entry.balance);
+    if (Math.abs(stored - running) >= 0.005) {
+      await tx.ledgerEntry.update({ where: { id: entry.id }, data: { balance: running } });
+    }
+  }
+}
+
+/** Apply newly posted (e.g. reversal) legs to live ledger.balance without a full history scan. */
+async function applyLedgerLiveBalanceDeltasInTx(
+  tx: Prisma.TransactionClient,
+  ledgerId: number,
+  deltas: Array<{ type: LedgerEntryType; amount: Prisma.Decimal | number }>,
+) {
+  if (deltas.length === 0) return;
+  const ledger = await tx.ledger.findUniqueOrThrow({ where: { id: ledgerId } });
+  let liveBalance = Number(ledger.balance);
+  for (const entry of deltas) {
+    const debit = entry.type === LedgerEntryType.DEBIT ? Number(entry.amount) : 0;
+    const credit = entry.type === LedgerEntryType.CREDIT ? Number(entry.amount) : 0;
+    liveBalance = computeLedgerBalance(liveBalance, debit, credit);
+  }
+  await tx.ledger.update({ where: { id: ledgerId }, data: { balance: liveBalance } });
 }
 
 type LedgerEntryTip = {
@@ -3040,9 +3184,13 @@ export async function updateVoucherAmount(
 }
 
 export async function cancelVoucher(voucherId: number, userId: number) {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    return cancelVoucherInTx(tx, voucherId, userId);
-  }, WRITE_TRANSACTION_OPTIONS);
+  return withSqliteRetry(
+    () =>
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        return cancelVoucherInTx(tx, voucherId, userId);
+      }, WRITE_TRANSACTION_OPTIONS),
+    CANCEL_VOUCHER_SQLITE_RETRY,
+  );
 }
 
 export async function cancelVoucherInTx(
@@ -3077,13 +3225,18 @@ export async function cancelVoucherInTx(
     include: voucherInclude,
   });
 
-  const affectedEntries = await tx.ledgerEntry.findMany({
-    where: { voucherId: voucher.id },
-    select: { ledgerId: true },
+  const reversalEntries = await tx.ledgerEntry.findMany({
+    where: { voucherId: voucher.id, isReversal: true },
+    select: { ledgerId: true, type: true, amount: true },
   });
-  const ledgerIds = [...new Set(affectedEntries.map((entry) => entry.ledgerId))];
+  const ledgerIds = [...new Set(reversalEntries.map((entry) => entry.ledgerId))];
+  const financialYearId = voucher.financialYearId!;
+  const cutoff = { date: voucher.date, voucherNumber: voucher.number };
+
   for (const ledgerId of ledgerIds) {
-    await recomputeLedgerRunningBalancesInTx(tx, ledgerId, voucher.financialYearId!);
+    const deltas = reversalEntries.filter((entry) => entry.ledgerId === ledgerId);
+    await applyLedgerLiveBalanceDeltasInTx(tx, ledgerId, deltas);
+    await recomputeLedgerRunningBalancesFromCutoffInTx(tx, ledgerId, financialYearId, cutoff);
   }
 
   await assertTrialBalanceInDev(tx);

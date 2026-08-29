@@ -22,13 +22,22 @@ const saleBillQuerySchema = z.object({
   toDate: z.string().min(1),
   partyAccountId: z.coerce.number().int().positive().optional(),
   financialYearId: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 invoicesRouter.get(
   '/reports/sale-bill',
   asyncHandler(async (req, res) => {
     const parsed = saleBillQuerySchema.parse(req.query);
-    res.json(await getSaleBillSummary(parsed));
+    const pagination = parsePagination(req.query, { limit: 25, max: 200 });
+    res.json(
+      await getSaleBillSummary({
+        ...parsed,
+        limit: parsed.limit ?? pagination.limit,
+        offset: parsed.offset ?? pagination.offset,
+      }),
+    );
   }),
 );
 

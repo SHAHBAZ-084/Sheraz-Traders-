@@ -15,6 +15,7 @@ import { createProduct, createStockAdjustment } from '../products/products.servi
 import { createStore } from '../stores/stores.service';
 import { createPurchaseInvoice } from '../invoices/purchase-invoice.service';
 import { createSaleInvoice } from '../invoices/sale-invoice.service';
+import { createKachiMaalInvoice } from '../invoices/kachi-maal.service';
 import { getCurrentStockBalance } from '../stock/stock.service';
 import {
   approvePendingAccount,
@@ -262,6 +263,89 @@ describe('Pending approval workflow', () => {
     // Purchase supplier is credited — show under Credit only (green), not Debit.
     expect(row!.creditAccountName).toBeTruthy();
     expect(row!.debitAccountName).toBeNull();
+  });
+
+  it('pending kachi maal shows upper/lower parties, amounts, and Maund Kg @Rate description', async () => {
+    const upperB = await ensureAccountInCategory(
+      KACHI_MAAL_CATEGORY_NAMES.PURCHASE_PARTY,
+      `Kachi Upper B ${Date.now()}`,
+      AccountType.LIABILITY,
+      `KM-UP-B-${Date.now()}`,
+    );
+
+    const single = await createKachiMaalInvoice(
+      {
+        invoiceDate,
+        debitAccountId: salePartyId,
+        createdById: userId,
+        jins: 'Cotton',
+        lines: [
+          {
+            partyAccountId: purchasePartyId,
+            jins: 'Cotton',
+            bagCount: 31,
+            bhartii: 40,
+            dharanCount: 0,
+            looseKg: 10,
+            ratePerMaund: 8500,
+          },
+        ],
+      },
+      { postImmediately: false },
+    );
+
+    const pendingSingle = await listPendingApprovals();
+    const rowSingle = pendingSingle.find((p) => p.kind === 'invoice' && p.id === single.id);
+    expect(rowSingle).toBeTruthy();
+    expect(rowSingle!.debitAccountName).toBeTruthy();
+    expect(rowSingle!.creditAccountName).toBeTruthy();
+    expect(rowSingle!.debitAccountName).not.toBe(rowSingle!.creditAccountName);
+    expect(rowSingle!.debitAmount).toBe(Number(single.total));
+    expect(rowSingle!.creditAmount).toBeGreaterThan(0);
+    expect(rowSingle!.creditAmount!).toBeLessThan(Number(single.total));
+    expect(rowSingle!.description).toMatch(/Cotton .*Maund.* @8500/);
+
+    const multi = await createKachiMaalInvoice(
+      {
+        invoiceDate,
+        debitAccountId: salePartyId,
+        createdById: userId,
+        lines: [
+          {
+            partyAccountId: purchasePartyId,
+            jins: 'Cotton',
+            bagCount: 10,
+            bhartii: 40,
+            dharanCount: 0,
+            looseKg: 0,
+            ratePerMaund: 8500,
+          },
+          {
+            partyAccountId: upperB.id,
+            jins: 'Wheat',
+            bagCount: 5,
+            bhartii: 40,
+            dharanCount: 0,
+            looseKg: 0,
+            ratePerMaund: 3200,
+          },
+        ],
+      },
+      { postImmediately: false },
+    );
+
+    const pendingMulti = await listPendingApprovals();
+    const rowMulti = pendingMulti.find((p) => p.kind === 'invoice' && p.id === multi.id);
+    expect(rowMulti).toBeTruthy();
+    expect(rowMulti!.creditAccountName).toContain(',');
+    expect(rowMulti!.description).toContain('@8500');
+    expect(rowMulti!.description).toContain('@3200');
+    expect(rowMulti!.description).toContain('+');
+
+    const approved = await approvePendingInvoice(single.id);
+    expect(approved.status).toBe(InvoiceStatus.POSTED);
+    const integrity = await verifyLedgerIntegrity();
+    expect(integrity.ok).toBe(true);
   });
 
   it('pending stock adjustment stays off ledger/stock until ADMIN approves via stock-adjustment endpoint', async () => {

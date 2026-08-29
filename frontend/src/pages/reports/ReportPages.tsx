@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, type Account, type AccountCategory, type ProductCategory, type Voucher } from '../../lib/api';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
 import { BROWSE_PAGE_SIZE } from '../../lib/pagination';
@@ -125,6 +126,7 @@ function voucherToAccount(voucher: Voucher) {
 
 export function AccountReportsPage({ historicalScope, embedded }: ReportPageOptions = {}) {
   const financialYearId = useReportFinancialYearId(historicalScope);
+  const [searchParams] = useSearchParams();
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categoryId, setCategoryId] = useState('');
@@ -138,6 +140,7 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const letterheadRef = useRef<HTMLElement>(null);
+  const preselectApplied = useRef(false);
 
   const filteredAccounts = useMemo(
     () => accounts.filter((a) => categoryId && String(a.categoryId) === categoryId),
@@ -155,6 +158,25 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
         setAccounts([]);
       });
   }, []);
+
+  useEffect(() => {
+    const raw = searchParams.get('accountId');
+    if (!raw) return;
+    const id = Number(raw);
+    if (!(id > 0)) return;
+    if (!preselectApplied.current) {
+      preselectApplied.current = true;
+      setAccountId(String(id));
+    }
+    const account = accounts.find((a) => a.id === id);
+    if (account) setCategoryId(String(account.categoryId));
+  }, [accounts, searchParams]);
+
+  useEffect(() => {
+    if (!preselectApplied.current || !accountId || loaded || loading) return;
+    void loadLedger(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot auto-load after URL preselect
+  }, [accountId]);
 
   function onCategoryChange(nextCategoryId: string) {
     setCategoryId(nextCategoryId);
@@ -176,10 +198,6 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
   }
 
   async function loadLedger(pageOffset = ledgerOffset) {
-    if (!categoryId) {
-      setError('Select a category');
-      return;
-    }
     if (!accountId) {
       setError('Select an account');
       return;
@@ -198,6 +216,14 @@ export function AccountReportsPage({ historicalScope, embedded }: ReportPageOpti
       setLedgerTotal(result.totalCount ?? result.pagination?.total ?? result.rows.length);
       setLedgerOffset(pageOffset);
       setLoaded(true);
+      if (result.account?.categoryId != null) {
+        setCategoryId(String(result.account.categoryId));
+      }
+      // Ensure selector can show the loaded account even if it was pending/inactive.
+      setAccounts((prev) => {
+        if (prev.some((a) => a.id === result.account.id)) return prev;
+        return [...prev, result.account as Account];
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load ledger');
       setLedger(null);
@@ -556,6 +582,8 @@ export function StockReportPage() {
   const [products, setProducts] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [productId, setProductId] = useState('');
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockReport>> | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -591,9 +619,11 @@ export function StockReportPage() {
     setStoreId(value);
     setProductId('');
     setReport(null);
+    setOffset(0);
+    setTotal(0);
   }
 
-  async function onLoad() {
+  async function loadReport(pageOffset = 0) {
     setError('');
     setReport(null);
     const id = Number(productId);
@@ -604,14 +634,18 @@ export function StockReportPage() {
     setLoading(true);
     try {
       const selectedStoreId = Number(storeId);
-      setReport(
-        await api.getStockReport({
-          productId: id,
-          storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
-        }),
-      );
+      const result = await api.getStockReport({
+        productId: id,
+        storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+        limit: BROWSE_PAGE_SIZE,
+        offset: pageOffset,
+      });
+      setReport(result);
+      setTotal(result.pagination?.total ?? result.totalCount ?? result.rows.length);
+      setOffset(pageOffset);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load stock report');
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -637,12 +671,15 @@ export function StockReportPage() {
             <FieldLabel>Product</FieldLabel>
             <SearchSelect
               value={productId}
-              onChange={setProductId}
+              onChange={(value) => {
+                setProductId(value);
+                setOffset(0);
+              }}
               options={products.map((p) => ({ value: String(p.id), label: `${p.code} — ${p.name}` }))}
               placeholder={storeId ? 'Products with store stock…' : 'Search product…'}
             />
           </div>
-          <FinancialButton type="button" onClick={onLoad} disabled={loading}>
+          <FinancialButton type="button" onClick={() => void loadReport(0)} disabled={loading}>
             {loading ? 'Loading…' : 'Show report'}
           </FinancialButton>
         </div>
@@ -725,6 +762,12 @@ export function StockReportPage() {
                 </tr>
               </tfoot>
             </ReportTable>
+            <ListPagination
+              total={total}
+              offset={offset}
+              onPageChange={(next) => void loadReport(next)}
+              className="mt-4"
+            />
           </div>
         ) : null}
       </Panel>
@@ -1390,6 +1433,8 @@ export function ProfitLossStatementPage() {
   const [products, setProducts] = useState<Array<{ id: number; name: string; code: string; categoryId: number | null }>>([]);
   const [productCategories, setProductCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [report, setReport] = useState<ProfitLossResult | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1407,7 +1452,32 @@ export function ProfitLossStatementPage() {
       });
   }, []);
 
-  async function loadReport(nextFrom = fromDate, nextTo = toDate, nextProductId = productId, nextCategoryId = categoryId) {
+  function profitLossQuery(
+    pageOffset: number,
+    pageLimit: number,
+    nextFrom = fromDate,
+    nextTo = toDate,
+    nextProductId = productId,
+    nextCategoryId = categoryId,
+  ) {
+    return {
+      financialYearId: financialYearId!,
+      fromDate: nextFrom || undefined,
+      toDate: nextTo || undefined,
+      productId: nextProductId ? Number(nextProductId) : undefined,
+      categoryId: nextCategoryId ? Number(nextCategoryId) : undefined,
+      limit: pageLimit,
+      offset: pageOffset,
+    };
+  }
+
+  async function loadReport(
+    pageOffset = 0,
+    nextFrom = fromDate,
+    nextTo = toDate,
+    nextProductId = productId,
+    nextCategoryId = categoryId,
+  ) {
     if (financialYearId == null) {
       setError('Select a financial year under Reports > Financial Year');
       return;
@@ -1419,18 +1489,17 @@ export function ProfitLossStatementPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.getProfitLossReport({
-        financialYearId,
-        fromDate: nextFrom || undefined,
-        toDate: nextTo || undefined,
-        productId: nextProductId ? Number(nextProductId) : undefined,
-        categoryId: nextCategoryId ? Number(nextCategoryId) : undefined,
-      });
+      const result = await api.getProfitLossReport(
+        profitLossQuery(pageOffset, BROWSE_PAGE_SIZE, nextFrom, nextTo, nextProductId, nextCategoryId),
+      );
       setReport(result);
+      setTotal(result.pagination?.total ?? result.totalCount ?? result.rows.length);
+      setOffset(pageOffset);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
       setReport(null);
+      setTotal(0);
       setLoaded(false);
     } finally {
       setLoading(false);
@@ -1444,13 +1513,15 @@ export function ProfitLossStatementPage() {
     setToDate(clamped);
     setProductId('');
     setCategoryId('');
+    setOffset(0);
     setError('');
     if (financialYearId == null) {
       setLoaded(false);
       setReport(null);
+      setTotal(0);
       return;
     }
-    void loadReport(clamped, clamped, '', '');
+    void loadReport(0, clamped, clamped, '', '');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed today's range once per FY
   }, [financialYearId, fyMinDate, fyMaxDate]);
 
@@ -1459,12 +1530,14 @@ export function ProfitLossStatementPage() {
     setToDate('');
     setProductId('');
     setCategoryId('');
-    void loadReport('', '', '', '');
+    setOffset(0);
+    void loadReport(0, '', '', '', '');
   }
 
   function onProductCategoryChange(value: string) {
     setCategoryId(value);
     setProductId('');
+    setOffset(0);
   }
 
   const productSelectOptions = useMemo(() => {
@@ -1475,27 +1548,40 @@ export function ProfitLossStatementPage() {
   }, [products, categoryId]);
 
   function exportReport(format: 'pdf' | 'excel') {
-    if (!report) return;
+    if (!report || financialYearId == null) return;
     void (async () => {
-    const headers = ['Date', 'Product Name', 'Reference', 'Purchase Price', 'Sale Price', 'Profit'];
-    const rows = report.rows.map((row) => [
-      formatDate(row.date),
-      row.productName,
-      row.reference,
-      formatProfitLossPrice(row.purchasePrice),
-      formatProfitLossPrice(row.salePrice),
-      formatLedgerAmount(row.profit),
-    ]);
-    rows.push(['Total', '', '', formatLedgerAmount(report.totalPurchase), formatLedgerAmount(report.totalSale), formatLedgerAmount(report.netProfit)]);
-    const base = `profit-loss-${report.financialYearLabel.replace(/\s+/g, '-')}`;
-    if (format === 'excel') {
-      downloadExcel(`${base}.xlsx`, 'Profit & Loss', headers, rows);
-    } else {
-      await downloadPdf(`${base}.pdf`, 'Profit & Loss Statement', headers, rows, {
-        letterheadElement: letterheadRef.current,
-        orientation: 'landscape',
-      });
-    }
+      const exportData =
+        total > report.rows.length
+          ? await api.getProfitLossReport(profitLossQuery(0, total))
+          : report;
+      const headers = ['Date', 'Product Name', 'Reference', 'Purchase Price', 'Sale Price', 'Profit', 'Note'];
+      const rows = exportData.rows.map((row) => [
+        formatDate(row.date),
+        row.productName,
+        row.reference,
+        formatProfitLossPrice(row.purchasePrice),
+        formatProfitLossPrice(row.salePrice),
+        row.costUnavailable ? '—' : formatLedgerAmount(row.profit),
+        row.note ?? '',
+      ]);
+      rows.push([
+        'Total',
+        '',
+        '',
+        formatLedgerAmount(exportData.totalPurchase),
+        formatLedgerAmount(exportData.totalSale),
+        formatLedgerAmount(exportData.netProfit),
+        '',
+      ]);
+      const base = `profit-loss-${exportData.financialYearLabel.replace(/\s+/g, '-')}`;
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Profit & Loss', headers, rows);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Profit & Loss Statement', headers, rows, {
+          letterheadElement: letterheadRef.current,
+          orientation: 'landscape',
+        });
+      }
     })();
   }
 
@@ -1519,7 +1605,10 @@ export function ProfitLossStatementPage() {
                 value={fromDate}
                 min={fyMinDate}
                 max={fyMaxDate}
-                onChange={(e) => setFromDate(clampDateInput(e.target.value, fyMinDate, fyMaxDate))}
+                onChange={(e) => {
+                  setFromDate(clampDateInput(e.target.value, fyMinDate, fyMaxDate));
+                  setOffset(0);
+                }}
               />
             </div>
             <div>
@@ -1529,7 +1618,10 @@ export function ProfitLossStatementPage() {
                 value={toDate}
                 min={fromDate || fyMinDate}
                 max={fyMaxDate}
-                onChange={(e) => setToDate(clampDateInput(e.target.value, fromDate || fyMinDate, fyMaxDate))}
+                onChange={(e) => {
+                  setToDate(clampDateInput(e.target.value, fromDate || fyMinDate, fyMaxDate));
+                  setOffset(0);
+                }}
               />
             </div>
             <div>
@@ -1548,7 +1640,10 @@ export function ProfitLossStatementPage() {
               <FieldLabel>Product</FieldLabel>
               <SearchSelect
                 value={productId}
-                onChange={setProductId}
+                onChange={(value) => {
+                  setProductId(value);
+                  setOffset(0);
+                }}
                 options={[{ value: '', label: 'All products' }, ...productSelectOptions]}
                 placeholder={categoryId ? 'Products in category…' : 'All products'}
               />
@@ -1560,7 +1655,7 @@ export function ProfitLossStatementPage() {
             >
               Clear filters
             </SecondaryButton>
-            <PrimaryButton type="button" onClick={() => void loadReport()} disabled={loading}>
+            <PrimaryButton type="button" onClick={() => void loadReport(0)} disabled={loading}>
               {loading ? 'Loading…' : 'Load Report'}
             </PrimaryButton>
         </div>
@@ -1585,6 +1680,13 @@ export function ProfitLossStatementPage() {
               <SecondaryButton type="button" onClick={() => exportReport('excel')}>Download Excel</SecondaryButton>
               <SecondaryButton type="button" onClick={printPage}>Print</SecondaryButton>
             </div>
+            {report.costUnavailableCount > 0 ? (
+              <p className="mb-3 text-sm text-danger print:text-black">
+                {report.costUnavailableCount} sale line
+                {report.costUnavailableCount === 1 ? '' : 's'} excluded from profit — cost unavailable
+                (no Opening Stock / Purchase / approved Stock Adjustment rate). Totals below omit those lines.
+              </p>
+            ) : null}
             <ReportTable>
               <thead>
                 <tr>
@@ -1600,16 +1702,31 @@ export function ProfitLossStatementPage() {
                 {report.rows.map((row, index) => (
                   <tr key={`${row.sourceType}-${row.reference}-${row.productName}-${index}`}>
                     <td className="pr-3 whitespace-nowrap">{formatDate(row.date)}</td>
-                    <td className="pr-3">{row.productName}</td>
+                    <td className="pr-3">
+                      {row.productName}
+                      {row.costUnavailable && row.note ? (
+                        <span className="mt-0.5 block text-xs font-normal text-danger print:text-black">
+                          {row.note}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="pr-3 font-mono text-xs">{row.reference}</td>
-                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatProfitLossPrice(row.purchasePrice)}</td>
-                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>{formatProfitLossPrice(row.salePrice)}</td>
+                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>
+                      {formatProfitLossPrice(row.purchasePrice)}
+                    </td>
+                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>
+                      {formatProfitLossPrice(row.salePrice)}
+                    </td>
                     <td
                       className={`text-right tabular-nums font-medium ${REPORT_AMOUNT_CELL} ${
-                        row.profit >= 0 ? ledgerCreditAmountClass(true) : ledgerDebitAmountClass(true)
+                        row.costUnavailable
+                          ? 'text-textMuted'
+                          : row.profit >= 0
+                            ? ledgerCreditAmountClass(true)
+                            : ledgerDebitAmountClass(true)
                       }`}
                     >
-                      {formatLedgerAmount(row.profit)}
+                      {row.costUnavailable ? '—' : formatLedgerAmount(row.profit)}
                     </td>
                   </tr>
                 ))}
@@ -1633,6 +1750,12 @@ export function ProfitLossStatementPage() {
                 </tr>
               </tfoot>
             </ReportTable>
+            <ListPagination
+              total={total}
+              offset={offset}
+              onPageChange={(next) => void loadReport(next)}
+              className="mt-4"
+            />
           </div>
         ) : null}
       </Panel>
@@ -1661,6 +1784,8 @@ export function StockValueReportPage() {
   const [storeId, setStoreId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockValueReport>> | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1675,7 +1800,19 @@ export function StockValueReportPage() {
       .catch(() => setProductCategories([]));
   }, []);
 
-  async function loadReport() {
+  function stockValueQuery(pageOffset: number, pageLimit: number) {
+    const selectedStoreId = Number(storeId);
+    const selectedCategoryId = Number(categoryId);
+    return {
+      date: datedOn,
+      storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+      categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
+      limit: pageLimit,
+      offset: pageOffset,
+    };
+  }
+
+  async function loadReport(pageOffset = 0) {
     if (!datedOn) {
       setError('Select a date');
       return;
@@ -1683,18 +1820,15 @@ export function StockValueReportPage() {
     setError('');
     setLoading(true);
     try {
-      const selectedStoreId = Number(storeId);
-      const selectedCategoryId = Number(categoryId);
-      const result = await api.getStockValueReport({
-        date: datedOn,
-        storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
-        categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
-      });
+      const result = await api.getStockValueReport(stockValueQuery(pageOffset, BROWSE_PAGE_SIZE));
       setReport(result);
+      setTotal(result.pagination?.total ?? result.totalCount ?? result.rows.length);
+      setOffset(pageOffset);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
       setReport(null);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -1703,13 +1837,17 @@ export function StockValueReportPage() {
   function exportReport(format: 'pdf' | 'excel') {
     if (!report) return;
     void (async () => {
+      const exportData =
+        total > report.rows.length
+          ? await api.getStockValueReport(stockValueQuery(0, total))
+          : report;
       const headers = ['Code', 'Product Name', 'Value'];
-      const rows = report.rows.map((row) => [
+      const rows = exportData.rows.map((row) => [
         row.code,
         row.name,
         formatLedgerBalance(row.value),
       ]);
-      const totalRow = ['Total', '', formatLedgerBalance(report.totalValue)];
+      const totalRow = ['Total', '', formatLedgerBalance(exportData.totalValue)];
       const safeDate = datedOn.replace(/[^\d-]/g, '');
       const base = `stock-value-${safeDate}`;
       if (format === 'excel') {
@@ -1740,13 +1878,23 @@ export function StockValueReportPage() {
         <div className={reportFilterClass(false, 'stockValue')}>
           <div>
             <FieldLabel>Dated On</FieldLabel>
-            <TextInput type="date" value={datedOn} onChange={(e) => setDatedOn(e.target.value)} />
+            <TextInput
+              type="date"
+              value={datedOn}
+              onChange={(e) => {
+                setDatedOn(e.target.value);
+                setOffset(0);
+              }}
+            />
           </div>
           <div>
             <FieldLabel>Store</FieldLabel>
             <SearchSelect
               value={storeId}
-              onChange={setStoreId}
+              onChange={(value) => {
+                setStoreId(value);
+                setOffset(0);
+              }}
               options={[
                 { value: '', label: 'All stores' },
                 ...stores.map((s) => ({ value: String(s.id), label: s.name })),
@@ -1759,7 +1907,10 @@ export function StockValueReportPage() {
             <select
               className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              onChange={(e) => {
+                setCategoryId(e.target.value);
+                setOffset(0);
+              }}
             >
               <option value="">All categories</option>
               {productCategories.map((c) => (
@@ -1767,7 +1918,7 @@ export function StockValueReportPage() {
               ))}
             </select>
           </div>
-          <FinancialButton type="button" onClick={() => void loadReport()} disabled={loading}>
+          <FinancialButton type="button" onClick={() => void loadReport(0)} disabled={loading}>
             {loading ? 'Loading…' : 'View'}
           </FinancialButton>
         </div>
@@ -1817,6 +1968,12 @@ export function StockValueReportPage() {
                 </tr>
               </tbody>
             </ReportTable>
+            <ListPagination
+              total={total}
+              offset={offset}
+              onPageChange={(next) => void loadReport(next)}
+              className="mt-4"
+            />
           </div>
         ) : null}
       </Panel>
@@ -1831,6 +1988,8 @@ export function StockQuantityReportPage() {
   const [storeId, setStoreId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getStockQuantityReport>> | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1845,42 +2004,59 @@ export function StockQuantityReportPage() {
       .catch(() => setProductCategories([]));
   }, []);
 
-  async function loadReport() {
+  function stockQuantityQuery(pageOffset: number, pageLimit: number) {
+    const selectedStoreId = Number(storeId);
+    const selectedCategoryId = Number(categoryId);
+    return {
+      storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
+      categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
+      limit: pageLimit,
+      offset: pageOffset,
+    };
+  }
+
+  async function loadReport(pageOffset = 0) {
     setError('');
     setLoading(true);
     try {
-      const selectedStoreId = Number(storeId);
-      const selectedCategoryId = Number(categoryId);
-      const result = await api.getStockQuantityReport({
-        storeId: Number.isFinite(selectedStoreId) && selectedStoreId > 0 ? selectedStoreId : undefined,
-        categoryId: Number.isFinite(selectedCategoryId) && selectedCategoryId > 0 ? selectedCategoryId : undefined,
-      });
+      const result = await api.getStockQuantityReport(stockQuantityQuery(pageOffset, BROWSE_PAGE_SIZE));
       setReport(result);
+      setTotal(result.pagination?.total ?? result.totalCount ?? result.products.length);
+      setOffset(pageOffset);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
       setReport(null);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   }
 
-  const unitTotals = report ? quantityUnitTotals(report.products) : [];
+  // Unit totals from page products are only valid when the full result fits on one page.
+  const showUnitTotals = total <= BROWSE_PAGE_SIZE;
+  const unitTotals = showUnitTotals && report ? quantityUnitTotals(report.products) : [];
   const mixedUnits = unitTotals.length > 1;
 
   function exportReport(format: 'pdf' | 'excel') {
     if (!report) return;
     void (async () => {
+      const exportData =
+        total > report.products.length
+          ? await api.getStockQuantityReport(stockQuantityQuery(0, total))
+          : report;
+      const exportUnitTotals = quantityUnitTotals(exportData.products);
+      const exportMixedUnits = exportUnitTotals.length > 1;
       const headers = ['Code', 'Product Name', 'Unit', 'Quantity'];
-      const rows = report.products.map((row) => [
+      const rows = exportData.products.map((row) => [
         row.code,
         row.name,
         row.unit?.trim() || '—',
         formatStockQty(row.totalQty),
       ]);
-      const totalRows = mixedUnits
-        ? unitTotals.map((row) => ['Total', '', row.unit, formatStockQty(row.quantity)])
-        : [['Total', '', unitTotals[0]?.unit ?? '', formatStockQty(unitTotals[0]?.quantity ?? 0)]];
+      const totalRows = exportMixedUnits
+        ? exportUnitTotals.map((row) => ['Total', '', row.unit, formatStockQty(row.quantity)])
+        : [['Total', '', exportUnitTotals[0]?.unit ?? '', formatStockQty(exportUnitTotals[0]?.quantity ?? 0)]];
       const base = 'stock-quantity';
       if (format === 'excel') {
         downloadExcel(`${base}.xlsx`, 'Stock Quantity', headers, [...rows, ...totalRows]);
@@ -1911,7 +2087,10 @@ export function StockQuantityReportPage() {
             <FieldLabel>Store</FieldLabel>
             <SearchSelect
               value={storeId}
-              onChange={setStoreId}
+              onChange={(value) => {
+                setStoreId(value);
+                setOffset(0);
+              }}
               options={[
                 { value: '', label: 'All stores' },
                 ...stores.map((s) => ({ value: String(s.id), label: s.name })),
@@ -1924,7 +2103,10 @@ export function StockQuantityReportPage() {
             <select
               className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              onChange={(e) => {
+                setCategoryId(e.target.value);
+                setOffset(0);
+              }}
             >
               <option value="">All categories</option>
               {productCategories.map((c) => (
@@ -1932,7 +2114,7 @@ export function StockQuantityReportPage() {
               ))}
             </select>
           </div>
-          <FinancialButton type="button" onClick={() => void loadReport()} disabled={loading}>
+          <FinancialButton type="button" onClick={() => void loadReport(0)} disabled={loading}>
             {loading ? 'Loading…' : 'View'}
           </FinancialButton>
         </div>
@@ -1976,27 +2158,35 @@ export function StockQuantityReportPage() {
                     </td>
                   </tr>
                 ))}
-                {mixedUnits
-                  ? unitTotals.map((row) => (
-                      <tr key={row.unit} className="report-table-row--total">
+                {showUnitTotals
+                  ? mixedUnits
+                    ? unitTotals.map((row) => (
+                        <tr key={row.unit} className="report-table-row--total">
+                          <td colSpan={2}>Total</td>
+                          <td className="pr-3">{row.unit}</td>
+                          <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
+                            {formatStockQty(row.quantity)}
+                          </td>
+                        </tr>
+                      ))
+                    : (
+                      <tr className="report-table-row--total">
                         <td colSpan={2}>Total</td>
-                        <td className="pr-3">{row.unit}</td>
+                        <td className="pr-3">{unitTotals[0]?.unit ?? ''}</td>
                         <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
-                          {formatStockQty(row.quantity)}
+                          {formatStockQty(unitTotals[0]?.quantity ?? 0)}
                         </td>
                       </tr>
-                    ))
-                  : (
-                    <tr className="report-table-row--total">
-                      <td colSpan={2}>Total</td>
-                      <td className="pr-3">{unitTotals[0]?.unit ?? ''}</td>
-                      <td className={`text-right tabular-nums ${REPORT_AMOUNT_CELL} ${REPORT_AMOUNT_COL}`}>
-                        {formatStockQty(unitTotals[0]?.quantity ?? 0)}
-                      </td>
-                    </tr>
-                  )}
+                    )
+                  : null}
               </tbody>
             </ReportTable>
+            <ListPagination
+              total={total}
+              offset={offset}
+              onPageChange={(next) => void loadReport(next)}
+              className="mt-4"
+            />
           </div>
         ) : null}
       </Panel>
@@ -2048,6 +2238,8 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getSaleBillReport>> | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2074,21 +2266,30 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
     return [{ value: '', label: 'All parties' }, ...partyAccountOptionsForCategory(accounts, partyCategoryId)];
   }, [accounts, partyCategoryId]);
 
-  async function loadReport() {
+  function saleBillQuery(pageOffset: number, pageLimit: number) {
+    return {
+      fromDate,
+      toDate,
+      ...(partyAccountId ? { partyAccountId: Number(partyAccountId) } : {}),
+      ...(financialYearId != null ? { financialYearId } : {}),
+      limit: pageLimit,
+      offset: pageOffset,
+    };
+  }
+
+  async function loadReport(pageOffset = 0) {
     setLoading(true);
     setError('');
     try {
-      const result = await api.getSaleBillReport({
-        fromDate,
-        toDate,
-        ...(partyAccountId ? { partyAccountId: Number(partyAccountId) } : {}),
-        ...(financialYearId != null ? { financialYearId } : {}),
-      });
+      const result = await api.getSaleBillReport(saleBillQuery(pageOffset, BROWSE_PAGE_SIZE));
       setReport(result);
+      setTotal(result.pagination?.total ?? result.totalCount ?? result.invoices.length);
+      setOffset(pageOffset);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
       setReport(null);
+      setTotal(0);
       setLoaded(false);
     } finally {
       setLoading(false);
@@ -2097,23 +2298,29 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
 
   function exportReport(format: 'pdf' | 'excel') {
     if (!report) return;
-    const headers = ['Product', 'Price', 'Amount'];
-    const rows = buildSaleBillExportRows(report);
-    const footerRows = [
-      ['Grand Total', '', formatLedgerAmount(report.grandTotal)],
-      ['Received Total', '', formatLedgerAmount(report.receivedTotal)],
-      ['Remaining Total', '', formatLedgerAmount(report.remainingTotal)],
-    ];
-    const base = `sale-bill-${fromDate}-to-${toDate}`;
-    if (format === 'excel') {
-      downloadExcel(`${base}.xlsx`, 'Sale Bill', headers, [...rows, ...footerRows]);
-    } else {
-      void downloadPdf(`${base}.pdf`, 'Sale Bill Summary', headers, rows, {
-        letterheadElement: letterheadRef.current,
-        subtitle: periodRangeLabel(fromDate, toDate, 'All dates'),
-        footerRows,
-      });
-    }
+    void (async () => {
+      const exportData =
+        total > report.invoices.length
+          ? await api.getSaleBillReport(saleBillQuery(0, total))
+          : report;
+      const headers = ['Product', 'Price', 'Amount'];
+      const rows = buildSaleBillExportRows(exportData);
+      const footerRows = [
+        ['Grand Total', '', formatLedgerAmount(exportData.grandTotal)],
+        ['Received Total', '', formatLedgerAmount(exportData.receivedTotal)],
+        ['Remaining Total', '', formatLedgerAmount(exportData.remainingTotal)],
+      ];
+      const base = `sale-bill-${fromDate}-to-${toDate}`;
+      if (format === 'excel') {
+        downloadExcel(`${base}.xlsx`, 'Sale Bill', headers, [...rows, ...footerRows]);
+      } else {
+        await downloadPdf(`${base}.pdf`, 'Sale Bill Summary', headers, rows, {
+          letterheadElement: letterheadRef.current,
+          subtitle: periodRangeLabel(fromDate, toDate, 'All dates'),
+          footerRows,
+        });
+      }
+    })();
   }
 
   const subtitle = historicalScope?.financialYearLabel
@@ -2125,11 +2332,25 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
       <div className={reportFilterClass(embedded, 'ledger')}>
         <div>
           <FieldLabel>From Date</FieldLabel>
-          <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <TextInput
+            type="date"
+            value={fromDate}
+            onChange={(e) => {
+              setFromDate(e.target.value);
+              setOffset(0);
+            }}
+          />
         </div>
         <div>
           <FieldLabel>To Date</FieldLabel>
-          <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <TextInput
+            type="date"
+            value={toDate}
+            onChange={(e) => {
+              setToDate(e.target.value);
+              setOffset(0);
+            }}
+          />
         </div>
         <div>
           <FieldLabel>Party category</FieldLabel>
@@ -2139,6 +2360,7 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
             onChange={(value) => {
               setPartyCategoryId(value);
               setPartyAccountId('');
+              setOffset(0);
             }}
             placeholder="All parties"
           />
@@ -2148,13 +2370,16 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
           <SearchSelect
             options={partyOptions}
             value={partyAccountId}
-            onChange={setPartyAccountId}
+            onChange={(value) => {
+              setPartyAccountId(value);
+              setOffset(0);
+            }}
             placeholder="All parties"
             disabled={!partyCategoryId}
           />
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <PrimaryButton type="button" onClick={() => void loadReport()} disabled={loading}>
+          <PrimaryButton type="button" onClick={() => void loadReport(0)} disabled={loading}>
             {loading ? 'Loading…' : 'View'}
           </PrimaryButton>
           {loaded && report ? (
@@ -2261,6 +2486,12 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
                 </tr>
               </tbody>
             </ReportTable>
+            <ListPagination
+              total={total}
+              offset={offset}
+              onPageChange={(next) => void loadReport(next)}
+              className="mt-4"
+            />
           </div>
         )}
       </div>
@@ -2272,6 +2503,262 @@ export function SaleBillSummaryPage({ historicalScope, embedded }: ReportPageOpt
   return (
     <PageShell title="Sale Bill Summary">
       {panel}
+      <PageCloseBar />
+    </PageShell>
+  );
+}
+
+function invoiceTypeDailyLabel(type: string) {
+  if (type === 'SALE_INVOICE') return 'Sale Invoice';
+  if (type === 'PURCHASE_INVOICE') return 'Purchase Invoice';
+  if (type === 'KACHI_MAAL') return 'Kachi Maal';
+  return type;
+}
+
+export function DailyReportPage() {
+  const { activeYear } = useFinancialYear();
+  const fyMinDate = activeYear ? isoToDateInput(activeYear.startDate) : undefined;
+  const fyMaxDate = activeYear
+    ? isoToDateInput(activeYear.endDate ?? new Date().toISOString())
+    : undefined;
+
+  const [datedOn, setDatedOn] = useState(() => {
+    return todayInputValue();
+  });
+  const [report, setReport] = useState<Awaited<ReturnType<typeof api.getDailyActivityReport>> | null>(null);
+  const [voucherOffset, setVoucherOffset] = useState(0);
+  const [invoiceOffset, setInvoiceOffset] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const letterheadRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const clamped = clampDateInput(todayInputValue(), fyMinDate, fyMaxDate) || todayInputValue();
+    setDatedOn(clamped);
+    setVoucherOffset(0);
+    setInvoiceOffset(0);
+  }, [fyMinDate, fyMaxDate]);
+
+  function isDateOutsideActiveYear(date: string) {
+    if (!date) return true;
+    if (fyMinDate && date < fyMinDate) return true;
+    if (fyMaxDate && date > fyMaxDate) return true;
+    return false;
+  }
+
+  async function loadReport(nextVoucherOffset = voucherOffset, nextInvoiceOffset = invoiceOffset) {
+    if (!datedOn) {
+      setError('Select a date');
+      setReport(null);
+      setLoaded(false);
+      return;
+    }
+    if (isDateOutsideActiveYear(datedOn)) {
+      setError('No data — outside the current financial year');
+      setReport(null);
+      setLoaded(false);
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const result = await api.getDailyActivityReport({
+        date: datedOn,
+        ...(activeYear?.id != null ? { financialYearId: activeYear.id } : {}),
+        voucherLimit: BROWSE_PAGE_SIZE,
+        voucherOffset: nextVoucherOffset,
+        invoiceLimit: BROWSE_PAGE_SIZE,
+        invoiceOffset: nextInvoiceOffset,
+      });
+      setReport(result);
+      setVoucherOffset(nextVoucherOffset);
+      setInvoiceOffset(nextInvoiceOffset);
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load daily report');
+      setReport(null);
+      setLoaded(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!fyMinDate) return;
+    void loadReport(0, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when active FY bounds are known
+  }, [activeYear?.id, fyMinDate, fyMaxDate]);
+
+  return (
+    <PageShell title="Daily Report" subtitle="All posted vouchers and invoices for a single day">
+      <Panel>
+        <div className="grid gap-3 print:hidden md:grid-cols-4 md:items-end">
+          <div>
+            <FieldLabel>Date</FieldLabel>
+            <TextInput
+              type="date"
+              value={datedOn}
+              min={fyMinDate}
+              max={fyMaxDate}
+              onChange={(e) => {
+                const next = e.target.value;
+                setDatedOn(next);
+                setVoucherOffset(0);
+                setInvoiceOffset(0);
+                if (isDateOutsideActiveYear(next)) {
+                  setError('No data — outside the current financial year');
+                  setReport(null);
+                  setLoaded(false);
+                } else {
+                  setError('');
+                }
+              }}
+            />
+          </div>
+          <FinancialButton
+            type="button"
+            onClick={() => void loadReport(0, 0)}
+            disabled={loading}
+          >
+            {loading ? 'Loading…' : 'View'}
+          </FinancialButton>
+        </div>
+
+        {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+
+        {loaded && report ? (
+          <div className="report-print-area mt-6 space-y-8">
+            <ReportLetterhead
+              ref={letterheadRef}
+              title="Daily Report"
+              subtitle={formatDate(report.date)}
+            />
+            <div className="mb-2 flex flex-wrap gap-2 print:hidden">
+              <SecondaryButton type="button" onClick={printPage}>
+                Print
+              </SecondaryButton>
+            </div>
+
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-textPrimary">
+                Vouchers
+                <span className="ml-2 font-normal text-textSecondary">
+                  ({report.vouchers.total} · {formatLedgerAmount(report.vouchers.totalAmount)})
+                </span>
+              </h3>
+              <ReportTable>
+                <thead>
+                  <tr>
+                    <th className="pr-3">Voucher#</th>
+                    <th className="pr-3">Voucher Type</th>
+                    <th className="pr-3">Debit Account</th>
+                    <th className="pr-3">Credit Account</th>
+                    <th className="pr-3">Description</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.vouchers.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-textSecondary">
+                        No posted vouchers for this date.
+                      </td>
+                    </tr>
+                  ) : (
+                    report.vouchers.items.map((row) => (
+                      <tr key={`v-${row.id}`}>
+                        <td className="pr-3 whitespace-nowrap font-mono text-xs">
+                          {formatVoucherNumber(row.number, row.type)}
+                        </td>
+                        <td className={`pr-3 ${voucherTypeColorClass(row.type)}`}>
+                          {formatVoucherTypeLabel(row.type)}
+                        </td>
+                        <td className={`pr-3 ${ledgerDebitAmountClass(true)}`}>
+                          {row.debitAccountName ?? '—'}
+                        </td>
+                        <td className={`pr-3 ${ledgerCreditAmountClass(true)}`}>
+                          {row.creditAccountName ?? '—'}
+                        </td>
+                        <td className="pr-3">{row.description ?? '—'}</td>
+                        <td className="text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </ReportTable>
+              <ListPagination
+                total={report.vouchers.total}
+                offset={voucherOffset}
+                onPageChange={(next) => void loadReport(next, invoiceOffset)}
+                className="mt-4"
+              />
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-textPrimary">
+                Invoices
+                <span className="ml-2 font-normal text-textSecondary">
+                  ({report.invoices.total} · {formatLedgerAmount(report.invoices.totalAmount)})
+                </span>
+              </h3>
+              <ReportTable>
+                <thead>
+                  <tr>
+                    <th className="pr-3">Invoice</th>
+                    <th className="pr-3">Debit Account</th>
+                    <th className="pr-3">Credit Account</th>
+                    <th className="pr-3">Description</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.invoices.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-textSecondary">
+                        No posted invoices for this date.
+                      </td>
+                    </tr>
+                  ) : (
+                    report.invoices.items.map((row) => (
+                      <tr key={`i-${row.id}`}>
+                        <td className="pr-3 whitespace-nowrap">
+                          {invoiceTypeDailyLabel(row.type)} #{row.reference}
+                        </td>
+                        <td className={`pr-3 ${ledgerDebitAmountClass(true)}`}>
+                          {row.debitAccountName ?? '—'}
+                        </td>
+                        <td className={`pr-3 ${ledgerCreditAmountClass(true)}`}>
+                          {row.creditAccountName ?? '—'}
+                        </td>
+                        <td className="pr-3">
+                          <div>{row.description ?? '—'}</div>
+                          {row.paymentDetail ? (
+                            <div className="mt-0.5 text-xs text-textSecondary">{row.paymentDetail}</div>
+                          ) : null}
+                          {row.mazduriDetail ? (
+                            <div className="mt-0.5 text-xs text-textSecondary">{row.mazduriDetail}</div>
+                          ) : null}
+                          {row.taxDetail ? (
+                            <div className="mt-0.5 text-xs text-textSecondary">{row.taxDetail}</div>
+                          ) : null}
+                        </td>
+                        <td className="text-right tabular-nums">{formatLedgerAmount(row.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </ReportTable>
+              <ListPagination
+                total={report.invoices.total}
+                offset={invoiceOffset}
+                onPageChange={(next) => void loadReport(voucherOffset, next)}
+                className="mt-4"
+              />
+            </section>
+          </div>
+        ) : null}
+      </Panel>
       <PageCloseBar />
     </PageShell>
   );
