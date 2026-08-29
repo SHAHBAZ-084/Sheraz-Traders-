@@ -17,7 +17,6 @@ type PendingItem = {
   date: string | null;
   debitAccountName?: string | null;
   creditAccountName?: string | null;
-  ledgerAccountId?: number | null;
   amount: number;
   creditAmount?: number | null;
   debitAmount?: number | null;
@@ -126,11 +125,6 @@ function editPathForPending(item: PendingItem): string | null {
   if (item.kind === 'account_adjustment') return `/inventory/stock-adjustment?${q}&tab=account`;
   if (item.kind === 'stock_adjustment') return `/inventory/stock-adjustment?${q}&tab=stock`;
   return null;
-}
-
-function ledgerPathForPending(item: PendingItem): string | null {
-  if (item.ledgerAccountId == null || !(item.ledgerAccountId > 0)) return null;
-  return `/reports/accounts?accountId=${item.ledgerAccountId}`;
 }
 
 async function approvePendingItem(item: PendingItem) {
@@ -276,7 +270,6 @@ export function PendingApprovalsPage() {
                   const keyReject = `reject-${item.kind}-${item.id}`;
                   const isBusy = busyId === keyApprove || busyId === keyReject;
                   const showEdit = canEdit(item) && editPathForPending(item) != null;
-                  const ledgerPath = ledgerPathForPending(item);
                   const showAdminActions = isAdmin;
                   const creditCell = pendingCreditCell(item);
                   const debitCell = pendingDebitCell(item);
@@ -325,16 +318,6 @@ export function PendingApprovalsPage() {
                               className="px-3 py-1.5 text-xs font-semibold rounded bg-surface2 text-textPrimary hover:bg-border/60 disabled:opacity-50 transition-colors"
                             >
                               Edit
-                            </button>
-                          ) : null}
-                          {ledgerPath ? (
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => navigate(ledgerPath)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded bg-surface2 text-financial hover:bg-border/60 disabled:opacity-50 transition-colors"
-                            >
-                              View Ledger
                             </button>
                           ) : null}
                           {showAdminActions ? (
