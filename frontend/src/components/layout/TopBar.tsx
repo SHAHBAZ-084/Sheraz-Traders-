@@ -189,9 +189,6 @@ export function TopBar() {
               if (userReports.length === 0) return null;
               return <NavDropdown key={entry.label} label={entry.label} children={userReports} />;
             }
-            if (isUserRole && entry.kind === 'link' && entry.id === 'ledger') {
-              return null;
-            }
             if (entry.kind === 'quick') {
               const Icon = entry.icon === 'sale' ? ArrowUpFromLine : ArrowDownToLine;
               return (

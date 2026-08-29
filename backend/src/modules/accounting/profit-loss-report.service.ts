@@ -186,8 +186,8 @@ export async function getProfitLossReport(params: {
         ? unitCostByProductId.get(item.productId)!
         : null;
 
-      // Critical: never treat missing cost as zero (that showed full sale as "profit").
-      if (unitCost == null || !Number.isFinite(unitCost)) {
+      // Critical: never treat missing/zero cost as a valid basis (that showed full sale as "profit").
+      if (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0) {
         costUnavailableCount += 1;
         rows.push({
           date: saleDate.toISOString(),

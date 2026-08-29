@@ -25,10 +25,12 @@ export function assertCanEditPendingInvoice(
   assertCanEditPendingRecord(editor, createdById, 'pending invoices');
 }
 
-/** Pending voucher edit is Admin-only. */
-export function assertCanEditPendingVoucher(editor: PendingEditor) {
-  if (editor.role === Role.ADMIN) return;
-  throw new AppError(403, 'Only Admin can edit pending vouchers');
+/** Admin may edit any pending voucher; users may edit only their own. */
+export function assertCanEditPendingVoucher(
+  editor: PendingEditor,
+  createdById?: number | null,
+) {
+  assertCanEditPendingRecord(editor, createdById, 'pending vouchers');
 }
 
 /** @deprecated Use assertCanEditPendingInvoice / assertCanEditPendingVoucher */

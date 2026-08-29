@@ -174,9 +174,8 @@ export function PendingApprovalsPage() {
 
   const isAdmin = user?.role === 'ADMIN';
 
-  /** Voucher Edit/Approve/Cancel are Admin-only. Invoice Edit allowed for creator or Admin. */
+  /** Admin can edit any pending item; users can edit their own (including vouchers). */
   function canEdit(item: PendingItem) {
-    if (item.kind === 'voucher') return isAdmin;
     if (isAdmin) return true;
     return item.createdBy != null && user != null && item.createdBy.id === user.id;
   }
@@ -230,8 +229,8 @@ export function PendingApprovalsPage() {
       <Panel>
         {!isAdmin ? (
           <p className="mb-3 rounded bg-surface2 px-3 py-2 text-xs text-textSecondary font-medium">
-            Viewing pending submissions. Voucher Edit / Approve / Cancel are Admin only. You can edit your own
-            pending invoices, accounts, products, and adjustments.
+            Viewing pending submissions. Approve / Cancel are Admin only. You can edit your own pending
+            vouchers, invoices, accounts, products, and adjustments.
           </p>
         ) : null}
         {(items ?? []).some((item) => item.kind === 'stock_adjustment') ? (

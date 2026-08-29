@@ -471,7 +471,7 @@ export async function getPendingVoucher(voucherId: number, editor: PendingEditor
     },
   });
   if (!voucher) throw new AppError(404, 'Pending voucher not found');
-  assertCanEditPendingVoucher(editor);
+  assertCanEditPendingVoucher(editor, voucher.createdById);
   return {
     id: voucher.id,
     type: voucher.type,
@@ -512,7 +512,7 @@ export async function updatePendingVoucher(
     where: { id: voucherId, status: VoucherStatus.PENDING_APPROVAL },
   });
   if (!existing) throw new AppError(404, 'Pending voucher not found');
-  assertCanEditPendingVoucher(editor);
+  assertCanEditPendingVoucher(editor, existing.createdById);
 
   if (data.debitAccountId === data.creditAccountId) {
     throw new AppError(400, 'Debit and credit accounts must be different');

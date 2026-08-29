@@ -295,7 +295,8 @@ export async function resolveProductAverageCost(
     product.averageCost == null || product.averageCost === ''
       ? null
       : Number(product.averageCost);
-  if (stored != null && Number.isFinite(stored) && stored >= 0) {
+  // Zero/negative must not count as a real cost — that made full sale amount appear as profit.
+  if (stored != null && Number.isFinite(stored) && stored > 0) {
     return { averageCost: stored, derivedFrom: 'Product.averageCost' };
   }
 
@@ -319,7 +320,9 @@ export async function planProductAverageCostBackfill(
   db: DbClient,
 ): Promise<Omit<AverageCostBackfillResult, 'updated'> & { wouldUpdate: number }> {
   const products = await db.product.findMany({
-    where: { averageCost: null },
+    where: {
+      OR: [{ averageCost: null }, { averageCost: { lte: 0 } }],
+    },
     select: {
       id: true,
       name: true,
@@ -376,8 +379,8 @@ export async function planProductAverageCostBackfill(
 }
 
 /**
- * Apply averageCost for products where it is still null and history exists.
- * Idempotent: already-set products are not touched; second run is a fast no-op when none are null.
+ * Apply averageCost for products where it is null/zero and history exists.
+ * Idempotent: products that already have a positive averageCost are not touched.
  */
 export async function backfillNullProductAverageCosts(
   db: DbClient,

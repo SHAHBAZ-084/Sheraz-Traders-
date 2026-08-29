@@ -163,7 +163,7 @@ async function resolveAverageCostForSaleLine(
   line: ResolvedSaleLine,
   productAverageCost: number | null,
 ): Promise<ResolvedSaleCost> {
-  if (productAverageCost != null && Number.isFinite(productAverageCost)) {
+  if (productAverageCost != null && Number.isFinite(productAverageCost) && productAverageCost > 0) {
     return { avgCost: productAverageCost };
   }
 

@@ -47,20 +47,22 @@ async function main() {
     process.exit(1);
   }
 
-  // Defer maintenance so startup + first user actions are not competing for the single SQLite connection.
+  // Repair null/zero Product.averageCost before reports are used (fixes pesticide P&L).
+  try {
+    await backfillNullProductAverageCosts(prisma);
+  } catch (err) {
+    logger.warn('Product averageCost backfill on startup failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Defer other maintenance so first user actions are not competing for the SQLite connection.
   setImmediate(() => {
     void (async () => {
       try {
         await runAccountingMaintenance();
       } catch (err) {
         logger.warn('Accounting maintenance on startup failed', {
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
-      try {
-        await backfillNullProductAverageCosts(prisma);
-      } catch (err) {
-        logger.warn('Product averageCost backfill on startup failed', {
           err: err instanceof Error ? err.message : String(err),
         });
       }

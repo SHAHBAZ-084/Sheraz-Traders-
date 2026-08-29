@@ -2531,7 +2531,6 @@ export function DailyReportPage() {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const letterheadRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const clamped = clampDateInput(todayInputValue(), fyMinDate, fyMaxDate) || todayInputValue();
@@ -2630,15 +2629,9 @@ export function DailyReportPage() {
         {loaded && report ? (
           <div className="report-print-area mt-6 space-y-8">
             <ReportLetterhead
-              ref={letterheadRef}
               title="Daily Report"
               subtitle={formatDate(report.date)}
             />
-            <div className="mb-2 flex flex-wrap gap-2 print:hidden">
-              <SecondaryButton type="button" onClick={printPage}>
-                Print
-              </SecondaryButton>
-            </div>
 
             <section>
               <h3 className="mb-2 text-sm font-semibold text-textPrimary">
