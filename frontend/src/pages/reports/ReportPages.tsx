@@ -1554,10 +1554,11 @@ export function ProfitLossStatementPage() {
         total > report.rows.length
           ? await api.getProfitLossReport(profitLossQuery(0, total))
           : report;
-      const headers = ['Date', 'Product Name', 'Reference', 'Purchase Price', 'Sale Price', 'Profit', 'Note'];
+      const headers = ['Date', 'Product Name', 'Quantity', 'Reference', 'Purchase Price', 'Sale Price', 'Profit', 'Note'];
       const rows = exportData.rows.map((row) => [
         formatDate(row.date),
         row.productName,
+        row.quantity == null ? '—' : String(row.quantity),
         row.reference,
         formatProfitLossPrice(row.purchasePrice),
         formatProfitLossPrice(row.salePrice),
@@ -1566,6 +1567,7 @@ export function ProfitLossStatementPage() {
       ]);
       rows.push([
         'Total',
+        '',
         '',
         '',
         formatLedgerAmount(exportData.totalPurchase),
@@ -1692,6 +1694,7 @@ export function ProfitLossStatementPage() {
                 <tr>
                   <th className="pr-3">Date</th>
                   <th className="pr-3">Product Name</th>
+                  <th className="pr-3 text-right">Quantity</th>
                   <th className="pr-3">Reference</th>
                   <th className="pr-3 text-right">Purchase Price</th>
                   <th className="pr-3 text-right">Sale Price</th>
@@ -1709,6 +1712,9 @@ export function ProfitLossStatementPage() {
                           {row.note}
                         </span>
                       ) : null}
+                    </td>
+                    <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>
+                      {row.quantity == null ? '—' : row.quantity}
                     </td>
                     <td className="pr-3 font-mono text-xs">{row.reference}</td>
                     <td className={`pr-3 text-right tabular-nums ${REPORT_AMOUNT_CELL}`}>
@@ -1733,7 +1739,7 @@ export function ProfitLossStatementPage() {
               </tbody>
               <tfoot>
                 <tr className="report-table-row--emphasis">
-                  <td colSpan={3}>Total</td>
+                  <td colSpan={4}>Total</td>
                   <td className={`pr-3 text-right tabular-nums font-semibold ${REPORT_AMOUNT_CELL}`}>
                     {formatLedgerAmount(report.totalPurchase)}
                   </td>
@@ -2525,6 +2531,9 @@ export function DailyReportPage() {
   const [datedOn, setDatedOn] = useState(() => {
     return todayInputValue();
   });
+  const [voucherType, setVoucherType] = useState<'all' | 'PAYMENT' | 'RECEIPT' | 'JOURNAL'>('all');
+  const [productCategoryId, setProductCategoryId] = useState('');
+  const [productCategories, setProductCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getDailyActivityReport>> | null>(null);
   const [voucherOffset, setVoucherOffset] = useState(0);
   const [invoiceOffset, setInvoiceOffset] = useState(0);
@@ -2533,8 +2542,17 @@ export function DailyReportPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    api
+      .listProductCategories()
+      .then((rows) => setProductCategories(rows.map((c) => ({ id: c.id, name: c.name }))))
+      .catch(() => setProductCategories([]));
+  }, []);
+
+  useEffect(() => {
     const clamped = clampDateInput(todayInputValue(), fyMinDate, fyMaxDate) || todayInputValue();
     setDatedOn(clamped);
+    setVoucherType('all');
+    setProductCategoryId('');
     setVoucherOffset(0);
     setInvoiceOffset(0);
   }, [fyMinDate, fyMaxDate]);
@@ -2546,7 +2564,12 @@ export function DailyReportPage() {
     return false;
   }
 
-  async function loadReport(nextVoucherOffset = voucherOffset, nextInvoiceOffset = invoiceOffset) {
+  async function loadReport(
+    nextVoucherOffset = voucherOffset,
+    nextInvoiceOffset = invoiceOffset,
+    nextVoucherType = voucherType,
+    nextProductCategoryId = productCategoryId,
+  ) {
     if (!datedOn) {
       setError('Select a date');
       setReport(null);
@@ -2565,6 +2588,10 @@ export function DailyReportPage() {
       const result = await api.getDailyActivityReport({
         date: datedOn,
         ...(activeYear?.id != null ? { financialYearId: activeYear.id } : {}),
+        ...(nextVoucherType !== 'all' ? { voucherType: nextVoucherType } : {}),
+        ...(nextProductCategoryId
+          ? { productCategoryId: Number(nextProductCategoryId) }
+          : {}),
         voucherLimit: BROWSE_PAGE_SIZE,
         voucherOffset: nextVoucherOffset,
         invoiceLimit: BROWSE_PAGE_SIZE,
@@ -2589,10 +2616,20 @@ export function DailyReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load when active FY bounds are known
   }, [activeYear?.id, fyMinDate, fyMaxDate]);
 
+  const filterSubtitle = [
+    formatDate(datedOn),
+    voucherType !== 'all' ? formatVoucherTypeLabel(voucherType) : null,
+    productCategoryId
+      ? productCategories.find((c) => String(c.id) === productCategoryId)?.name
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <PageShell title="Daily Report" subtitle="All posted vouchers and invoices for a single day">
       <Panel>
-        <div className="grid gap-3 print:hidden md:grid-cols-4 md:items-end">
+        <div className="mb-4 grid gap-4 overflow-visible print:hidden sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr_auto] xl:items-end">
           <div>
             <FieldLabel>Date</FieldLabel>
             <TextInput
@@ -2615,6 +2652,38 @@ export function DailyReportPage() {
               }}
             />
           </div>
+          <div>
+            <FieldLabel>Voucher Type</FieldLabel>
+            <SegmentedControl
+              ariaLabel="Voucher type"
+              value={voucherType}
+              onChange={(value) => {
+                setVoucherType(value);
+                setVoucherOffset(0);
+              }}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'RECEIPT', label: 'Receipt' },
+                { value: 'PAYMENT', label: 'Payment' },
+                { value: 'JOURNAL', label: 'Journal' },
+              ]}
+            />
+          </div>
+          <div>
+            <FieldLabel>Invoice Product Category</FieldLabel>
+            <SearchSelect
+              value={productCategoryId}
+              onChange={(value) => {
+                setProductCategoryId(value);
+                setInvoiceOffset(0);
+              }}
+              options={[
+                { value: '', label: 'All categories' },
+                ...productCategories.map((c) => ({ value: String(c.id), label: c.name })),
+              ]}
+              placeholder="All categories"
+            />
+          </div>
           <FinancialButton
             type="button"
             onClick={() => void loadReport(0, 0)}
@@ -2630,7 +2699,7 @@ export function DailyReportPage() {
           <div className="report-print-area mt-6 space-y-8">
             <ReportLetterhead
               title="Daily Report"
-              subtitle={formatDate(report.date)}
+              subtitle={filterSubtitle}
             />
 
             <section>

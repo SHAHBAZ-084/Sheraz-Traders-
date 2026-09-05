@@ -230,9 +230,18 @@ accountingRouter.get(
       STANDARD_PAGINATION,
     );
 
+    const voucherType = (req.query.voucherType as string | undefined)?.trim() || undefined;
+    const productCategoryIdParam = req.query.productCategoryId as string | undefined;
+    const productCategoryId =
+      productCategoryIdParam && productCategoryIdParam.trim() !== ''
+        ? parseInt(productCategoryIdParam, 10)
+        : undefined;
+
     const report = await getDailyActivityReport({
       date,
       financialYearId: Number.isFinite(financialYearId) ? financialYearId : undefined,
+      voucherType,
+      productCategoryId: Number.isFinite(productCategoryId) ? productCategoryId : undefined,
       voucherLimit: voucherPagination.limit,
       voucherOffset: voucherPagination.offset,
       invoiceLimit: invoicePagination.limit,

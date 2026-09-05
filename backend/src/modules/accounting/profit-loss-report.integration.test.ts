@@ -120,6 +120,7 @@ describe('Profit & Loss uses Product.averageCost (not purchase-only)', () => {
     const row = report.rows.find((r) => r.sourceType === 'SALE_INVOICE' && r.productName === product.name);
     expect(row).toBeTruthy();
     expect(row!.costUnavailable).toBe(false);
+    expect(row!.quantity).toBe(2);
     expect(row!.purchasePrice).toBeCloseTo(400, 4);
     expect(row!.salePrice).toBeCloseTo(550, 4);
     // Real margin: (550-400)*2 = 300 — NOT full sale 1100

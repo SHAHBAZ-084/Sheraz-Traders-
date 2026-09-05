@@ -900,6 +900,8 @@ export const api = {
   getDailyActivityReport(params: {
     date: string;
     financialYearId?: number;
+    voucherType?: string;
+    productCategoryId?: number;
     voucherLimit?: number;
     voucherOffset?: number;
     invoiceLimit?: number;
@@ -907,6 +909,8 @@ export const api = {
   }) {
     const query = new URLSearchParams({ date: params.date });
     if (params.financialYearId != null) query.set('financialYearId', String(params.financialYearId));
+    if (params.voucherType) query.set('voucherType', params.voucherType);
+    if (params.productCategoryId != null) query.set('productCategoryId', String(params.productCategoryId));
     if (params.voucherLimit != null) query.set('voucherLimit', String(params.voucherLimit));
     if (params.voucherOffset != null) query.set('voucherOffset', String(params.voucherOffset));
     if (params.invoiceLimit != null) query.set('invoiceLimit', String(params.invoiceLimit));
@@ -1505,6 +1509,7 @@ export const api = {
         sourceType: 'SALE_INVOICE' | 'KACHI_MAAL';
         reference: string;
         productName: string;
+        quantity: number | null;
         purchasePrice: number | null;
         salePrice: number | null;
         profit: number;

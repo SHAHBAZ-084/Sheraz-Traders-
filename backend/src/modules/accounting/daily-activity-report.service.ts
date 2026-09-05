@@ -11,6 +11,10 @@ import { AppError } from '../../utils/helpers';
 import { getActiveFinancialYearId } from '../accounting/accounting.service';
 import { endOfDay, startOfDay } from '../accounting/ledger-utils';
 import { formatBankCashAccountLabel } from '../invoices/invoice-embedded-voucher';
+import {
+  formatInvoiceProductLinesDescription,
+  formatKachiMaalProductLinesDescription,
+} from '../invoices/invoice-voucher-descriptions';
 import { roundMoney } from '../invoices/sale-invoice.calculations';
 
 const DAILY_VOUCHER_TYPES: VoucherType[] = [
@@ -121,9 +125,20 @@ async function buildPaymentDetailFromLegs(
   return `${prefix} ${parts.join(' + ')}`;
 }
 
+function parseVoucherTypeFilter(value: string | undefined): VoucherType | undefined {
+  if (!value) return undefined;
+  const upper = value.trim().toUpperCase();
+  if (upper === VoucherType.PAYMENT || upper === VoucherType.RECEIPT || upper === VoucherType.JOURNAL) {
+    return upper;
+  }
+  return undefined;
+}
+
 export async function getDailyActivityReport(params: {
   date: string;
   financialYearId?: number;
+  voucherType?: string;
+  productCategoryId?: number;
   voucherLimit?: number;
   voucherOffset?: number;
   invoiceLimit?: number;
@@ -158,10 +173,20 @@ export async function getDailyActivityReport(params: {
     }
   }
 
+  const voucherTypeFilter = parseVoucherTypeFilter(params.voucherType);
+  if (params.voucherType && !voucherTypeFilter) {
+    throw new AppError(400, 'voucherType must be PAYMENT, RECEIPT, or JOURNAL');
+  }
+
+  const productCategoryId =
+    params.productCategoryId != null && Number.isFinite(params.productCategoryId) && params.productCategoryId > 0
+      ? params.productCategoryId
+      : undefined;
+
   const voucherWhere: Prisma.VoucherWhereInput = {
     status: VoucherStatus.ACTIVE,
     financialYearId,
-    type: { in: DAILY_VOUCHER_TYPES },
+    type: voucherTypeFilter ? voucherTypeFilter : { in: DAILY_VOUCHER_TYPES },
     date: { gte: from, lte: to },
   };
 
@@ -170,6 +195,17 @@ export async function getDailyActivityReport(params: {
     financialYearId,
     type: { in: DAILY_INVOICE_TYPES },
     invoiceDate: { gte: from, lte: to },
+    ...(productCategoryId != null
+      ? {
+          // Category filter: invoices that include at least one matching product line.
+          // Kachi Maal has no product.categoryId on lines, so it is excluded when filtering.
+          items: {
+            some: {
+              product: { categoryId: productCategoryId },
+            },
+          },
+        }
+      : {}),
   };
 
   const voucherLimit = params.voucherLimit;
@@ -204,10 +240,20 @@ export async function getDailyActivityReport(params: {
           debitAccount: { select: { name: true } },
           items: {
             select: {
+              quantity: true,
+              unitPrice: true,
               taxAmount: true,
               mazduriAmount: true,
               label: true,
-              product: { select: { name: true } },
+              product: { select: { name: true, categoryId: true } },
+            },
+          },
+          kachiMaalLines: {
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              jins: true,
+              totalWeightKg: true,
+              ratePerMaund: true,
             },
           },
           vouchers: {
@@ -267,19 +313,55 @@ export async function getDailyActivityReport(params: {
   const invoiceItems: DailyActivityInvoiceRow[] = [];
   for (const inv of invoices) {
     const partyName = inv.debitAccount?.name ?? null;
-    const productNames = uniqueJoin(
-      inv.items.map((item) => item.product?.name?.trim() || item.label?.trim() || ''),
-    );
+
+    const visibleItems =
+      productCategoryId != null
+        ? inv.items.filter((item) => item.product?.categoryId === productCategoryId)
+        : inv.items;
+
+    let productSideLabel: string | null = null;
+    let productDescription: string | null = null;
+
+    if (inv.type === InvoiceType.KACHI_MAAL) {
+      const kachiLines = inv.kachiMaalLines ?? [];
+      productDescription =
+        kachiLines.length > 0
+          ? formatKachiMaalProductLinesDescription(
+              kachiLines.map((line) => ({
+                productName: line.jins?.trim() || inv.jins?.trim() || 'Item',
+                totalWeightKg: Number(line.totalWeightKg),
+                ratePerMaund: Number(line.ratePerMaund),
+              })),
+            )
+          : null;
+      productSideLabel =
+        uniqueJoin(kachiLines.map((line) => line.jins?.trim() || inv.jins?.trim() || '')) ?? productDescription;
+    } else {
+      productDescription =
+        visibleItems.length > 0
+          ? formatInvoiceProductLinesDescription(
+              visibleItems.map((item) => ({
+                productName: item.product?.name?.trim() || item.label?.trim() || 'Item',
+                quantity: Number(item.quantity),
+                rate: Number(item.unitPrice),
+              })),
+            )
+          : null;
+      productSideLabel =
+        uniqueJoin(
+          visibleItems.map((item) => item.product?.name?.trim() || item.label?.trim() || ''),
+        ) ?? productDescription;
+    }
 
     let debitAccountName: string | null = null;
     let creditAccountName: string | null = null;
     if (inv.type === InvoiceType.PURCHASE_INVOICE) {
-      debitAccountName = productNames;
+      debitAccountName = productSideLabel;
       creditAccountName = partyName;
     } else {
       // SALE_INVOICE / KACHI_MAAL — party debited
       debitAccountName = partyName;
-      creditAccountName = productNames;
+      creditAccountName = productSideLabel;
     }
 
     const accountingVoucher = inv.vouchers.find((link) =>
@@ -292,15 +374,16 @@ export async function getDailyActivityReport(params: {
       ? await buildPaymentDetailFromLegs(accountingVoucher.ledgerEntries, inv.type)
       : null;
 
+    const mazduriSource = productCategoryId != null ? visibleItems : inv.items;
     const mazduriTotal = roundMoney(
-      inv.items.reduce((sum, item) => sum + Number(item.mazduriAmount ?? 0), 0),
+      mazduriSource.reduce((sum, item) => sum + Number(item.mazduriAmount ?? 0), 0),
     );
     const taxTotal = roundMoney(
-      inv.items.reduce((sum, item) => sum + Number(item.taxAmount ?? 0), 0),
+      mazduriSource.reduce((sum, item) => sum + Number(item.taxAmount ?? 0), 0),
     );
 
     const descParts = [
-      productNames,
+      productDescription,
       inv.notes?.trim() || null,
     ].filter(Boolean);
 

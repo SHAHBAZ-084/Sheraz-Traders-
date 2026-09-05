@@ -15,6 +15,8 @@ export type ProfitLossRow = {
   sourceType: 'SALE_INVOICE' | 'KACHI_MAAL';
   reference: string;
   productName: string;
+  /** Sale/purchase line quantity. Null for Daami summary rows. */
+  quantity: number | null;
   /** Unit cost (WAC / averageCost). Null when cost is unavailable or for Daami rows. */
   purchasePrice: number | null;
   salePrice: number | null;
@@ -194,6 +196,7 @@ export async function getProfitLossReport(params: {
           sourceType: 'SALE_INVOICE',
           reference: invoice.reference,
           productName,
+          quantity,
           purchasePrice: null,
           salePrice,
           profit: 0,
@@ -214,6 +217,7 @@ export async function getProfitLossReport(params: {
         sourceType: 'SALE_INVOICE',
         reference: invoice.reference,
         productName,
+        quantity,
         purchasePrice: unitCost,
         salePrice,
         profit,
@@ -263,6 +267,7 @@ export async function getProfitLossReport(params: {
         sourceType: 'KACHI_MAAL',
         reference: invoice.reference,
         productName: 'Daami',
+        quantity: null,
         purchasePrice: null,
         salePrice: null,
         profit: totals.profitAmount,

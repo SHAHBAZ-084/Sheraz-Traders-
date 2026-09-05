@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -18,6 +18,9 @@ const HEALTH_MAX_ATTEMPTS = 100;
 /** Chromium date widgets follow app ICU locale, not html lang. Force day-first (DD/MM/YYYY). */
 app.commandLine.appendSwitch('lang', 'en-GB');
 app.commandLine.appendSwitch('accept-lang', 'en-GB,en');
+
+/** App has its own TopBar — hide Electron's native File/Edit/View menu strip. */
+Menu.setApplicationMenu(null);
 
 function resolveAppIcon(): string | undefined {
   const fileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';

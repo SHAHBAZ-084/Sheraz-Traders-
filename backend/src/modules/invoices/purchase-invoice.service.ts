@@ -98,7 +98,9 @@ function buildPurchaseInvoiceLegs(
       accountId: line.maalKhataAccountId,
       type: LedgerEntryType.DEBIT,
       amount: line.lineTotal,
-      description: productDescription,
+      description: formatInvoiceProductLinesDescription([
+        { productName: line.productName, quantity: line.quantity, rate: line.rate },
+      ]),
       mazduriAmount: line.mazduriAmount > 0 ? line.mazduriAmount : null,
     })),
     {

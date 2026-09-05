@@ -251,9 +251,10 @@ async function buildSaleInvoiceLegs(
 
     const costAmount = roundMoney(avgCost * line.quantity);
     const profitAmount = roundMoney(line.lineTotal - costAmount);
-    const legDescription = costNote
-      ? `${productDescription} (${costNote})`
-      : productDescription;
+    const lineDescription = formatInvoiceProductLinesDescription([
+      { productName: line.productName, quantity: line.quantity, rate: line.rate },
+    ]);
+    const legDescription = costNote ? `${lineDescription} (${costNote})` : lineDescription;
 
     // Inventory leg (cost only)
     legs.push({
