@@ -156,8 +156,8 @@ export function StoresPage() {
 
       {/* Delete confirmation modal */}
       {deleteStoreTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md bg-surface rounded-xl border border-border p-6 shadow-xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface3/90 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-lg border border-border bg-surface2 p-6 shadow-xl">
             <h3 className="text-lg font-bold text-danger">Confirm Hard Delete Store</h3>
             <p className="text-sm text-textPrimary">
               Are you sure you want to permanently delete store <strong>&quot;{deleteStoreTarget.name}&quot;</strong>?

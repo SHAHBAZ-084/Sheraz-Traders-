@@ -235,11 +235,11 @@ function PartyPage({
       </Panel>
 
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md space-y-4 rounded-xl border border-border bg-surface p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface3/90 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-lg border border-border bg-surface2 p-6 shadow-xl">
             <h3 className="text-lg font-bold text-danger">Confirm Delete Party</h3>
             <p className="text-sm text-textPrimary">
-              Permanently remove party <strong>&quot;{deleteTarget.name}&quot;</strong>? This requires your admin password.
+              Permanently remove party <strong className="text-textPrimary">&quot;{deleteTarget.name}&quot;</strong>? This requires your admin password.
             </p>
             <div>
               <FieldLabel>Admin Password Confirmation</FieldLabel>
@@ -258,7 +258,7 @@ function PartyPage({
                 type="button"
                 disabled={deleting || !confirmPassword.trim()}
                 onClick={() => void confirmDeleteParty()}
-                className="rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+                className="rounded-sm border border-danger bg-danger px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
               >
                 {deleting ? 'Deleting…' : 'Delete Party'}
               </button>
