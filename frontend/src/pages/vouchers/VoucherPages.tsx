@@ -1288,10 +1288,8 @@ export function VoucherDetailCard({
 }
 
 export function VoucherListPage() {
-  const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState('');
+  const [searchError, setSearchError] = useState('');
   const [searchType, setSearchType] = useState('');
   const [searchNo, setSearchNo] = useState('');
   const [searched, setSearched] = useState(false);
@@ -1299,34 +1297,37 @@ export function VoucherListPage() {
   const [cancelling, setCancelling] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  const loadVouchers = useCallback(() => {
-    setLoading(true);
-    setLoadError('');
-    api
-      .listVouchers({ limit: 200, offset: 0 })
-      .then((page) => {
-        setVouchers(page?.items ?? []);
-        setTotal(page?.total ?? 0);
-      })
-      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load vouchers'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    loadVouchers();
-  }, [loadVouchers]);
-
-  function handleSearch(e: FormEvent) {
+  async function handleSearch(e: FormEvent) {
     e.preventDefault();
     const no = parseInt(searchNo.trim(), 10);
     if (!no) {
       setResult('notfound');
+      setSearchError('');
       setSearched(true);
       return;
     }
-    const found = (vouchers ?? []).find((v) => v.number === no && (!searchType || v.type === searchType));
-    setResult(found ?? 'notfound');
+    setLoading(true);
+    setSearchError('');
     setSearched(true);
+    try {
+      const voucher = await api.getVoucherByNumber({
+        number: no,
+        ...(searchType ? { type: searchType } : {}),
+      });
+      setResult(voucher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Search failed';
+      // Ambiguous number (same # on multiple types) — ask user to pick a type
+      if (/multiple vouchers|select a voucher type/i.test(message)) {
+        setResult(null);
+        setSearchError(message);
+      } else {
+        setResult('notfound');
+        setSearchError('');
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCancel() {
@@ -1336,7 +1337,6 @@ export function VoucherListPage() {
     try {
       const updated = await api.cancelVoucher(result.id);
       setResult(updated);
-      loadVouchers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Delete failed');
     } finally {
@@ -1350,7 +1350,6 @@ export function VoucherListPage() {
     try {
       const updated = await api.updateVoucher(result.id, updates);
       setResult(updated);
-      loadVouchers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Update failed');
     } finally {
@@ -1361,46 +1360,48 @@ export function VoucherListPage() {
   const voucher = result && result !== 'notfound' ? result : null;
 
   return (
-    <PageShell subtitle={total > (vouchers?.length ?? 0) ? `Loaded ${vouchers?.length ?? 0} of ${total} vouchers for lookup` : 'Search a voucher by type and number'}>
+    <PageShell subtitle="Search a voucher by type and number (active financial year)">
       <Panel>
-        {loadError ? (
-          <p className="text-sm text-danger">{loadError}</p>
-        ) : (
-          <form onSubmit={handleSearch} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-            <div>
-              <FieldLabel>Type</FieldLabel>
-              <select
-                value={searchType}
-                onChange={(e) => setSearchType(e.target.value)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-              >
-                <option value="">All types</option>
-                <option value="RECEIPT">Receipt</option>
-                <option value="PAYMENT">Payment</option>
-                <option value="JOURNAL">Journal</option>
-              </select>
-            </div>
-            <div>
-              <FieldLabel>Voucher #</FieldLabel>
-              <TextInput
-                type="number"
-                min="1"
-                required
-                value={searchNo}
-                onChange={(e) => setSearchNo(e.target.value)}
-                placeholder="Enter voucher number"
-              />
-            </div>
-            <PrimaryButton type="submit" disabled={loading}>
-              {loading ? 'Loading…' : 'Search'}
-            </PrimaryButton>
-          </form>
-        )}
+        <form onSubmit={handleSearch} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div>
+            <FieldLabel>Type</FieldLabel>
+            <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              <option value="">All types</option>
+              <option value="RECEIPT">Receipt</option>
+              <option value="PAYMENT">Payment</option>
+              <option value="JOURNAL">Journal</option>
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Voucher #</FieldLabel>
+            <TextInput
+              type="number"
+              min="1"
+              required
+              value={searchNo}
+              onChange={(e) => setSearchNo(e.target.value)}
+              placeholder="Enter voucher number"
+            />
+          </div>
+          <PrimaryButton type="submit" disabled={loading}>
+            {loading ? 'Searching…' : 'Search'}
+          </PrimaryButton>
+        </form>
       </Panel>
+
+      {searchError ? (
+        <p className="mt-4 rounded-lg border border-border bg-surface1 px-4 py-3 text-sm text-danger">
+          {searchError}
+        </p>
+      ) : null}
 
       {searched && result === 'notfound' && (
         <p className="mt-4 rounded-lg border border-border bg-surface1 px-4 py-3 text-sm text-textMuted">
-          No voucher found for that number{searchType ? ` in ${VOUCHER_TYPE_LABELS[searchType]}` : ''}.
+          No voucher found for that number{searchType ? ` in ${VOUCHER_TYPE_LABELS[searchType]}` : ''} in the active financial year.
         </p>
       )}
 

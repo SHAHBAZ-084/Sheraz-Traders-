@@ -132,6 +132,27 @@ accountingRouter.get(
 );
 
 accountingRouter.get(
+  '/vouchers/by-number',
+  asyncHandler(async (req, res) => {
+    const numberParam = String(req.query.number ?? '').trim();
+    const number = parseInt(numberParam, 10);
+    if (!numberParam || !Number.isFinite(number)) {
+      res.status(400).json({ error: 'number is required' });
+      return;
+    }
+
+    const typeParam = (req.query.type as string | undefined)?.trim().toUpperCase();
+    const type =
+      typeParam && Object.values(VoucherType).includes(typeParam as VoucherType)
+        ? (typeParam as VoucherType)
+        : undefined;
+
+    const voucher = await accountingService.findVoucherByNumber({ number, type });
+    res.json(voucher);
+  }),
+);
+
+accountingRouter.get(
   '/vouchers',
   asyncHandler(async (req, res) => {
     const fromDate = req.query.fromDate as string | undefined;

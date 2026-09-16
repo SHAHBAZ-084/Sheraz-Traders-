@@ -2890,6 +2890,57 @@ const voucherInclude = {
   deletedBy: { select: { id: true, displayName: true, username: true } },
 } as const;
 
+/**
+ * Exact voucher lookup by number in the active financial year only.
+ * Numbers reset each year, so closed years are never mixed in.
+ */
+export async function findVoucherByNumber(params: {
+  number: number;
+  type?: VoucherType;
+}) {
+  const voucherNumber = Math.trunc(Number(params.number));
+  if (!Number.isFinite(voucherNumber) || voucherNumber < 1) {
+    throw new AppError(400, 'Voucher number must be a positive integer');
+  }
+
+  let typeFilter: VoucherType | undefined;
+  if (params.type != null) {
+    if (!isStandardVoucherType(params.type)) {
+      throw new AppError(400, 'type must be PAYMENT, RECEIPT, or JOURNAL');
+    }
+    typeFilter = params.type;
+  }
+
+  const financialYearId = await getActiveFinancialYearId(prisma);
+  const where: Prisma.VoucherWhereInput = {
+    financialYearId,
+    number: voucherNumber,
+    status: { not: VoucherStatus.PENDING_APPROVAL },
+    type: typeFilter ?? { in: STANDARD_VOUCHER_TYPES },
+  };
+
+  const matches = await prisma.voucher.findMany({
+    where,
+    include: voucherInclude,
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    take: 3,
+  });
+
+  if (matches.length === 0) {
+    throw new AppError(404, 'Voucher not found');
+  }
+
+  if (!typeFilter && matches.length > 1) {
+    const types = matches.map((v) => v.type).join(', ');
+    throw new AppError(
+      409,
+      `Multiple vouchers use number ${voucherNumber} (${types}). Select a voucher type and search again.`,
+    );
+  }
+
+  return matches[0];
+}
+
 function voucherDashboardAccountLabel(voucher: {
   type: VoucherType;
   description?: string | null;

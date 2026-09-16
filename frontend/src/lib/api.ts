@@ -982,6 +982,12 @@ export const api = {
     return request<Paginated<Voucher>>(`/api/accounting/vouchers${suffix}`);
   },
 
+  getVoucherByNumber(params: { number: number; type?: string }) {
+    const query = new URLSearchParams({ number: String(params.number) });
+    if (params.type) query.set('type', params.type);
+    return request<Voucher>(`/api/accounting/vouchers/by-number?${query}`);
+  },
+
   listFinancialYears() {
     return request<FinancialYear[]>('/api/accounting/financial-years');
   },

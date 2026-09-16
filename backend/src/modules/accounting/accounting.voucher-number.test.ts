@@ -5,6 +5,7 @@ import {
   bootstrapChartOfAccounts,
   cancelVoucher,
   createVoucher,
+  findVoucherByNumber,
   listAccounts,
   previewNextVoucherNumber,
 } from './accounting.service';
@@ -176,5 +177,57 @@ describe('per-type voucher numbering', () => {
     expect(await nextNumberForType(fy.id, 'PAYMENT')).toBe(1);
     expect(await nextNumberForType(fy.id, 'RECEIPT')).toBe(1);
     expect(await nextNumberForType(fy.id, 'JOURNAL')).toBe(1);
+  });
+
+  it('findVoucherByNumber queries the database by number in the active year', async () => {
+    const created = await createVoucher({
+      type: 'PAYMENT',
+      debitAccountId: electricityId,
+      creditAccountId: cashId,
+      amount: 42,
+      date: voucherDate,
+      createdById: userId,
+      reference: 'BY-NUM-LOOKUP',
+    });
+
+    const found = await findVoucherByNumber({ number: created.number, type: 'PAYMENT' });
+    expect(found.id).toBe(created.id);
+    expect(found.number).toBe(created.number);
+    expect(found.type).toBe('PAYMENT');
+
+    await expect(findVoucherByNumber({ number: 9_999_999, type: 'PAYMENT' })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it('findVoucherByNumber ignores vouchers from closed financial years', async () => {
+    const closedFy = await prisma.financialYear.create({
+      data: {
+        label: `CLOSED-LOOKUP-${Date.now()}`,
+        startDate: new Date('2010-01-01'),
+        endDate: new Date('2010-12-31'),
+        status: 'CLOSED',
+      },
+    });
+
+    const closedOnlyNumber = 88_001;
+    await prisma.voucher.create({
+      data: {
+        financialYearId: closedFy.id,
+        type: 'PAYMENT',
+        number: closedOnlyNumber,
+        date: new Date('2010-06-01'),
+        amount: 10,
+        debitAccountId: electricityId,
+        creditAccountId: cashId,
+        createdById: userId,
+        status: 'ACTIVE',
+        reference: 'CLOSED-ONLY',
+      },
+    });
+
+    await expect(
+      findVoucherByNumber({ number: closedOnlyNumber, type: 'PAYMENT' }),
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 });
