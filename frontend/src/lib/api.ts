@@ -761,8 +761,11 @@ export const api = {
   }) {
     return request<Party>('/api/parties/sale-parties', { method: 'POST', body: JSON.stringify(data) });
   },
-  removeSaleParty(id: number) {
-    return request<Party>(`/api/parties/sale-parties/${id}`, { method: 'DELETE' });
+  removeSaleParty(id: number, confirmPassword: string) {
+    return request<Party>(`/api/parties/sale-parties/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmPassword }),
+    });
   },
 
   listPurchaseParties() {
@@ -786,8 +789,11 @@ export const api = {
   }) {
     return request<Party>('/api/parties/purchase-parties', { method: 'POST', body: JSON.stringify(data) });
   },
-  removePurchaseParty(id: number) {
-    return request<Party>(`/api/parties/purchase-parties/${id}`, { method: 'DELETE' });
+  removePurchaseParty(id: number, confirmPassword: string) {
+    return request<Party>(`/api/parties/purchase-parties/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmPassword }),
+    });
   },
 
   listInvoices(type?: string, pagination?: { limit?: number; offset?: number }) {
@@ -1529,6 +1535,17 @@ export const api = {
       totalCount?: number;
       pagination?: { total: number; limit: number; offset: number };
     }>(`/api/accounting/reports/profit-loss?${query.toString()}`);
+  },
+
+  getProfitLossAccess() {
+    return request<{ unlocked: boolean }>('/api/accounting/reports/profit-loss/access');
+  },
+
+  unlockProfitLoss(password: string) {
+    return request<{ unlocked: boolean }>('/api/accounting/reports/profit-loss/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
   },
 
   getBackupStatus() {

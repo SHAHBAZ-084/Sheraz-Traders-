@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, type Account, type AccountCategory, type ProductCategory, type Voucher } from '../../lib/api';
 import { formatDate, formatLedgerAmount, formatLedgerBalance, formatVoucherNumber, formatVoucherTypeLabel, ledgerCreditAmountClass, ledgerDebitAmountClass, voucherTypeColorClass } from '../../lib/format';
@@ -9,6 +9,7 @@ import { ListPagination } from '../../components/ui/ListPagination';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { FieldLabel, FinancialButton, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { ReportLetterhead } from '../../components/reports/ReportLetterhead';
 import { LedgerVoucherDescription, voucherSideLabelClass } from '../../components/vouchers/LedgerVoucherDescription';
 import { ReportTable } from '../../components/reports/ReportTable';
@@ -1439,6 +1440,11 @@ export function ProfitLossStatementPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const letterheadRef = useRef<HTMLElement>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     Promise.all([api.listProducts({ lite: true }), api.listProductCategories()])
@@ -1450,6 +1456,28 @@ export function ProfitLossStatementPage() {
         setProducts([]);
         setProductCategories([]);
       });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAccessChecked(false);
+    api
+      .getProfitLossAccess()
+      .then((status) => {
+        if (!cancelled) {
+          setUnlocked(status.unlocked);
+          setAccessChecked(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUnlocked(false);
+          setAccessChecked(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function profitLossQuery(
@@ -1496,17 +1524,50 @@ export function ProfitLossStatementPage() {
       setTotal(result.pagination?.total ?? result.totalCount ?? result.rows.length);
       setOffset(pageOffset);
       setLoaded(true);
+      setUnlocked(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load report');
-      setReport(null);
-      setTotal(0);
-      setLoaded(false);
+      const message = err instanceof Error ? err.message : 'Failed to load report';
+      if (/password required/i.test(message)) {
+        setUnlocked(false);
+        setLoaded(false);
+        setReport(null);
+        setError('');
+      } else {
+        setError(message);
+        setReport(null);
+        setTotal(0);
+        setLoaded(false);
+      }
     } finally {
       setLoading(false);
     }
   }
 
+  async function confirmUnlock(e?: FormEvent) {
+    e?.preventDefault();
+    if (!unlockPassword.trim()) {
+      setUnlockError('Admin password is required');
+      return;
+    }
+    setUnlocking(true);
+    setUnlockError('');
+    try {
+      await api.unlockProfitLoss(unlockPassword.trim());
+      setUnlockPassword('');
+      setUnlocked(true);
+      const today = todayInputValue();
+      const clamped = clampDateInput(today, fyMinDate, fyMaxDate) || today;
+      await loadReport(0, clamped, clamped, '', '');
+    } catch (err) {
+      setUnlockError(err instanceof Error ? err.message : 'Invalid password');
+      setUnlocked(false);
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   useEffect(() => {
+    if (!unlocked || !accessChecked) return;
     const today = todayInputValue();
     const clamped = clampDateInput(today, fyMinDate, fyMaxDate) || today;
     setFromDate(clamped);
@@ -1522,8 +1583,8 @@ export function ProfitLossStatementPage() {
       return;
     }
     void loadReport(0, clamped, clamped, '', '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed today's range once per FY
-  }, [financialYearId, fyMinDate, fyMaxDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed today's range once unlocked / per FY
+  }, [unlocked, accessChecked, financialYearId, fyMinDate, fyMaxDate]);
 
   function clearFilters() {
     setFromDate('');
@@ -1598,6 +1659,32 @@ export function ProfitLossStatementPage() {
 
   return (
     <PageShell title="Profit & Loss Statement" subtitle="Sale invoice profit/loss and Kachi Maal daami">
+      {!accessChecked ? (
+        <Panel>
+          <p className="text-sm text-textSecondary">Checking access…</p>
+        </Panel>
+      ) : !unlocked ? (
+        <Panel className="max-w-md">
+          <form className="space-y-4" onSubmit={(e) => void confirmUnlock(e)}>
+            <p className="text-sm text-textPrimary">
+              Enter your admin password to open the Profit &amp; Loss Statement. Access stays unlocked until you log out.
+            </p>
+            <div>
+              <FieldLabel>Admin Password</FieldLabel>
+              <PasswordInput
+                value={unlockPassword}
+                onChange={(e) => setUnlockPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoFocus
+              />
+            </div>
+            {unlockError ? <p className="text-sm text-danger">{unlockError}</p> : null}
+            <PrimaryButton type="submit" disabled={unlocking || !unlockPassword.trim()}>
+              {unlocking ? 'Verifying…' : 'Unlock Report'}
+            </PrimaryButton>
+          </form>
+        </Panel>
+      ) : (
       <Panel className="overflow-visible">
         <div className={reportFilterClass(false, 'profitLoss')}>
             <div>
@@ -1765,6 +1852,7 @@ export function ProfitLossStatementPage() {
           </div>
         ) : null}
       </Panel>
+      )}
       <PageCloseBar />
     </PageShell>
   );

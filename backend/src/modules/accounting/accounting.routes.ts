@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { AccountType, VoucherType } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuth, requireAdmin, requireReportsAccess } from '../../middleware/auth';
-import { asyncHandler, param, validateBody } from '../../utils/helpers';
+import { asyncHandler, AppError, param, validateBody } from '../../utils/helpers';
 import { parsePagination, parseCursorPagination, SELECTOR_PAGINATION, STANDARD_PAGINATION, LEDGER_PAGINATION } from '../../utils/pagination';
+import { verifyUserPassword } from '../auth/auth.service';
 import * as accountingService from './accounting.service';
 import { getProfitLossReport } from './profit-loss-report.service';
 import { getDailyActivityReport } from './daily-activity-report.service';
@@ -83,6 +84,8 @@ accountingRouter.post(
     const account = await accountingService.createAccount({
       ...req.body,
       createdById: req.session.userId!,
+      // Admin posts immediately; non-admin goes to Pending Approvals (same as vouchers/products).
+      postImmediately: req.user?.role === 'ADMIN',
     });
     res.status(201).json(account);
   }),
@@ -182,9 +185,35 @@ accountingRouter.get(
 );
 
 accountingRouter.get(
+  '/reports/profit-loss/access',
+  requireReportsAccess,
+  asyncHandler(async (req, res) => {
+    res.json({ unlocked: req.session.profitLossUnlocked === true });
+  }),
+);
+
+accountingRouter.post(
+  '/reports/profit-loss/unlock',
+  requireReportsAccess,
+  validateBody(z.object({ password: z.string().min(1) })),
+  asyncHandler(async (req, res) => {
+    const isValidPassword = await verifyUserPassword(req.session.userId!, req.body.password);
+    if (!isValidPassword) {
+      throw new AppError(401, 'Invalid password. Profit & Loss requires valid admin password.');
+    }
+    req.session.profitLossUnlocked = true;
+    res.json({ unlocked: true });
+  }),
+);
+
+accountingRouter.get(
   '/reports/profit-loss',
   requireReportsAccess,
   asyncHandler(async (req, res) => {
+    if (req.session.profitLossUnlocked !== true) {
+      throw new AppError(401, 'Password required to view Profit & Loss Statement');
+    }
+
     const financialYearIdParam = req.query.financialYearId as string | undefined;
     const financialYearId =
       financialYearIdParam && financialYearIdParam.trim() !== ''

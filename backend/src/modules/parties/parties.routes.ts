@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
-import { asyncHandler, param, validateBody } from '../../utils/helpers';
+import { asyncHandler, AppError, param, validateBody } from '../../utils/helpers';
+import { verifyUserPassword } from '../auth/auth.service';
 import { parsePagination, SELECTOR_PAGINATION } from '../../utils/pagination';
 import * as partiesService from './parties.service';
 
@@ -56,7 +57,12 @@ partiesRouter.patch(
 partiesRouter.delete(
   '/sale-parties/:id',
   requireAdmin,
+  validateBody(z.object({ confirmPassword: z.string().min(1) })),
   asyncHandler(async (req, res) => {
+    const isValidPassword = await verifyUserPassword(req.session.userId!, req.body.confirmPassword);
+    if (!isValidPassword) {
+      throw new AppError(401, 'Invalid password. Deletion requires valid admin password.');
+    }
     res.json(await partiesService.removeSaleParty(parseInt(param(req.params.id), 10)));
   }),
 );
@@ -107,7 +113,12 @@ partiesRouter.patch(
 partiesRouter.delete(
   '/purchase-parties/:id',
   requireAdmin,
+  validateBody(z.object({ confirmPassword: z.string().min(1) })),
   asyncHandler(async (req, res) => {
+    const isValidPassword = await verifyUserPassword(req.session.userId!, req.body.confirmPassword);
+    if (!isValidPassword) {
+      throw new AppError(401, 'Invalid password. Deletion requires valid admin password.');
+    }
     res.json(await partiesService.removePurchaseParty(parseInt(param(req.params.id), 10)));
   }),
 );

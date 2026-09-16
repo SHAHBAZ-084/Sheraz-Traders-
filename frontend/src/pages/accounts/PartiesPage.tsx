@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ListPagination } from '../../components/ui/ListPagination';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { api, type Party } from '../../lib/api';
 import { formatLedgerBalance } from '../../lib/format';
@@ -36,7 +37,7 @@ function PartyPage({
   subtitle: string;
   listFn: (pagination: { limit: number; offset: number }) => Promise<{ items: Party[]; total: number }>;
   createFn: (data: CreatePartyPayload) => Promise<Party>;
-  removeFn: (id: number) => Promise<unknown>;
+  removeFn: (id: number, confirmPassword: string) => Promise<unknown>;
   /** Suggested Dr/Cr for this party type (Sale Party ASSET → DR, Purchase Party LIABILITY → CR). */
   defaultOpeningSide: 'DR' | 'CR';
 }) {
@@ -51,6 +52,11 @@ function PartyPage({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const isAdmin = useIsAdmin();
+
+  const [deleteTarget, setDeleteTarget] = useState<Party | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const parsedOpeningAmount = useMemo(() => parseOpeningAmount(openingBalance), [openingBalance]);
   const hasOpeningAmount = parsedOpeningAmount > 0;
@@ -111,16 +117,38 @@ function PartyPage({
     }
   }
 
-  async function onRemove(id: number) {
-    if (!confirm('Remove this party?')) return;
+  function openDeleteModal(party: Party) {
+    setDeleteTarget(party);
+    setConfirmPassword('');
+    setDeleteError('');
+  }
+
+  function closeDeleteModal() {
+    setDeleteTarget(null);
+    setConfirmPassword('');
+    setDeleteError('');
+  }
+
+  async function confirmDeleteParty() {
+    if (!deleteTarget) return;
+    if (!confirmPassword.trim()) {
+      setDeleteError('Admin password is required to confirm deletion');
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
     setError('');
     try {
-      await removeFn(id);
+      await removeFn(deleteTarget.id, confirmPassword.trim());
+      setMessage(`Party "${deleteTarget.name}" removed.`);
+      closeDeleteModal();
       const nextOffset = offset >= total - 1 && offset > 0 ? Math.max(0, offset - BROWSE_PAGE_SIZE) : offset;
       setOffset(nextOffset);
       await refresh(nextOffset);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete party');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -195,7 +223,7 @@ function PartyPage({
                 <td className="py-2">{formatLedgerBalance(party.balance ?? 0)}</td>
                 {isAdmin ? (
                   <td className="py-2 text-right">
-                    <SecondaryButton className="text-xs" onClick={() => onRemove(party.id)}>Remove</SecondaryButton>
+                    <SecondaryButton className="text-xs" onClick={() => openDeleteModal(party)}>Remove</SecondaryButton>
                   </td>
                 ) : null}
               </tr>
@@ -205,6 +233,40 @@ function PartyPage({
         {(parties?.length ?? 0) === 0 ? <p className="py-4 text-sm text-textMuted">No parties yet.</p> : null}
         <ListPagination total={total} offset={offset} onPageChange={setOffset} className="mt-4" />
       </Panel>
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-xl border border-border bg-surface p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-danger">Confirm Delete Party</h3>
+            <p className="text-sm text-textPrimary">
+              Permanently remove party <strong>&quot;{deleteTarget.name}&quot;</strong>? This requires your admin password.
+            </p>
+            <div>
+              <FieldLabel>Admin Password Confirmation</FieldLabel>
+              <PasswordInput
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Enter your password"
+              />
+            </div>
+            {deleteError ? <p className="text-xs font-medium text-danger">{deleteError}</p> : null}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <SecondaryButton type="button" onClick={closeDeleteModal}>
+                Cancel
+              </SecondaryButton>
+              <button
+                type="button"
+                disabled={deleting || !confirmPassword.trim()}
+                onClick={() => void confirmDeleteParty()}
+                className="rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Party'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <PageCloseBar />
     </PageShell>
   );

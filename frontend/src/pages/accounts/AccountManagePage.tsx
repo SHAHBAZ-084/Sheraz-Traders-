@@ -209,7 +209,11 @@ export function AccountManagePage({ mode }: { mode: Mode }) {
             ? { openingBalance: parsedOpeningAmount, openingBalanceSide }
             : {}),
         });
-        if (hasOpeningAmount && created.ledger) {
+        if (created.status === 'PENDING_APPROVAL') {
+          setMessage(
+            'Account submitted for approval. An admin must approve it in Pending Approvals before it posts to the ledger.',
+          );
+        } else if (hasOpeningAmount && created.ledger) {
           setMessage(
             `Account created with opening balance ${formatLedgerBalance(created.ledger.balance)}.`,
           );

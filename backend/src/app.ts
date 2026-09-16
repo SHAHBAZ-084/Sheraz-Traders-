@@ -22,6 +22,8 @@ import type { StartupStatus } from './lib/startup';
 declare module 'express-session' {
   interface SessionData {
     userId?: number;
+    /** Set after admin re-enters password for Profit & Loss; cleared on logout. */
+    profitLossUnlocked?: boolean;
   }
 }
 

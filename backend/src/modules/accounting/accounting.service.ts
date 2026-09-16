@@ -1673,8 +1673,21 @@ function buildLedgerEntryDescription(
 ): string {
   if (e.isOpeningBalance) return 'Opening Balance';
   if (isBardanaLedgerNote(e.notes)) return e.notes!.trim();
+
+  const entryNotes = e.notes?.trim();
+  // Multi-leg sale/purchase/kachi vouchers store the correct per-leg text on entry notes
+  // (product legs = one product; party legs = full invoice). Prefer notes over voucher.description.
+  if (
+    entryNotes
+    && (voucher?.type === VoucherType.SALE_INVOICE
+      || voucher?.type === VoucherType.PURCHASE_INVOICE
+      || voucher?.type === VoucherType.KACHI)
+  ) {
+    return entryNotes;
+  }
+
   if (!voucher?.creditAccount || !voucher?.debitAccount) {
-    return e.notes?.trim() || voucher?.description?.trim() || '';
+    return entryNotes || voucher?.description?.trim() || '';
   }
 
   if (isSaleVoucher(voucher)) {
